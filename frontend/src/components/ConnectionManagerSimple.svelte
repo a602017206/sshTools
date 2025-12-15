@@ -1,6 +1,8 @@
 <script>
-  import { GetConnections, AddConnection, UpdateConnection, RemoveConnection, TestConnection } from '../../wailsjs/go/main/App.js';
+  import { GetConnections, AddConnection, UpdateConnection, RemoveConnection, TestConnection, SelectSSHKeyFile, SavePassword, GetPassword, HasPassword } from '../../wailsjs/go/main/App.js';
   import { onMount } from 'svelte';
+  import { showAlert, showError, showConfirm } from '../utils/dialog.js';
+  import PasswordPrompt from './PasswordPrompt.svelte';
 
   export let onConnect = null;
 
@@ -9,6 +11,14 @@
   let editingConnection = null;
   let testingConnection = false;
   let testResult = '';
+
+  // Password prompt modal
+  let showPasswordPrompt = false;
+  let passwordPromptTitle = '';
+  let passwordPromptMessage = '';
+  let passwordPromptIsPassword = true;
+  let passwordPromptShowSave = false;
+  let pendingConnection = null;
 
   let formData = {
     id: '',
@@ -20,6 +30,7 @@
     savePassword: false,
     auth_type: 'password',
     key_path: '',
+    passphrase: '',
     tags: []
   };
 
@@ -55,6 +66,7 @@
       savePassword: false,
       auth_type: connection.auth_type || 'password',
       key_path: connection.key_path || '',
+      passphrase: '',
       tags: connection.tags || []
     };
     showConnectionForm = true;
@@ -62,7 +74,7 @@
 
   async function handleSaveConnection() {
     if (!formData.name || !formData.host || !formData.user) {
-      alert('请填写必填字段（连接名称、主机地址、用户名）');
+      await showAlert('请填写必填字段（连接名称、主机地址、用户名）');
       return;
     }
 
@@ -90,14 +102,15 @@
       editingConnection = null;
     } catch (error) {
       console.error('Failed to save connection:', error);
-      alert('保存连接失败: ' + error);
+      await showError('保存连接失败: ' + error);
     }
   }
 
   async function handleRemoveConnection(id) {
     console.log('🔴 handleRemoveConnection called for id:', id);
 
-    if (!window.confirm('确定要删除此连接吗？')) {
+    const confirmed = await showConfirm('确定要删除此连接吗？');
+    if (!confirmed) {
       console.log('用户取消了删除操作');
       return;
     }
@@ -108,30 +121,41 @@
       console.log('连接已删除:', id);
     } catch (error) {
       console.error('Failed to remove connection:', error);
-      alert('删除连接失败: ' + error);
+      await showError('删除连接失败: ' + error);
     }
   }
 
   async function handleTestConnection() {
     if (!formData.host || !formData.user) {
-      alert('请填写主机地址和用户名');
+      await showAlert('请填写主机地址和用户名');
       return;
     }
 
-    if (!formData.password) {
-      alert('请输入密码以测试连接');
-      return;
+    // Validate based on auth type
+    if (formData.auth_type === 'password') {
+      if (!formData.password) {
+        await showAlert('请输入密码以测试连接');
+        return;
+      }
+    } else if (formData.auth_type === 'key') {
+      if (!formData.key_path) {
+        await showAlert('请选择 SSH 密钥文件');
+        return;
+      }
     }
 
     testingConnection = true;
     testResult = '';
 
     try {
+      const authValue = formData.auth_type === 'key' ? formData.key_path : formData.password;
       await TestConnection(
         formData.host,
         parseInt(formData.port),
         formData.user,
-        formData.password
+        formData.auth_type,
+        authValue,
+        formData.passphrase || ''
       );
       testResult = '✓ 连接成功';
     } catch (error) {
@@ -142,7 +166,7 @@
     }
   }
 
-  function handleConnect(connection) {
+  async function handleConnect(connection) {
     console.log('🔵 handleConnect called:', connection);
 
     if (!onConnect) {
@@ -150,17 +174,84 @@
       return;
     }
 
-    const password = window.prompt(`连接到 ${connection.name}\n请输入密码：`);
-    if (password) {
-      onConnect(connection, password);
+    if (connection.auth_type === 'key') {
+      // For key auth, use saved key path and prompt for passphrase
+      pendingConnection = connection;
+      passwordPromptTitle = '密钥 Passphrase';
+      passwordPromptMessage = `连接到 ${connection.name}\n如果密钥已加密，请输入 Passphrase（否则留空）：`;
+      passwordPromptIsPassword = true;
+      passwordPromptShowSave = false;
+      showPasswordPrompt = true;
     } else {
-      console.log('用户取消了密码输入');
+      // For password auth, try to get saved password first
+      let password = null;
+      try {
+        const hasSaved = await HasPassword(connection.id);
+        if (hasSaved) {
+          password = await GetPassword(connection.id);
+          console.log('Using saved password');
+          onConnect(connection, password, '');
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to get saved password:', error);
+      }
+
+      // No saved password, prompt user
+      pendingConnection = connection;
+      passwordPromptTitle = '输入密码';
+      passwordPromptMessage = `连接到 ${connection.name}\n请输入密码：`;
+      passwordPromptIsPassword = true;
+      passwordPromptShowSave = true;
+      showPasswordPrompt = true;
     }
+  }
+
+  function handlePasswordSubmit(event) {
+    const { value, save } = event.detail;
+    showPasswordPrompt = false;
+
+    if (!pendingConnection) return;
+
+    const connection = pendingConnection;
+    pendingConnection = null;
+
+    if (connection.auth_type === 'key') {
+      // For key auth, value is the passphrase
+      onConnect(connection, connection.key_path, value);
+    } else {
+      // For password auth, value is the password
+      if (save) {
+        // Save password for future use
+        SavePassword(connection.id, value).catch(err => {
+          console.error('Failed to save password:', err);
+        });
+      }
+      onConnect(connection, value, '');
+    }
+  }
+
+  function handlePasswordCancel() {
+    showPasswordPrompt = false;
+    pendingConnection = null;
+    console.log('User cancelled password input');
   }
 
   function handleEditConnection(connection) {
     console.log('handleEditConnection called:', connection);
     showEditConnectionForm(connection);
+  }
+
+  async function handleSelectKeyFile() {
+    try {
+      const filePath = await SelectSSHKeyFile();
+      if (filePath) {
+        formData.key_path = filePath;
+      }
+    } catch (error) {
+      console.error('Failed to select key file:', error);
+      await showError('选择密钥文件失败: ' + error);
+    }
   }
 
   function resetForm() {
@@ -174,6 +265,7 @@
       savePassword: false,
       auth_type: 'password',
       key_path: '',
+      passphrase: '',
       tags: []
     };
     testResult = '';
@@ -187,15 +279,37 @@
 
   // 使用window方法暴露全局函数供onclick使用
   if (typeof window !== 'undefined') {
-    window.sshToolsConnect = handleConnect;
-    window.sshToolsEdit = handleEditConnection;
-    window.sshToolsDelete = handleRemoveConnection;
+    window.testClick = async () => {
+      await showAlert('测试按钮被点击了！');
+    };
+
+    window.sshToolsConnect = async (index) => {
+      const connection = connections[index];
+      if (connection) {
+        await handleConnect(connection);
+      }
+    };
+
+    window.sshToolsEdit = (index) => {
+      const connection = connections[index];
+      if (connection) {
+        handleEditConnection(connection);
+      }
+    };
+
+    window.sshToolsDelete = async (id) => {
+      await handleRemoveConnection(id);
+    };
   }
 </script>
 
 <div class="manager">
   <div class="header-bar">
     <h2>SSH 连接</h2>
+    <!-- 测试按钮 -->
+    <button class="new-btn" onclick="window.testClick()" style="margin-right: 10px; background: red;">
+      测试
+    </button>
     <!-- 使用原生onclick -->
     <button class="new-btn" onclick="document.getElementById('new-conn-trigger').click()">
       + 新建连接
@@ -229,9 +343,45 @@
       </div>
 
       <div class="field">
-        <label>密码</label>
-        <input type="password" bind:value={formData.password} placeholder="用于测试连接" />
+        <label>认证方式</label>
+        <select bind:value={formData.auth_type}>
+          <option value="password">密码</option>
+          <option value="key">SSH 密钥</option>
+        </select>
       </div>
+
+      {#if formData.auth_type === 'password'}
+        <div class="field">
+          <label>密码</label>
+          <input type="password" bind:value={formData.password} placeholder="用于测试连接" />
+        </div>
+      {:else if formData.auth_type === 'key'}
+        <div class="field">
+          <label>SSH 私钥文件</label>
+          <div class="key-file-selector">
+            <input
+              type="text"
+              bind:value={formData.key_path}
+              placeholder="点击选择密钥文件"
+              readonly
+            />
+            <button class="btn-select-file" on:click={handleSelectKeyFile} type="button">
+              选择文件
+            </button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Passphrase（可选）</label>
+          <input
+            type="password"
+            bind:value={formData.passphrase}
+            placeholder="如果密钥已加密，请输入 passphrase"
+          />
+          <div class="hint-text">
+            如果您的 SSH 密钥文件已加密，请输入 passphrase。否则留空即可。
+          </div>
+        </div>
+      {/if}
 
       {#if testResult}
         <div class="result {testResult.includes('成功') ? 'success' : 'error'}">
@@ -256,23 +406,23 @@
         <p>点击"新建连接"开始添加</p>
       </div>
     {:else}
-      {#each connections as connection (connection.id)}
+      {#each connections as connection, index (connection.id)}
         <div class="item">
           <div class="info">
             <div class="name">{connection.name}</div>
             <div class="details">{connection.user}@{connection.host}:{connection.port}</div>
           </div>
           <div class="item-actions">
-            <!-- 使用原生onclick和全局函数 -->
+            <!-- 使用原生onclick和索引 -->
             <button
               class="act-btn connect-btn"
-              onclick="window.sshToolsConnect({JSON.stringify(connection).replace(/"/g, '&quot;')})"
+              onclick="window.sshToolsConnect({index})"
             >
               连接
             </button>
             <button
               class="act-btn edit-btn"
-              onclick="window.sshToolsEdit({JSON.stringify(connection).replace(/"/g, '&quot;')})"
+              onclick="window.sshToolsEdit({index})"
             >
               编辑
             </button>
@@ -288,6 +438,16 @@
     {/if}
   </div>
 </div>
+
+<PasswordPrompt
+  bind:visible={showPasswordPrompt}
+  title={passwordPromptTitle}
+  message={passwordPromptMessage}
+  isPassword={passwordPromptIsPassword}
+  showSaveOption={passwordPromptShowSave}
+  on:submit={handlePasswordSubmit}
+  on:cancel={handlePasswordCancel}
+/>
 
 <style>
   .manager {
@@ -478,5 +638,33 @@
 
   .delete-btn:hover {
     background: #a03030 !important;
+  }
+
+  .key-file-selector {
+    display: flex;
+    gap: 10px;
+  }
+
+  .key-file-selector input {
+    flex: 1;
+    background-color: #2a2a2a;
+    cursor: default;
+  }
+
+  .btn-select-file {
+    padding: 8px 16px;
+    background-color: #0e639c;
+    color: white;
+    white-space: nowrap;
+  }
+
+  .btn-select-file:hover {
+    background-color: #1177bb;
+  }
+
+  .hint-text {
+    font-size: 11px;
+    color: #858585;
+    margin-top: 5px;
   }
 </style>

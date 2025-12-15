@@ -10,16 +10,28 @@ export function CloseSSH(arg1) {
   return window['go']['main']['App']['CloseSSH'](arg1);
 }
 
-export function ConnectSSH(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-  return window['go']['main']['App']['ConnectSSH'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+export function ConnectSSH(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
+  return window['go']['main']['App']['ConnectSSH'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+}
+
+export function DeletePassword(arg1) {
+  return window['go']['main']['App']['DeletePassword'](arg1);
 }
 
 export function GetConnections() {
   return window['go']['main']['App']['GetConnections']();
 }
 
+export function GetPassword(arg1) {
+  return window['go']['main']['App']['GetPassword'](arg1);
+}
+
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
+}
+
+export function HasPassword(arg1) {
+  return window['go']['main']['App']['HasPassword'](arg1);
 }
 
 export function ListSSHSessions() {
@@ -34,12 +46,32 @@ export function ResizeSSH(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSH'](arg1, arg2, arg3);
 }
 
+export function SavePassword(arg1, arg2) {
+  return window['go']['main']['App']['SavePassword'](arg1, arg2);
+}
+
+export function SelectSSHKeyFile() {
+  return window['go']['main']['App']['SelectSSHKeyFile']();
+}
+
 export function SendSSHData(arg1, arg2) {
   return window['go']['main']['App']['SendSSHData'](arg1, arg2);
 }
 
-export function TestConnection(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4);
+export function ShowErrorDialog(arg1, arg2) {
+  return window['go']['main']['App']['ShowErrorDialog'](arg1, arg2);
+}
+
+export function ShowMessageDialog(arg1, arg2) {
+  return window['go']['main']['App']['ShowMessageDialog'](arg1, arg2);
+}
+
+export function ShowQuestionDialog(arg1, arg2) {
+  return window['go']['main']['App']['ShowQuestionDialog'](arg1, arg2);
+}
+
+export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function UpdateConnection(arg1) {

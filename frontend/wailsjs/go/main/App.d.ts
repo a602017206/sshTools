@@ -6,11 +6,17 @@ export function AddConnection(arg1:config.ConnectionConfig):Promise<void>;
 
 export function CloseSSH(arg1:string):Promise<void>;
 
-export function ConnectSSH(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:number,arg7:number):Promise<void>;
+export function ConnectSSH(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:number,arg9:number):Promise<void>;
+
+export function DeletePassword(arg1:string):Promise<void>;
 
 export function GetConnections():Promise<Array<config.ConnectionConfig>>;
 
+export function GetPassword(arg1:string):Promise<string>;
+
 export function Greet(arg1:string):Promise<string>;
+
+export function HasPassword(arg1:string):Promise<boolean>;
 
 export function ListSSHSessions():Promise<Array<string>>;
 
@@ -18,8 +24,18 @@ export function RemoveConnection(arg1:string):Promise<void>;
 
 export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
 
+export function SavePassword(arg1:string,arg2:string):Promise<void>;
+
+export function SelectSSHKeyFile():Promise<string>;
+
 export function SendSSHData(arg1:string,arg2:string):Promise<void>;
 
-export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string):Promise<void>;
+export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
+
+export function ShowMessageDialog(arg1:string,arg2:string):Promise<void>;
+
+export function ShowQuestionDialog(arg1:string,arg2:string):Promise<boolean>;
+
+export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function UpdateConnection(arg1:config.ConnectionConfig):Promise<void>;

@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -16,12 +17,13 @@ type Client struct {
 
 // Config holds SSH connection configuration
 type Config struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	KeyPath  string
-	Timeout  time.Duration
+	Host       string
+	Port       int
+	User       string
+	Password   string
+	KeyPath    string
+	Passphrase string // Passphrase for encrypted private keys
+	Timeout    time.Duration
 }
 
 // NewClient creates a new SSH client
@@ -34,10 +36,33 @@ func NewClient(cfg *Config) (*Client, error) {
 
 	// Build auth methods
 	var authMethods []ssh.AuthMethod
+
+	// Try key-based authentication first (if key path is provided)
+	if cfg.KeyPath != "" {
+		keyAuth, err := getKeyAuth(cfg.KeyPath, cfg.Passphrase)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load SSH key: %w", err)
+		}
+		authMethods = append(authMethods, keyAuth)
+	}
+
+	// Add password authentication
 	if cfg.Password != "" {
 		authMethods = append(authMethods, ssh.Password(cfg.Password))
+
+		// Add keyboard-interactive authentication (some servers require this instead of password)
+		authMethods = append(authMethods, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+			answers := make([]string, len(questions))
+			for i := range questions {
+				answers[i] = cfg.Password
+			}
+			return answers, nil
+		}))
 	}
-	// TODO: Add key-based authentication
+
+	if len(authMethods) == 0 {
+		return nil, fmt.Errorf("no authentication method provided (need password or key path)")
+	}
 
 	config := &ssh.ClientConfig{
 		User:            cfg.User,
@@ -73,4 +98,36 @@ func (c *Client) Close() error {
 // IsConnected checks if client is connected
 func (c *Client) IsConnected() bool {
 	return c.client != nil
+}
+
+// getKeyAuth loads a private key file and returns an SSH auth method
+func getKeyAuth(keyPath, passphrase string) (ssh.AuthMethod, error) {
+	// Read the private key file
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	var signer ssh.Signer
+
+	// Try to parse the key with passphrase if provided
+	if passphrase != "" {
+		signer, err = ssh.ParsePrivateKeyWithPassphrase(keyBytes, []byte(passphrase))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse encrypted key (check passphrase): %w", err)
+		}
+	} else {
+		// Try to parse without passphrase
+		signer, err = ssh.ParsePrivateKey(keyBytes)
+		if err != nil {
+			// If it fails, it might be an encrypted key without passphrase provided
+			if err.Error() == "ssh: cannot decode encrypted private keys" ||
+				err.Error() == "ssh: this private key is passphrase protected" {
+				return nil, fmt.Errorf("private key is encrypted, please provide passphrase")
+			}
+			return nil, fmt.Errorf("failed to parse key: %w", err)
+		}
+	}
+
+	return ssh.PublicKeys(signer), nil
 }

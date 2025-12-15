@@ -80,13 +80,24 @@ func (a *App) RemoveConnection(id string) error {
 }
 
 // TestConnection tests an SSH connection
-func (a *App) TestConnection(host string, port int, user, password string) error {
-	client, err := ssh.NewClient(&ssh.Config{
-		Host:     host,
-		Port:     port,
-		User:     user,
-		Password: password,
-	})
+// authType: "password" or "key"
+// authValue: password for password auth, or key file path for key auth
+// passphrase: passphrase for encrypted keys (optional)
+func (a *App) TestConnection(host string, port int, user, authType, authValue, passphrase string) error {
+	sshConfig := &ssh.Config{
+		Host: host,
+		Port: port,
+		User: user,
+	}
+
+	if authType == "key" {
+		sshConfig.KeyPath = authValue
+		sshConfig.Passphrase = passphrase
+	} else {
+		sshConfig.Password = authValue
+	}
+
+	client, err := ssh.NewClient(sshConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)
 	}
@@ -100,14 +111,25 @@ func (a *App) TestConnection(host string, port int, user, password string) error
 }
 
 // ConnectSSH creates and starts an SSH session
-func (a *App) ConnectSSH(sessionID, host string, port int, user, password string, cols, rows int) error {
+// authType: "password" or "key"
+// authValue: password for password auth, or key file path for key auth
+// passphrase: passphrase for encrypted keys (optional)
+func (a *App) ConnectSSH(sessionID, host string, port int, user, authType, authValue, passphrase string, cols, rows int) error {
+	sshConfig := &ssh.Config{
+		Host: host,
+		Port: port,
+		User: user,
+	}
+
+	if authType == "key" {
+		sshConfig.KeyPath = authValue
+		sshConfig.Passphrase = passphrase
+	} else {
+		sshConfig.Password = authValue
+	}
+
 	// Create session
-	_, err := a.sessionManager.CreateSession(sessionID, &ssh.Config{
-		Host:     host,
-		Port:     port,
-		User:     user,
-		Password: password,
-	})
+	_, err := a.sessionManager.CreateSession(sessionID, sshConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
@@ -149,4 +171,95 @@ func (a *App) CloseSSH(sessionID string) error {
 // ListSSHSessions returns all active session IDs
 func (a *App) ListSSHSessions() []string {
 	return a.sessionManager.ListSessions()
+}
+
+// ShowMessageDialog shows an information message dialog
+func (a *App) ShowMessageDialog(title, message string) {
+	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:    runtime.InfoDialog,
+		Title:   title,
+		Message: message,
+	})
+}
+
+// ShowErrorDialog shows an error message dialog
+func (a *App) ShowErrorDialog(title, message string) {
+	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:    runtime.ErrorDialog,
+		Title:   title,
+		Message: message,
+	})
+}
+
+// ShowQuestionDialog shows a question dialog and returns true if user confirms
+func (a *App) ShowQuestionDialog(title, message string) (bool, error) {
+	result, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         title,
+		Message:       message,
+		Buttons:       []string{"是", "否"},
+		DefaultButton: "是",
+		CancelButton:  "否",
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return result == "是", nil
+}
+
+// SelectSSHKeyFile opens a file picker dialog for selecting SSH private key files
+func (a *App) SelectSSHKeyFile() (string, error) {
+	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择 SSH 私钥文件",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "SSH 私钥 (id_rsa, id_ed25519, id_ecdsa)",
+				Pattern:     "id_rsa;id_ed25519;id_ecdsa;*.pem;*.key",
+			},
+			{
+				DisplayName: "所有文件 (*.*)",
+				Pattern:     "*.*",
+			},
+		},
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return filePath, nil
+}
+
+// SavePassword saves a password for a connection (encrypted)
+func (a *App) SavePassword(connectionID, password string) error {
+	if a.credentialStore == nil {
+		return fmt.Errorf("credential store not initialized")
+	}
+	return a.credentialStore.Store(connectionID, password)
+}
+
+// GetPassword retrieves a saved password for a connection
+func (a *App) GetPassword(connectionID string) (string, error) {
+	if a.credentialStore == nil {
+		return "", fmt.Errorf("credential store not initialized")
+	}
+	return a.credentialStore.Get(connectionID)
+}
+
+// HasPassword checks if a password is saved for a connection
+func (a *App) HasPassword(connectionID string) bool {
+	if a.credentialStore == nil {
+		return false
+	}
+	return a.credentialStore.Has(connectionID)
+}
+
+// DeletePassword removes a saved password for a connection
+func (a *App) DeletePassword(connectionID string) error {
+	if a.credentialStore == nil {
+		return fmt.Errorf("credential store not initialized")
+	}
+	return a.credentialStore.Delete(connectionID)
 }

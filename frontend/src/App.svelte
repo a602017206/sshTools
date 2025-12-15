@@ -1,6 +1,6 @@
 <script>
   import Terminal from './components/Terminal.svelte';
-  import ConnectionManager from './components/ConnectionManager.svelte';
+  import ConnectionManagerSimple from './components/ConnectionManagerSimple.svelte';
   import { onMount, onDestroy } from 'svelte';
   import { ConnectSSH, SendSSHData, ResizeSSH, CloseSSH } from '../wailsjs/go/main/App.js';
   import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime.js';
@@ -10,7 +10,7 @@
   let terminalRef;
   let eventUnsubscribers = [];
 
-  async function handleConnect(connection, password) {
+  async function handleConnect(connection, authValue, passphrase = '') {
     const sessionId = `session_${Date.now()}`;
 
     console.log('Connecting to:', connection);
@@ -18,7 +18,8 @@
     // Create a new session
     sessions.set(sessionId, {
       connection,
-      password,
+      authValue,
+      passphrase,
       connected: false
     });
 
@@ -26,7 +27,8 @@
 
     // Show connecting message
     if (terminalRef) {
-      terminalRef.writeln(`Connecting to ${connection.user}@${connection.host}:${connection.port}...`);
+      const authType = connection.auth_type === 'key' ? 'SSH key' : 'password';
+      terminalRef.writeln(`Connecting to ${connection.user}@${connection.host}:${connection.port} using ${authType}...`);
       terminalRef.writeln('');
     }
 
@@ -49,7 +51,9 @@
         connection.host,
         connection.port,
         connection.user,
-        password,
+        connection.auth_type || 'password',
+        authValue,
+        passphrase,
         size.cols,
         size.rows
       );
@@ -136,7 +140,7 @@
 <main>
   <div class="app-container">
     <aside class="sidebar">
-      <ConnectionManager onConnect={handleConnect} />
+      <ConnectionManagerSimple onConnect={handleConnect} />
     </aside>
     <div class="main-content">
       {#if activeSessionId}
