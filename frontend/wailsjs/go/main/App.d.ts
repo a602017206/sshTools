@@ -4,10 +4,22 @@ import {config} from '../models';
 
 export function AddConnection(arg1:config.ConnectionConfig):Promise<void>;
 
+export function CloseSSH(arg1:string):Promise<void>;
+
+export function ConnectSSH(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:number,arg7:number):Promise<void>;
+
 export function GetConnections():Promise<Array<config.ConnectionConfig>>;
 
 export function Greet(arg1:string):Promise<string>;
 
+export function ListSSHSessions():Promise<Array<string>>;
+
 export function RemoveConnection(arg1:string):Promise<void>;
 
+export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function SendSSHData(arg1:string,arg2:string):Promise<void>;
+
 export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string):Promise<void>;
+
+export function UpdateConnection(arg1:config.ConnectionConfig):Promise<void>;

@@ -1,21 +1,24 @@
 <script>
-  import { GetConnections, AddConnection, RemoveConnection, TestConnection } from '../../wailsjs/go/main/App.js';
+  import { GetConnections, AddConnection, UpdateConnection, RemoveConnection, TestConnection } from '../../wailsjs/go/main/App.js';
   import { onMount } from 'svelte';
 
   export let onConnect = null;
 
   let connections = [];
-  let showNewConnectionForm = false;
+  let showConnectionForm = false;
+  let editingConnection = null;
   let testingConnection = false;
   let testResult = '';
 
-  // New connection form data
-  let newConnection = {
+  // Connection form data
+  let formData = {
     id: '',
     name: '',
     host: '',
     port: 22,
     user: '',
+    password: '',
+    savePassword: false,
     auth_type: 'password',
     key_path: '',
     tags: []
@@ -28,38 +31,91 @@
   async function loadConnections() {
     try {
       connections = await GetConnections();
+      console.log('Loaded connections:', connections);
     } catch (error) {
       console.error('Failed to load connections:', error);
+      connections = [];
     }
   }
 
-  async function handleAddConnection() {
-    if (!newConnection.name || !newConnection.host || !newConnection.user) {
-      alert('请填写必填字段');
+  function showNewConnectionForm() {
+    editingConnection = null;
+    resetForm();
+    showConnectionForm = true;
+  }
+
+  function showEditConnectionForm(connection) {
+    editingConnection = connection;
+    formData = {
+      id: connection.id,
+      name: connection.name,
+      host: connection.host,
+      port: connection.port,
+      user: connection.user,
+      password: '',
+      savePassword: false,
+      auth_type: connection.auth_type || 'password',
+      key_path: connection.key_path || '',
+      tags: connection.tags || []
+    };
+    showConnectionForm = true;
+  }
+
+  async function handleSaveConnection() {
+    if (!formData.name || !formData.host || !formData.user) {
+      alert('请填写必填字段（连接名称、主机地址、用户名）');
       return;
     }
 
-    newConnection.id = `conn_${Date.now()}`;
-
     try {
-      await AddConnection(newConnection);
+      const connectionData = {
+        id: formData.id || `conn_${Date.now()}`,
+        name: formData.name,
+        host: formData.host,
+        port: parseInt(formData.port),
+        user: formData.user,
+        auth_type: formData.auth_type,
+        key_path: formData.key_path,
+        tags: formData.tags
+      };
+
+      if (editingConnection) {
+        // Update existing connection
+        await UpdateConnection(connectionData);
+      } else {
+        // Add new connection
+        await AddConnection(connectionData);
+      }
+
+      // TODO: Save password to credential store if savePassword is true
+      if (formData.savePassword && formData.password) {
+        console.log('Saving password for connection:', connectionData.id);
+        // Will implement credential storage later
+      }
+
       await loadConnections();
       resetForm();
-      showNewConnectionForm = false;
+      showConnectionForm = false;
+      editingConnection = null;
     } catch (error) {
-      console.error('Failed to add connection:', error);
-      alert('添加连接失败: ' + error);
+      console.error('Failed to save connection:', error);
+      alert('保存连接失败: ' + error);
     }
   }
 
   async function handleRemoveConnection(id) {
+    console.log('🔴 handleRemoveConnection called for id:', id);
+    alert('删除按钮被点击了！ID: ' + id); // 临时调试用
+
     if (!confirm('确定要删除此连接吗？')) {
+      console.log('用户取消了删除操作');
       return;
     }
 
     try {
       await RemoveConnection(id);
       await loadConnections();
+      console.log('连接已删除:', id);
     } catch (error) {
       console.error('Failed to remove connection:', error);
       alert('删除连接失败: ' + error);
@@ -67,8 +123,13 @@
   }
 
   async function handleTestConnection() {
-    if (!newConnection.host || !newConnection.user) {
-      alert('请填写主机和用户名');
+    if (!formData.host || !formData.user) {
+      alert('请填写主机地址和用户名');
+      return;
+    }
+
+    if (!formData.password) {
+      alert('请输入密码以测试连接');
       return;
     }
 
@@ -76,17 +137,11 @@
     testResult = '';
 
     try {
-      const password = prompt('请输入密码（仅用于测试）：');
-      if (!password) {
-        testingConnection = false;
-        return;
-      }
-
       await TestConnection(
-        newConnection.host,
-        parseInt(newConnection.port),
-        newConnection.user,
-        password
+        formData.host,
+        parseInt(formData.port),
+        formData.user,
+        formData.password
       );
       testResult = '✓ 连接成功';
     } catch (error) {
@@ -98,75 +153,155 @@
   }
 
   function handleConnect(connection) {
-    if (onConnect) {
-      const password = prompt(`连接到 ${connection.name}\n请输入密码：`);
-      if (password) {
-        onConnect(connection, password);
-      }
+    console.log('🔵 handleConnect called:', connection);
+    alert('连接按钮被点击了！'); // 临时调试用
+
+    if (!onConnect) {
+      console.error('onConnect callback not provided');
+      alert('错误：onConnect 回调未提供');
+      return;
+    }
+
+    // For now, always prompt for password
+    // TODO: Get saved password from credential store
+    const password = prompt(`连接到 ${connection.name}\n请输入密码：`);
+    if (password) {
+      onConnect(connection, password);
+    } else {
+      console.log('用户取消了密码输入');
     }
   }
 
+  function handleEditConnection(connection) {
+    console.log('handleEditConnection called:', connection);
+    showEditConnectionForm(connection);
+  }
+
   function resetForm() {
-    newConnection = {
+    formData = {
       id: '',
       name: '',
       host: '',
       port: 22,
       user: '',
+      password: '',
+      savePassword: false,
       auth_type: 'password',
       key_path: '',
       tags: []
     };
     testResult = '';
   }
+
+  function cancelForm() {
+    resetForm();
+    showConnectionForm = false;
+    editingConnection = null;
+  }
 </script>
 
 <div class="connection-manager">
   <div class="header">
     <h2>SSH 连接</h2>
-    <button class="btn-new" on:click={() => showNewConnectionForm = !showNewConnectionForm}>
-      {showNewConnectionForm ? '取消' : '+ 新建连接'}
+    <button class="btn-new" on:click={showNewConnectionForm} type="button">
+      + 新建连接
     </button>
   </div>
 
-  {#if showNewConnectionForm}
-    <div class="new-connection-form">
-      <h3>新建连接</h3>
+  {#if showConnectionForm}
+    <div class="connection-form">
+      <h3>{editingConnection ? '编辑连接' : '新建连接'}</h3>
+
       <div class="form-group">
-        <label>连接名称 *</label>
-        <input type="text" bind:value={newConnection.name} placeholder="例如: 生产服务器" />
+        <label for="conn-name">连接名称 *</label>
+        <input
+          id="conn-name"
+          type="text"
+          bind:value={formData.name}
+          placeholder="例如: 生产服务器"
+        />
       </div>
+
       <div class="form-group">
-        <label>主机地址 *</label>
-        <input type="text" bind:value={newConnection.host} placeholder="例如: 192.168.1.100" />
+        <label for="conn-host">主机地址 *</label>
+        <input
+          id="conn-host"
+          type="text"
+          bind:value={formData.host}
+          placeholder="例如: 192.168.1.100 或 example.com"
+        />
       </div>
+
       <div class="form-row">
         <div class="form-group">
-          <label>端口</label>
-          <input type="number" bind:value={newConnection.port} />
+          <label for="conn-port">端口</label>
+          <input
+            id="conn-port"
+            type="number"
+            bind:value={formData.port}
+          />
         </div>
         <div class="form-group">
-          <label>用户名 *</label>
-          <input type="text" bind:value={newConnection.user} placeholder="例如: root" />
+          <label for="conn-user">用户名 *</label>
+          <input
+            id="conn-user"
+            type="text"
+            bind:value={formData.user}
+            placeholder="例如: root"
+          />
         </div>
       </div>
+
       <div class="form-group">
-        <label>认证方式</label>
-        <select bind:value={newConnection.auth_type}>
+        <label for="conn-auth">认证方式</label>
+        <select id="conn-auth" bind:value={formData.auth_type}>
           <option value="password">密码</option>
           <option value="key" disabled>SSH密钥（开发中）</option>
         </select>
       </div>
+
+      {#if formData.auth_type === 'password'}
+        <div class="form-group">
+          <label for="conn-password">密码</label>
+          <input
+            id="conn-password"
+            type="password"
+            bind:value={formData.password}
+            placeholder="连接时使用的密码"
+            autocomplete="off"
+          />
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                bind:checked={formData.savePassword}
+                disabled
+              />
+              <span class="checkbox-text">保存密码（开发中 - 将使用系统密钥链加密存储）</span>
+            </label>
+          </div>
+        </div>
+      {/if}
+
       {#if testResult}
         <div class="test-result" class:success={testResult.includes('成功')} class:error={testResult.includes('失败')}>
           {testResult}
         </div>
       {/if}
+
       <div class="form-actions">
-        <button class="btn-secondary" on:click={handleTestConnection} disabled={testingConnection}>
+        <button class="btn-secondary" on:click={cancelForm} type="button">
+          取消
+        </button>
+        <button
+          class="btn-secondary"
+          on:click={handleTestConnection}
+          disabled={testingConnection}
+          type="button"
+        >
           {testingConnection ? '测试中...' : '测试连接'}
         </button>
-        <button class="btn-primary" on:click={handleAddConnection}>
+        <button class="btn-primary" on:click={handleSaveConnection} type="button">
           保存
         </button>
       </div>
@@ -180,7 +315,7 @@
         <p class="hint">点击"新建连接"开始添加</p>
       </div>
     {:else}
-      {#each connections as connection}
+      {#each connections as connection (connection.id)}
         <div class="connection-item">
           <div class="connection-info">
             <div class="connection-name">{connection.name}</div>
@@ -189,10 +324,25 @@
             </div>
           </div>
           <div class="connection-actions">
-            <button class="btn-connect" on:click={() => handleConnect(connection)}>
+            <button
+              class="btn-connect"
+              on:click={() => handleConnect(connection)}
+              type="button"
+            >
               连接
             </button>
-            <button class="btn-delete" on:click={() => handleRemoveConnection(connection.id)}>
+            <button
+              class="btn-edit"
+              on:click={() => handleEditConnection(connection)}
+              type="button"
+            >
+              编辑
+            </button>
+            <button
+              class="btn-delete"
+              on:click={() => handleRemoveConnection(connection.id)}
+              type="button"
+            >
               删除
             </button>
           </div>
@@ -210,6 +360,7 @@
     padding: 20px;
     background-color: #252526;
     color: #cccccc;
+    -webkit-app-region: no-drag !important;
   }
 
   .header {
@@ -239,17 +390,24 @@
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
+    transition: background-color 0.2s;
+    -webkit-app-region: no-drag;
   }
 
   .btn-new:hover {
     background-color: #1177bb;
   }
 
-  .new-connection-form {
+  .btn-new:active {
+    background-color: #0d5a8f;
+  }
+
+  .connection-form {
     background-color: #1e1e1e;
     padding: 20px;
     border-radius: 6px;
     margin-bottom: 20px;
+    border: 1px solid #3c3c3c;
   }
 
   .form-group {
@@ -269,20 +427,61 @@
     color: #cccccc;
   }
 
-  input, select {
+  input[type="text"],
+  input[type="number"],
+  input[type="password"],
+  select {
     width: 100%;
-    padding: 8px;
+    padding: 8px 10px;
     background-color: #3c3c3c;
-    border: 1px solid #3c3c3c;
+    border: 1px solid #555555;
     border-radius: 3px;
     color: #cccccc;
     font-size: 13px;
     box-sizing: border-box;
+    transition: border-color 0.2s;
+    -webkit-app-region: no-drag;
   }
 
-  input:focus, select:focus {
+  input[type="text"]:focus,
+  input[type="number"]:focus,
+  input[type="password"]:focus,
+  select:focus {
     outline: none;
     border-color: #0e639c;
+  }
+
+  input[type="text"]:hover,
+  input[type="number"]:hover,
+  input[type="password"]:hover,
+  select:hover {
+    border-color: #666666;
+  }
+
+  .checkbox-group {
+    margin-top: 8px;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    margin-bottom: 0;
+  }
+
+  .checkbox-label input[type="checkbox"] {
+    margin-right: 8px;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+  }
+
+  .checkbox-label input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+  }
+
+  .checkbox-text {
+    font-size: 12px;
+    color: #999999;
   }
 
   .test-result {
@@ -308,12 +507,15 @@
     justify-content: flex-end;
   }
 
-  .btn-primary, .btn-secondary {
+  .btn-primary,
+  .btn-secondary {
     padding: 8px 20px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
+    transition: background-color 0.2s;
+    -webkit-app-region: no-drag;
   }
 
   .btn-primary {
@@ -325,6 +527,10 @@
     background-color: #1177bb;
   }
 
+  .btn-primary:active {
+    background-color: #0d5a8f;
+  }
+
   .btn-secondary {
     background-color: #3c3c3c;
     color: #cccccc;
@@ -332,6 +538,10 @@
 
   .btn-secondary:hover {
     background-color: #505050;
+  }
+
+  .btn-secondary:active {
+    background-color: #2a2a2a;
   }
 
   .btn-secondary:disabled {
@@ -342,6 +552,7 @@
   .connections-list {
     flex: 1;
     overflow-y: auto;
+    -webkit-app-region: no-drag !important;
   }
 
   .empty-state {
@@ -366,10 +577,14 @@
     background-color: #1e1e1e;
     border-radius: 6px;
     margin-bottom: 10px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    -webkit-app-region: no-drag !important;
   }
 
   .connection-item:hover {
     background-color: #2a2d2e;
+    border-color: #3c3c3c;
   }
 
   .connection-info {
@@ -379,6 +594,7 @@
   .connection-name {
     font-weight: 500;
     margin-bottom: 5px;
+    font-size: 14px;
   }
 
   .connection-details {
@@ -388,15 +604,23 @@
 
   .connection-actions {
     display: flex;
-    gap: 10px;
+    gap: 8px;
+    -webkit-app-region: no-drag !important;
   }
 
-  .btn-connect, .btn-delete {
+  .btn-connect,
+  .btn-edit,
+  .btn-delete {
     padding: 6px 12px;
     border: none;
     border-radius: 4px;
-    cursor: pointer;
+    cursor: pointer !important;
     font-size: 12px;
+    transition: background-color 0.2s;
+    pointer-events: auto !important;
+    position: relative;
+    z-index: 10;
+    -webkit-app-region: no-drag !important;
   }
 
   .btn-connect {
@@ -408,6 +632,23 @@
     background-color: #1177bb;
   }
 
+  .btn-connect:active {
+    background-color: #0d5a8f;
+  }
+
+  .btn-edit {
+    background-color: #3c3c3c;
+    color: #cccccc;
+  }
+
+  .btn-edit:hover {
+    background-color: #505050;
+  }
+
+  .btn-edit:active {
+    background-color: #2a2a2a;
+  }
+
   .btn-delete {
     background-color: #3c3c3c;
     color: #cccccc;
@@ -415,5 +656,9 @@
 
   .btn-delete:hover {
     background-color: #a03030;
+  }
+
+  .btn-delete:active {
+    background-color: #8a2828;
   }
 </style>

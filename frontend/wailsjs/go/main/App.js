@@ -6,6 +6,14 @@ export function AddConnection(arg1) {
   return window['go']['main']['App']['AddConnection'](arg1);
 }
 
+export function CloseSSH(arg1) {
+  return window['go']['main']['App']['CloseSSH'](arg1);
+}
+
+export function ConnectSSH(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['ConnectSSH'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+}
+
 export function GetConnections() {
   return window['go']['main']['App']['GetConnections']();
 }
@@ -14,10 +22,26 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
+export function ListSSHSessions() {
+  return window['go']['main']['App']['ListSSHSessions']();
+}
+
 export function RemoveConnection(arg1) {
   return window['go']['main']['App']['RemoveConnection'](arg1);
 }
 
+export function ResizeSSH(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResizeSSH'](arg1, arg2, arg3);
+}
+
+export function SendSSHData(arg1, arg2) {
+  return window['go']['main']['App']['SendSSHData'](arg1, arg2);
+}
+
 export function TestConnection(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4);
+}
+
+export function UpdateConnection(arg1) {
+  return window['go']['main']['App']['UpdateConnection'](arg1);
 }

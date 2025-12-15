@@ -1,0 +1,26 @@
+#!/bin/bash
+
+echo "=========================================="
+echo "  SSH Tools - 按钮修复测试"
+echo "=========================================="
+echo ""
+echo "📝 已实施的修复："
+echo "  ✅ 全局CSS添加 -webkit-app-region: no-drag !important"
+echo "  ✅ 所有按钮添加 pointer-events: auto !important"
+echo "  ✅ 所有容器添加 no-drag 规则"
+echo "  ✅ 添加调试 Alert 确认点击事件"
+echo ""
+echo "🔍 测试重点："
+echo "  1. 点击'连接'按钮 - 应该看到 Alert"
+echo "  2. 点击'删除'按钮 - 应该看到 Alert"
+echo "  3. 其他所有按钮应该正常工作"
+echo ""
+echo "🚀 启动应用..."
+echo ""
+echo "⚠️  注意事项："
+echo "  - 如果应用已在运行，请先关闭（Ctrl+C）"
+echo "  - 清除浏览器缓存可能有帮助"
+echo ""
+read -p "按回车键启动应用..."
+
+$HOME/go/bin/wails dev

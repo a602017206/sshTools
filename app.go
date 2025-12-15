@@ -63,6 +63,14 @@ func (a *App) AddConnection(conn config.ConnectionConfig) error {
 	return a.configManager.AddConnection(conn)
 }
 
+// UpdateConnection updates an existing SSH connection
+func (a *App) UpdateConnection(conn config.ConnectionConfig) error {
+	if a.configManager == nil {
+		return fmt.Errorf("config manager not initialized")
+	}
+	return a.configManager.UpdateConnection(conn)
+}
+
 // RemoveConnection removes an SSH connection
 func (a *App) RemoveConnection(id string) error {
 	if a.configManager == nil {

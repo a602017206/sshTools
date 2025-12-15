@@ -12,6 +12,17 @@ body {
     sans-serif;
 }
 
+/* 全局修复：确保所有交互元素在 Wails 客户端中可以点击 */
+button,
+input,
+select,
+textarea,
+a,
+label {
+    -webkit-app-region: no-drag !important;
+    pointer-events: auto !important;
+}
+
 @font-face {
     font-family: "Nunito";
     font-style: normal;

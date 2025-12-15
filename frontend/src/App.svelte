@@ -186,6 +186,7 @@
     min-width: 300px;
     border-right: 1px solid #3c3c3c;
     overflow-y: auto;
+    -webkit-app-region: no-drag !important;
   }
 
   .main-content {
