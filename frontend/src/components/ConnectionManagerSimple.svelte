@@ -279,10 +279,6 @@
 
   // 使用window方法暴露全局函数供onclick使用
   if (typeof window !== 'undefined') {
-    window.testClick = async () => {
-      await showAlert('测试按钮被点击了！');
-    };
-
     window.sshToolsConnect = async (index) => {
       const connection = connections[index];
       if (connection) {
@@ -306,10 +302,6 @@
 <div class="manager">
   <div class="header-bar">
     <h2>SSH 连接</h2>
-    <!-- 测试按钮 -->
-    <button class="new-btn" onclick="window.testClick()" style="margin-right: 10px; background: red;">
-      测试
-    </button>
     <!-- 使用原生onclick -->
     <button class="new-btn" onclick="document.getElementById('new-conn-trigger').click()">
       + 新建连接
@@ -572,7 +564,7 @@
   }
 
   .empty {
-    text-align: center;
+    text-align: left;
     padding: 40px;
     color: #858585;
   }
