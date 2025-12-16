@@ -282,11 +282,6 @@
   :global(body) {
     margin: 0;
     padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-      sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
 
   main {
@@ -305,7 +300,6 @@
     width: 300px;
     min-width: 300px;
     border-right: 1px solid #3c3c3c;
-    overflow-y: auto;
     -webkit-app-region: no-drag !important;
   }
 

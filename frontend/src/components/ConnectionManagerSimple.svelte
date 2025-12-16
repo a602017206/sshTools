@@ -551,12 +551,12 @@
   }
 
   .primary {
-    background: #0e639c !important;
-    color: white !important;
+    background: #0e639c;
+    color: white;
   }
 
   .primary:hover {
-    background: #1177bb !important;
+    background: #1177bb;
   }
 
   .list {
@@ -608,28 +608,28 @@
   }
 
   .connect-btn {
-    background: #0e639c !important;
-    color: white !important;
+    background: #0e639c;
+    color: white;
   }
 
   .connect-btn:hover {
-    background: #1177bb !important;
+    background: #1177bb;
   }
 
   .edit-btn {
-    background: #3c3c3c !important;
+    background: #3c3c3c;
   }
 
   .edit-btn:hover {
-    background: #505050 !important;
+    background: #505050;
   }
 
   .delete-btn {
-    background: #3c3c3c !important;
+    background: #3c3c3c;
   }
 
   .delete-btn:hover {
-    background: #a03030 !important;
+    background: #a03030;
   }
 
   .key-file-selector {
