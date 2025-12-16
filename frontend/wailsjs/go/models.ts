@@ -148,8 +148,7 @@ export namespace ssh {
 	    path: string;
 	    size: number;
 	    mode: string;
-	    // Go type: time
-	    mod_time: any;
+	    mod_time: string;
 	    is_dir: boolean;
 	    is_symlink: boolean;
 	    link_target?: string;
@@ -164,29 +163,11 @@ export namespace ssh {
 	        this.path = source["path"];
 	        this.size = source["size"];
 	        this.mode = source["mode"];
-	        this.mod_time = this.convertValues(source["mod_time"], null);
+	        this.mod_time = source["mod_time"];
 	        this.is_dir = source["is_dir"];
 	        this.is_symlink = source["is_symlink"];
 	        this.link_target = source["link_target"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class MemoryMetrics {
 	    total: number;

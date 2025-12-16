@@ -35,7 +35,9 @@
     brightBlue: '#3b8eea',
     brightMagenta: '#d670d6',
     brightCyan: '#29b8db',
-    brightWhite: '#e5e5e5'
+    selectionBackground: 'rgba(2, 136, 209, 0.3)', // #0288D1 with opacity
+    selectionForeground: undefined, // Keep original text color
+    selectionInactiveBackground: 'rgba(2, 136, 209, 0.15)',
   };
 
   // 浅色主题配置
@@ -58,7 +60,10 @@
     brightBlue: '#0451a5',
     brightMagenta: '#bc05bc',
     brightCyan: '#0598bc',
-    brightWhite: '#a5a5a5'
+    brightWhite: '#a5a5a5',
+    selectionBackground: 'rgba(225, 245, 254, 0.8)', // #E1F5FE
+    selectionForeground: undefined, // Keep original text color
+    selectionInactiveBackground: 'rgba(225, 245, 254, 0.5)',
   };
 
   // 订阅主题变化
@@ -180,7 +185,20 @@
     box-sizing: border-box;
   }
 
-  :global(.xterm-viewport) {
-    overflow-y: auto;
+  :global(.xterm-selection-layer .selection-bar) {
+    position: absolute;
+    top: -1px;
+    bottom: -1px;
+    left: -1px;
+    right: -1px;
+    border: 1px dashed #0288D1;
+    pointer-events: none;
+    z-index: 10;
+  }
+  
+  /* Custom selection style override to add border effect */
+  :global(.xterm .xterm-selection) {
+    border: 1px dashed #0288D1 !important;
+    box-sizing: border-box;
   }
 </style>

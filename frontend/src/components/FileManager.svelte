@@ -38,8 +38,10 @@
   // Modal states
   let showRenameModal = false;
   let showCreateDirModal = false;
+  let showGoToPathModal = false;
   let renameTarget = null;
   let newName = '';
+  let goToPath = '';
 
   // Resize state
   let isDragging = false;
@@ -270,6 +272,25 @@
     }
   }
 
+  async function handleGoToPath(event) {
+    const path = event.detail;
+    if (!path) return;
+
+    try {
+      // Normalize path - ensure it starts with /
+      const normalizedPath = path.startsWith('/') ? path : '/' + path;
+
+      // Try to load the directory
+      await loadDirectory(normalizedPath);
+
+      // Clear the input
+      goToPath = '';
+    } catch (err) {
+      console.error('Go to path failed:', err);
+      await ShowErrorDialog('跳转失败', err.message || '无法访问该路径');
+    }
+  }
+
   async function handleRefresh() {
     await loadDirectory(currentPath);
   }
@@ -293,33 +314,51 @@
   // Drag & drop
   function handleDragOver(event) {
     event.preventDefault();
+    event.stopPropagation();
     isDraggingOver = true;
   }
 
   function handleDragLeave(event) {
-    isDraggingOver = false;
+    // 只在真正离开容器时触发
+    if (event.target === event.currentTarget) {
+      isDraggingOver = false;
+    }
   }
 
   async function handleDrop(event) {
     event.preventDefault();
+    event.stopPropagation();
     isDraggingOver = false;
 
-    const items = event.dataTransfer.items;
-    if (!items || items.length === 0) return;
+    // 尝试使用拖放 API
+    const files = event.dataTransfer.files;
+    if (!files || files.length === 0) {
+      console.warn('No files in drop event');
+      await ShowErrorDialog('拖放失败', '请使用上传按钮选择文件。\n\n注意：由于 Wails 框架限制，拖放文件功能可能无法使用。');
+      return;
+    }
 
+    // 检查是否可以获取文件路径（仅在某些环境下可用）
     const filePaths = [];
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.kind === 'file') {
-        const file = item.getAsFile();
-        if (file && file.path) {
-          filePaths.push(file.path);
-        }
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      // 尝试获取路径（Electron 环境）
+      if (file.path) {
+        filePaths.push(file.path);
       }
     }
 
-    if (filePaths.length === 0) return;
+    // 如果无法获取路径，提示用户使用上传按钮
+    if (filePaths.length === 0) {
+      console.warn('Cannot access file paths from drop event in Wails');
+      await ShowErrorDialog(
+        '拖放功能不可用',
+        '抱歉，Wails 应用暂不支持拖放上传。\n\n请点击工具栏的"上传"按钮选择文件。'
+      );
+      return;
+    }
 
+    // 如果成功获取路径，执行上传
     try {
       const transferIDs = await UploadFiles(activeSessionId, filePaths, currentPath);
       transferIDs.forEach(id => subscribeToTransfer(id));
@@ -442,6 +481,9 @@
         <button on:click={handleRefresh} title="刷新" class="toolbar-btn icon-only">
           <Icon name="refresh" size={16} />
         </button>
+        <button on:click={() => showGoToPathModal = true} title="跳转到路径" class="toolbar-btn icon-only">
+          <Icon name="search" size={16} />
+        </button>
       </div>
       
       <div class="toolbar-spacer"></div>
@@ -550,6 +592,15 @@
   bind:value={newName}
   placeholder="输入文件夹名称"
   on:confirm={handleCreateDir}
+/>
+
+<FileOperationModal
+  bind:visible={showGoToPathModal}
+  title="跳转到路径"
+  label="目标路径："
+  bind:value={goToPath}
+  placeholder="例如：/home/user 或 /var/log"
+  on:confirm={handleGoToPath}
 />
 
 <style>

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"sshTools/internal/config"
 	"sshTools/internal/ssh"
@@ -328,6 +329,10 @@ func (a *App) UploadFile(sessionID string, localPath string, remotePath string) 
 		return "", fmt.Errorf("failed to get SFTP client: %w", err)
 	}
 
+	// Extract filename from local path and append to remote directory
+	localFilename := filepath.Base(localPath)
+	remoteFilePath := filepath.ToSlash(filepath.Join(remotePath, localFilename))
+
 	// Create transfer context
 	transfer, err := a.transferManager.StartTransfer(sessionID, "upload", []string{localPath})
 	if err != nil {
@@ -340,7 +345,7 @@ func (a *App) UploadFile(sessionID string, localPath string, remotePath string) 
 		progressCb := func(progress ssh.TransferProgress) {
 			progress.TransferID = transfer.ID
 			progress.SessionID = sessionID
-			progress.Filename = localPath
+			progress.Filename = localFilename
 
 			// Update transfer manager
 			a.transferManager.UpdateProgress(transfer.ID, progress)
@@ -350,13 +355,13 @@ func (a *App) UploadFile(sessionID string, localPath string, remotePath string) 
 		}
 
 		// Perform upload
-		err := sftpClient.UploadFile(localPath, remotePath, progressCb)
+		err := sftpClient.UploadFile(localPath, remoteFilePath, progressCb)
 		if err != nil {
 			// Emit error
 			errorProgress := ssh.TransferProgress{
 				TransferID: transfer.ID,
 				SessionID:  sessionID,
-				Filename:   localPath,
+				Filename:   localFilename,
 				Status:     "failed",
 				Error:      err.Error(),
 			}
@@ -396,6 +401,10 @@ func (a *App) DownloadFile(sessionID string, remotePath string, localPath string
 		return "", fmt.Errorf("failed to get SFTP client: %w", err)
 	}
 
+	// Extract filename from remote path and append to local directory
+	remoteFilename := filepath.Base(remotePath)
+	localFilePath := filepath.Join(localPath, remoteFilename)
+
 	// Create transfer context
 	transfer, err := a.transferManager.StartTransfer(sessionID, "download", []string{remotePath})
 	if err != nil {
@@ -408,7 +417,7 @@ func (a *App) DownloadFile(sessionID string, remotePath string, localPath string
 		progressCb := func(progress ssh.TransferProgress) {
 			progress.TransferID = transfer.ID
 			progress.SessionID = sessionID
-			progress.Filename = remotePath
+			progress.Filename = remoteFilename
 
 			// Update transfer manager
 			a.transferManager.UpdateProgress(transfer.ID, progress)
@@ -418,13 +427,13 @@ func (a *App) DownloadFile(sessionID string, remotePath string, localPath string
 		}
 
 		// Perform download
-		err := sftpClient.DownloadFile(remotePath, localPath, progressCb)
+		err := sftpClient.DownloadFile(remotePath, localFilePath, progressCb)
 		if err != nil {
 			// Emit error
 			errorProgress := ssh.TransferProgress{
 				TransferID: transfer.ID,
 				SessionID:  sessionID,
-				Filename:   remotePath,
+				Filename:   remoteFilename,
 				Status:     "failed",
 				Error:      err.Error(),
 			}
