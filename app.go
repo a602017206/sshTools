@@ -13,10 +13,11 @@ import (
 
 // App struct
 type App struct {
-	ctx             context.Context
-	configManager   *config.ConfigManager
-	credentialStore *store.CredentialStore
-	sessionManager  *ssh.SessionManager
+	ctx              context.Context
+	configManager    *config.ConfigManager
+	credentialStore  *store.CredentialStore
+	sessionManager   *ssh.SessionManager
+	monitorCollector *ssh.MonitorCollector
 }
 
 // NewApp creates a new App application struct
@@ -278,4 +279,12 @@ func (a *App) UpdateSettings(updates map[string]interface{}) error {
 		return fmt.Errorf("config manager not initialized")
 	}
 	return a.configManager.UpdateSettings(updates)
+}
+
+// GetMonitoringData retrieves monitoring data for a session
+func (a *App) GetMonitoringData(sessionID string) (*ssh.MonitoringData, error) {
+	if a.monitorCollector == nil {
+		a.monitorCollector = ssh.NewMonitorCollector(a.sessionManager)
+	}
+	return a.monitorCollector.CollectMetrics(sessionID)
 }

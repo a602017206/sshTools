@@ -2,6 +2,7 @@
   import Terminal from './components/Terminal.svelte';
   import TabBar from './components/TabBar.svelte';
   import ConnectionManagerSimple from './components/ConnectionManagerSimple.svelte';
+  import MonitorPanel from './components/MonitorPanel.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
   import { ConnectSSH, SendSSHData, ResizeSSH, CloseSSH } from '../wailsjs/go/main/App.js';
   import { EventsOn } from '../wailsjs/runtime/runtime.js';
@@ -335,6 +336,11 @@
         {/if}
       </div>
     </div>
+
+    <!-- Monitor Panel -->
+    {#if activeSessionId}
+      <MonitorPanel activeSessionId={activeSessionId} />
+    {/if}
   </div>
 </main>
 
@@ -389,6 +395,7 @@
 
   .main-content {
     flex: 1;
+    min-width: 0; /* Allow shrinking */
     display: flex;
     flex-direction: column;
     overflow: hidden;

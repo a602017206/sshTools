@@ -1,8 +1,11 @@
 package ssh
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -103,4 +106,38 @@ func (s *Session) Wait() error {
 // Resize changes the terminal size
 func (s *Session) Resize(height, width int) error {
 	return s.session.WindowChange(height, width)
+}
+
+// ExecuteCommand runs a single command and returns output
+// This creates a separate session for non-PTY command execution
+func (s *Session) ExecuteCommand(cmd string, timeout time.Duration) (stdout string, stderr string, err error) {
+	// Create a new session from the client
+	newSession, err := s.client.client.NewSession()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create command session: %w", err)
+	}
+	defer newSession.Close()
+
+	// Set timeout
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Capture stdout and stderr
+	var stdoutBuf, stderrBuf bytes.Buffer
+	newSession.Stdout = &stdoutBuf
+	newSession.Stderr = &stderrBuf
+
+	// Run command with timeout
+	done := make(chan error, 1)
+	go func() {
+		done <- newSession.Run(cmd)
+	}()
+
+	select {
+	case err := <-done:
+		return stdoutBuf.String(), stderrBuf.String(), err
+	case <-ctx.Done():
+		newSession.Signal(ssh.SIGKILL)
+		return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("command timeout")
+	}
 }

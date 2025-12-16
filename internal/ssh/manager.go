@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 )
 
 // SessionManager manages multiple SSH sessions
@@ -190,4 +191,21 @@ func (sm *SessionManager) ListSessions() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// ExecuteCommand executes a command on an existing session's connection
+func (sm *SessionManager) ExecuteCommand(sessionID string, cmd string, timeout time.Duration) (string, string, error) {
+	sm.mu.RLock()
+	managed, exists := sm.sessions[sessionID]
+	sm.mu.RUnlock()
+
+	if !exists {
+		return "", "", fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	if !managed.Running {
+		return "", "", fmt.Errorf("session not running: %s", sessionID)
+	}
+
+	return managed.Session.ExecuteCommand(cmd, timeout)
 }

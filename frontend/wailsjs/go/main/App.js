@@ -22,6 +22,10 @@ export function GetConnections() {
   return window['go']['main']['App']['GetConnections']();
 }
 
+export function GetMonitoringData(arg1) {
+  return window['go']['main']['App']['GetMonitoringData'](arg1);
+}
+
 export function GetPassword(arg1) {
   return window['go']['main']['App']['GetPassword'](arg1);
 }

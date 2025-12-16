@@ -33,16 +33,24 @@ type AppSettings struct {
 	FontSize      int    `json:"font_size"`
 	TerminalTheme string `json:"terminal_theme"`
 	SidebarWidth  int    `json:"sidebar_width"` // Sidebar width in pixels
+
+	// Monitor panel settings
+	MonitorCollapsed       bool `json:"monitor_collapsed"`
+	MonitorWidth           int  `json:"monitor_width"`
+	MonitorRefreshInterval int  `json:"monitor_refresh_interval"` // seconds
 }
 
 // DefaultSettings returns default application settings
 func DefaultSettings() AppSettings {
 	return AppSettings{
-		Theme:         "dark",
-		FontFamily:    "monospace",
-		FontSize:      14,
-		TerminalTheme: "default",
-		SidebarWidth:  300,
+		Theme:                  "dark",
+		FontFamily:             "monospace",
+		FontSize:               14,
+		TerminalTheme:          "default",
+		SidebarWidth:           300,
+		MonitorCollapsed:       true,
+		MonitorWidth:           350,
+		MonitorRefreshInterval: 2,
 	}
 }
 
@@ -166,6 +174,17 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 	if terminalTheme, ok := updates["terminal_theme"].(string); ok {
 		cm.config.Settings.TerminalTheme = terminalTheme
+	}
+
+	// Monitor panel settings
+	if monitorCollapsed, ok := updates["monitor_collapsed"].(bool); ok {
+		cm.config.Settings.MonitorCollapsed = monitorCollapsed
+	}
+	if monitorWidth, ok := updates["monitor_width"].(float64); ok {
+		cm.config.Settings.MonitorWidth = int(monitorWidth)
+	}
+	if monitorRefreshInterval, ok := updates["monitor_refresh_interval"].(float64); ok {
+		cm.config.Settings.MonitorRefreshInterval = int(monitorRefreshInterval)
 	}
 
 	return cm.Save()

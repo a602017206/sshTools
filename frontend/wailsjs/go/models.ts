@@ -6,6 +6,9 @@ export namespace config {
 	    font_size: number;
 	    terminal_theme: string;
 	    sidebar_width: number;
+	    monitor_collapsed: boolean;
+	    monitor_width: number;
+	    monitor_refresh_interval: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -18,6 +21,9 @@ export namespace config {
 	        this.font_size = source["font_size"];
 	        this.terminal_theme = source["terminal_theme"];
 	        this.sidebar_width = source["sidebar_width"];
+	        this.monitor_collapsed = source["monitor_collapsed"];
+	        this.monitor_width = source["monitor_width"];
+	        this.monitor_refresh_interval = source["monitor_refresh_interval"];
 	    }
 	}
 	export class ConnectionConfig {
@@ -48,6 +54,191 @@ export namespace config {
 	        this.metadata = source["metadata"];
 	    }
 	}
+
+}
+
+export namespace ssh {
+	
+	export class CPUMetrics {
+	    overall: number;
+	    user: number;
+	    system: number;
+	    iowait: number;
+	    idle: number;
+	    per_core: number[];
+	    load_average: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CPUMetrics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.overall = source["overall"];
+	        this.user = source["user"];
+	        this.system = source["system"];
+	        this.iowait = source["iowait"];
+	        this.idle = source["idle"];
+	        this.per_core = source["per_core"];
+	        this.load_average = source["load_average"];
+	    }
+	}
+	export class PartitionInfo {
+	    mount_point: string;
+	    total: number;
+	    used: number;
+	    free: number;
+	    used_percent: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PartitionInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mount_point = source["mount_point"];
+	        this.total = source["total"];
+	        this.used = source["used"];
+	        this.free = source["free"];
+	        this.used_percent = source["used_percent"];
+	    }
+	}
+	export class DiskMetrics {
+	    partitions: PartitionInfo[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DiskMetrics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.partitions = this.convertValues(source["partitions"], PartitionInfo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MemoryMetrics {
+	    total: number;
+	    used: number;
+	    free: number;
+	    available: number;
+	    used_percent: number;
+	    swap_total: number;
+	    swap_used: number;
+	    swap_free: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MemoryMetrics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.used = source["used"];
+	        this.free = source["free"];
+	        this.available = source["available"];
+	        this.used_percent = source["used_percent"];
+	        this.swap_total = source["swap_total"];
+	        this.swap_used = source["swap_used"];
+	        this.swap_free = source["swap_free"];
+	    }
+	}
+	export class NetworkMetrics {
+	    total_rx_bytes: number;
+	    total_tx_bytes: number;
+	    rx_rate: number;
+	    tx_rate: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NetworkMetrics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total_rx_bytes = source["total_rx_bytes"];
+	        this.total_tx_bytes = source["total_tx_bytes"];
+	        this.rx_rate = source["rx_rate"];
+	        this.tx_rate = source["tx_rate"];
+	    }
+	}
+	export class SystemInfo {
+	    hostname: string;
+	    uptime: string;
+	    os: string;
+	    kernel: string;
+	    username: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SystemInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hostname = source["hostname"];
+	        this.uptime = source["uptime"];
+	        this.os = source["os"];
+	        this.kernel = source["kernel"];
+	        this.username = source["username"];
+	    }
+	}
+	export class MonitoringData {
+	    timestamp: number;
+	    system: SystemInfo;
+	    cpu: CPUMetrics;
+	    memory: MemoryMetrics;
+	    network: NetworkMetrics;
+	    disk: DiskMetrics;
+	
+	    static createFrom(source: any = {}) {
+	        return new MonitoringData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.system = this.convertValues(source["system"], SystemInfo);
+	        this.cpu = this.convertValues(source["cpu"], CPUMetrics);
+	        this.memory = this.convertValues(source["memory"], MemoryMetrics);
+	        this.network = this.convertValues(source["network"], NetworkMetrics);
+	        this.disk = this.convertValues(source["disk"], DiskMetrics);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
 
 }
 
