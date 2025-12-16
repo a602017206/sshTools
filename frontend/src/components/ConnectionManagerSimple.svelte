@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { showAlert, showError, showConfirm } from '../utils/dialog.js';
   import PasswordPrompt from './PasswordPrompt.svelte';
+  import Settings from './Settings.svelte';
 
   export let onConnect = null;
 
@@ -19,6 +20,9 @@
   let passwordPromptIsPassword = true;
   let passwordPromptShowSave = false;
   let pendingConnection = null;
+
+  // Settings modal
+  let showSettings = false;
 
   let formData = {
     id: '',
@@ -46,6 +50,10 @@
       console.error('Failed to load connections:', error);
       connections = [];
     }
+  }
+
+  function openSettings() {
+    showSettings = true;
   }
 
   function showNewConnectionForm() {
@@ -301,6 +309,11 @@
 
 <div class="manager">
   <div class="header-bar">
+    <button class="settings-btn" on:click={openSettings} title="设置">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M14 7v2h-2.1c-.1.5-.3 1-.6 1.4l1.5 1.5-1.4 1.4-1.5-1.5c-.4.3-.9.5-1.4.6V14H7v-2.1c-.5-.1-1-.3-1.4-.6l-1.5 1.5L2.7 11.4l1.5-1.5c-.3-.4-.5-.9-.6-1.4H2V7h2.1c.1-.5.3-1 .6-1.4L3.2 4.1 4.6 2.7l1.5 1.5C6.5 4 7 3.8 7.5 3.7V2h2v1.7c.5.1 1 .3 1.4.6l1.5-1.5 1.4 1.4-1.5 1.5c.3.4.5.9.6 1.4H14zm-5.5 3c1.4 0 2.5-1.1 2.5-2.5S9.9 5 8.5 5 6 6.1 6 7.5 7.1 10 8.5 10z"/>
+      </svg>
+    </button>
     <h2>SSH 连接</h2>
     <!-- 使用原生onclick -->
     <button class="new-btn" onclick="document.getElementById('new-conn-trigger').click()">
@@ -441,23 +454,45 @@
   on:cancel={handlePasswordCancel}
 />
 
+<Settings bind:visible={showSettings} />
+
 <style>
   .manager {
     height: 100%;
     padding: 20px;
-    background: #252526;
-    color: #ccc;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
     overflow-y: auto;
   }
 
   .header-bar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 12px;
     margin-bottom: 20px;
   }
 
+  .settings-btn {
+    padding: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+
+  .settings-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
   h2 {
+    flex: 1;
     margin: 0;
     font-size: 18px;
   }
@@ -471,8 +506,8 @@
   .act-btn,
   button {
     padding: 8px 16px;
-    background: #3c3c3c;
-    color: #ccc;
+    background: var(--bg-input);
+    color: var(--text-primary);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -481,20 +516,20 @@
 
   .new-btn:hover,
   button:hover {
-    background: #505050;
+    background: var(--bg-hover);
   }
 
   .new-btn {
-    background: #0e639c;
+    background: var(--accent-primary);
     color: white;
   }
 
   .new-btn:hover {
-    background: #1177bb;
+    background: var(--accent-hover);
   }
 
   .form-box {
-    background: #1e1e1e;
+    background: var(--bg-primary);
     padding: 20px;
     border-radius: 6px;
     margin-bottom: 20px;
@@ -519,10 +554,10 @@
   input, select {
     width: 100%;
     padding: 8px;
-    background: #3c3c3c;
-    border: 1px solid #555;
+    background: var(--bg-input);
+    border: 1px solid var(--border-primary);
     border-radius: 3px;
-    color: #ccc;
+    color: var(--text-primary);
     font-size: 13px;
     box-sizing: border-box;
   }
@@ -536,12 +571,12 @@
 
   .result.success {
     background: #1e3a1e;
-    color: #4caf50;
+    color: var(--accent-success);
   }
 
   .result.error {
     background: #3a1e1e;
-    color: #f44336;
+    color: var(--accent-error);
   }
 
   .actions {
@@ -551,12 +586,12 @@
   }
 
   .primary {
-    background: #0e639c;
+    background: var(--accent-primary);
     color: white;
   }
 
   .primary:hover {
-    background: #1177bb;
+    background: var(--accent-hover);
   }
 
   .list {
@@ -566,7 +601,7 @@
   .empty {
     text-align: left;
     padding: 40px;
-    color: #858585;
+    color: var(--text-secondary);
   }
 
   .item {
@@ -574,13 +609,13 @@
     justify-content: space-between;
     align-items: center;
     padding: 15px;
-    background: #1e1e1e;
+    background: var(--bg-primary);
     border-radius: 6px;
     margin-bottom: 10px;
   }
 
   .item:hover {
-    background: #2a2d2e;
+    background: var(--bg-hover);
   }
 
   .info {
@@ -594,7 +629,7 @@
 
   .details {
     font-size: 12px;
-    color: #858585;
+    color: var(--text-secondary);
   }
 
   .item-actions {
@@ -608,24 +643,24 @@
   }
 
   .connect-btn {
-    background: #0e639c;
+    background: var(--accent-primary);
     color: white;
   }
 
   .connect-btn:hover {
-    background: #1177bb;
+    background: var(--accent-hover);
   }
 
   .edit-btn {
-    background: #3c3c3c;
+    background: var(--bg-input);
   }
 
   .edit-btn:hover {
-    background: #505050;
+    background: var(--bg-hover);
   }
 
   .delete-btn {
-    background: #3c3c3c;
+    background: var(--bg-input);
   }
 
   .delete-btn:hover {
@@ -639,24 +674,24 @@
 
   .key-file-selector input {
     flex: 1;
-    background-color: #2a2a2a;
+    background-color: var(--bg-tertiary);
     cursor: default;
   }
 
   .btn-select-file {
     padding: 8px 16px;
-    background-color: #0e639c;
+    background-color: var(--accent-primary);
     color: white;
     white-space: nowrap;
   }
 
   .btn-select-file:hover {
-    background-color: #1177bb;
+    background-color: var(--accent-hover);
   }
 
   .hint-text {
     font-size: 11px;
-    color: #858585;
+    color: var(--text-secondary);
     margin-top: 5px;
   }
 </style>

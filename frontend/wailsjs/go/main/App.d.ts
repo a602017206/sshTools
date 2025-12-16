@@ -14,6 +14,8 @@ export function GetConnections():Promise<Array<config.ConnectionConfig>>;
 
 export function GetPassword(arg1:string):Promise<string>;
 
+export function GetSettings():Promise<config.AppSettings>;
+
 export function Greet(arg1:string):Promise<string>;
 
 export function HasPassword(arg1:string):Promise<boolean>;
@@ -39,3 +41,5 @@ export function ShowQuestionDialog(arg1:string,arg2:string):Promise<boolean>;
 export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function UpdateConnection(arg1:config.ConnectionConfig):Promise<void>;
+
+export function UpdateSettings(arg1:Record<string, any>):Promise<void>;

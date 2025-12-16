@@ -6,12 +6,26 @@
   import { ConnectSSH, SendSSHData, ResizeSSH, CloseSSH } from '../wailsjs/go/main/App.js';
   import { EventsOn } from '../wailsjs/runtime/runtime.js';
   import { showConfirm } from './utils/dialog.js';
+  import { themeStore } from './stores/theme.js';
 
   let sessions = new Map(); // sessionId -> session metadata
   let activeSessionId = null;
   let tabOrder = []; // Array of sessionIds (maintains tab order)
   let terminalRefs = {}; // sessionId -> Terminal component ref
   let sessionUnsubscribers = new Map(); // sessionId -> event unsubscribe function
+
+  // Sidebar dragging state
+  let sidebarWidth = 300;
+  let isDragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  // Subscribe to theme store
+  themeStore.subscribe(state => {
+    if (!isDragging) {
+      sidebarWidth = state.sidebarWidth;
+    }
+  });
 
   // Reactive declarations
   $: activeSession = sessions.get(activeSessionId);
@@ -213,8 +227,9 @@
     }
   }
 
-  onMount(() => {
-    // No specific mount logic needed
+  onMount(async () => {
+    // Initialize theme from settings
+    await themeStore.init();
   });
 
   onDestroy(() => {
@@ -229,13 +244,58 @@
       CloseSSH(sessionId).catch(console.error);
     });
   });
+
+  // Sidebar dragging handlers
+  function handleDragStart(event) {
+    isDragging = true;
+    startX = event.clientX;
+    startWidth = sidebarWidth;
+
+    document.addEventListener('mousemove', handleDragMove);
+    document.addEventListener('mouseup', handleDragEnd);
+
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+  }
+
+  function handleDragMove(event) {
+    if (!isDragging) return;
+
+    const delta = event.clientX - startX;
+    const newWidth = Math.max(200, Math.min(600, startWidth + delta));
+    sidebarWidth = newWidth;
+  }
+
+  async function handleDragEnd() {
+    if (!isDragging) return;
+
+    isDragging = false;
+
+    document.removeEventListener('mousemove', handleDragMove);
+    document.removeEventListener('mouseup', handleDragEnd);
+
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+
+    try {
+      await themeStore.setSidebarWidth(sidebarWidth);
+    } catch (error) {
+      console.error('Failed to save sidebar width:', error);
+    }
+  }
 </script>
 
 <main>
   <div class="app-container">
-    <aside class="sidebar">
+    <aside class="sidebar" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px;">
       <ConnectionManagerSimple onConnect={handleConnect} />
     </aside>
+
+    <div
+      class="sidebar-resizer"
+      class:dragging={isDragging}
+      on:mousedown={handleDragStart}
+    ></div>
 
     <div class="main-content">
       <!-- Tab bar (only show if sessions exist) -->
@@ -293,14 +353,38 @@
   .app-container {
     display: flex;
     height: 100%;
-    background-color: #1e1e1e;
+    background-color: var(--bg-primary);
   }
 
   .sidebar {
-    width: 300px;
-    min-width: 300px;
-    border-right: 1px solid #3c3c3c;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-primary);
+    overflow-y: auto;
     -webkit-app-region: no-drag !important;
+    transition: none;
+  }
+
+  .sidebar-resizer {
+    width: 4px;
+    background: transparent;
+    cursor: col-resize;
+    flex-shrink: 0;
+    position: relative;
+    -webkit-app-region: no-drag;
+  }
+
+  .sidebar-resizer:hover,
+  .sidebar-resizer.dragging {
+    background: var(--accent-primary);
+  }
+
+  .sidebar-resizer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -2px;
+    right: -2px;
+    bottom: 0;
   }
 
   .main-content {
@@ -312,8 +396,8 @@
 
   .tab-bar-container {
     height: 40px;
-    background: #1e1e1e;
-    border-bottom: 1px solid #3c3c3c;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-primary);
     overflow: hidden;
   }
 
@@ -338,13 +422,13 @@
     align-items: flex-start;
     justify-content: flex-start;
     padding: 40px;
-    color: #858585;
+    color: var(--text-secondary);
   }
 
   .welcome h1 {
     font-size: 32px;
     margin-bottom: 10px;
-    color: #cccccc;
+    color: var(--text-primary);
   }
 
   .welcome p {

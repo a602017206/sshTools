@@ -263,3 +263,19 @@ func (a *App) DeletePassword(connectionID string) error {
 	}
 	return a.credentialStore.Delete(connectionID)
 }
+
+// GetSettings returns application settings
+func (a *App) GetSettings() config.AppSettings {
+	if a.configManager == nil {
+		return config.DefaultSettings()
+	}
+	return a.configManager.GetSettings()
+}
+
+// UpdateSettings updates application settings
+func (a *App) UpdateSettings(updates map[string]interface{}) error {
+	if a.configManager == nil {
+		return fmt.Errorf("config manager not initialized")
+	}
+	return a.configManager.UpdateSettings(updates)
+}

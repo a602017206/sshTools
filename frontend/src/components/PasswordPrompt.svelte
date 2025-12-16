@@ -109,8 +109,8 @@
   }
 
   .modal-content {
-    background-color: #2a2a2a;
-    border: 1px solid #3c3c3c;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
     border-radius: 8px;
     padding: 24px;
     min-width: 400px;
@@ -122,13 +122,13 @@
     margin: 0 0 12px 0;
     font-size: 16px;
     font-weight: 500;
-    color: #cccccc;
+    color: var(--text-primary);
   }
 
   .message {
     margin: 0 0 16px 0;
     font-size: 13px;
-    color: #999999;
+    color: var(--text-secondary);
   }
 
   .input-group {
@@ -139,10 +139,10 @@
   input[type="password"] {
     width: 100%;
     padding: 10px 12px;
-    background-color: #1e1e1e;
-    border: 1px solid #555555;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-primary);
     border-radius: 4px;
-    color: #cccccc;
+    color: var(--text-primary);
     font-size: 14px;
     box-sizing: border-box;
     transition: border-color 0.2s;
@@ -151,7 +151,7 @@
   input[type="text"]:focus,
   input[type="password"]:focus {
     outline: none;
-    border-color: #0e639c;
+    border-color: var(--border-active);
   }
 
   .save-option {
@@ -163,7 +163,7 @@
     align-items: center;
     cursor: pointer;
     font-size: 13px;
-    color: #cccccc;
+    color: var(--text-primary);
   }
 
   .save-option input[type="checkbox"] {
@@ -192,20 +192,20 @@
   }
 
   .btn-primary {
-    background-color: #0e639c;
+    background-color: var(--accent-primary);
     color: white;
   }
 
   .btn-primary:hover {
-    background-color: #1177bb;
+    background-color: var(--accent-hover);
   }
 
   .btn-secondary {
-    background-color: #3c3c3c;
-    color: #cccccc;
+    background-color: var(--bg-input);
+    color: var(--text-primary);
   }
 
   .btn-secondary:hover {
-    background-color: #505050;
+    background-color: var(--bg-hover);
   }
 </style>

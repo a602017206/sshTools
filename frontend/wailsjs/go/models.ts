@@ -1,5 +1,25 @@
 export namespace config {
 	
+	export class AppSettings {
+	    theme: string;
+	    font_family: string;
+	    font_size: number;
+	    terminal_theme: string;
+	    sidebar_width: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.theme = source["theme"];
+	        this.font_family = source["font_family"];
+	        this.font_size = source["font_size"];
+	        this.terminal_theme = source["terminal_theme"];
+	        this.sidebar_width = source["sidebar_width"];
+	    }
+	}
 	export class ConnectionConfig {
 	    id: string;
 	    name: string;

@@ -26,6 +26,10 @@ export function GetPassword(arg1) {
   return window['go']['main']['App']['GetPassword'](arg1);
 }
 
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
+}
+
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
@@ -76,4 +80,8 @@ export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
 
 export function UpdateConnection(arg1) {
   return window['go']['main']['App']['UpdateConnection'](arg1);
+}
+
+export function UpdateSettings(arg1) {
+  return window['go']['main']['App']['UpdateSettings'](arg1);
 }

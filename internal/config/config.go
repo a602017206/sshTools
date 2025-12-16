@@ -32,6 +32,7 @@ type AppSettings struct {
 	FontFamily    string `json:"font_family"`
 	FontSize      int    `json:"font_size"`
 	TerminalTheme string `json:"terminal_theme"`
+	SidebarWidth  int    `json:"sidebar_width"` // Sidebar width in pixels
 }
 
 // DefaultSettings returns default application settings
@@ -41,6 +42,7 @@ func DefaultSettings() AppSettings {
 		FontFamily:    "monospace",
 		FontSize:      14,
 		TerminalTheme: "default",
+		SidebarWidth:  300,
 	}
 }
 
@@ -141,4 +143,30 @@ func (cm *ConfigManager) UpdateConnection(conn ConnectionConfig) error {
 		}
 	}
 	return fmt.Errorf("connection not found: %s", conn.ID)
+}
+
+// GetSettings returns the current application settings
+func (cm *ConfigManager) GetSettings() AppSettings {
+	return cm.config.Settings
+}
+
+// UpdateSettings updates application settings (partial update)
+func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
+	if theme, ok := updates["theme"].(string); ok {
+		cm.config.Settings.Theme = theme
+	}
+	if sidebarWidth, ok := updates["sidebar_width"].(float64); ok {
+		cm.config.Settings.SidebarWidth = int(sidebarWidth)
+	}
+	if fontFamily, ok := updates["font_family"].(string); ok {
+		cm.config.Settings.FontFamily = fontFamily
+	}
+	if fontSize, ok := updates["font_size"].(float64); ok {
+		cm.config.Settings.FontSize = int(fontSize)
+	}
+	if terminalTheme, ok := updates["terminal_theme"].(string); ok {
+		cm.config.Settings.TerminalTheme = terminalTheme
+	}
+
+	return cm.Save()
 }

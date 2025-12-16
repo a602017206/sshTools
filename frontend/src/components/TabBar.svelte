@@ -150,19 +150,19 @@
   }
 
   .tab-bar::-webkit-scrollbar-thumb {
-    background: #555;
+    background: var(--scrollbar-thumb);
     border-radius: 2px;
   }
 
   .tab-bar::-webkit-scrollbar-thumb:hover {
-    background: #666;
+    background: var(--scrollbar-thumb-hover);
   }
 
   .tab {
     display: flex;
     align-items: center;
     padding: 8px 12px;
-    background: #2a2d2e;
+    background: var(--bg-hover);
     border: 1px solid transparent;
     border-radius: 4px 4px 0 0;
     cursor: pointer;
@@ -175,20 +175,20 @@
   }
 
   .tab.active {
-    background: #1e1e1e;
-    border-color: #0e639c;
-    border-bottom-color: #1e1e1e;
+    background: var(--bg-primary);
+    border-color: var(--border-active);
+    border-bottom-color: var(--bg-primary);
   }
 
   .tab:hover:not(.active) {
-    background: #333333;
+    background: var(--bg-hover);
   }
 
   .tab-status {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #4caf50; /* green when connected */
+    background: var(--accent-success);
     margin-right: 8px;
     flex-shrink: 0;
   }
@@ -199,15 +199,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 13px;
-    color: #cccccc;
-    min-width: 0; /* Allow text to shrink */
+    color: var(--text-primary);
+    min-width: 0;
   }
 
   .tab-title-input {
     flex: 1;
-    background: #3c3c3c;
-    border: 1px solid #0e639c;
-    color: #cccccc;
+    background: var(--bg-input);
+    border: 1px solid var(--border-active);
+    color: var(--text-primary);
     padding: 2px 4px;
     font-size: 13px;
     outline: none;
@@ -222,7 +222,7 @@
     padding: 0;
     background: transparent;
     border: none;
-    color: #858585;
+    color: var(--text-secondary);
     cursor: pointer;
     font-size: 18px;
     line-height: 16px;
@@ -233,7 +233,7 @@
   }
 
   .tab-close:hover {
-    color: #d4d4d4;
+    color: var(--text-primary);
     background: rgba(255, 255, 255, 0.1);
     border-radius: 2px;
   }
@@ -241,7 +241,7 @@
   .add-tab-btn {
     padding: 8px 12px;
     background: transparent;
-    color: #858585;
+    color: var(--text-secondary);
     border: none;
     cursor: pointer;
     font-size: 18px;
@@ -252,7 +252,7 @@
   }
 
   .add-tab-btn:hover {
-    color: #d4d4d4;
-    background: #333333;
+    color: var(--text-primary);
+    background: var(--bg-hover);
   }
 </style>
