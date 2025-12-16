@@ -23,6 +23,9 @@ wails build
 wails build -platform darwin/arm64
 wails build -platform windows/amd64
 wails build -platform linux/amd64
+
+# Build for macOS with ad-hoc signing (recommended)
+./scripts/build-mac.sh
 ```
 
 ### Go Backend
@@ -135,3 +138,38 @@ Events emitted to frontend:
 - Backend methods must be exported (capitalized) to be callable from frontend
 - Use `wails dev` for development with hot reload
 - Frontend bindings are auto-generated in `frontend/wailsjs/`
+
+## Distribution
+
+### macOS Application Signing
+
+macOS apps require proper handling to avoid "app is damaged" errors on other computers.
+
+**Quick build with ad-hoc signing:**
+```bash
+./scripts/build-mac.sh
+```
+
+This script:
+1. Builds the application with `wails build`
+2. Removes quarantine attributes with `xattr -cr`
+3. Applies ad-hoc code signing with `codesign`
+
+**Distribution:**
+```bash
+cd build/bin
+zip -r sshTools.zip sshTools.app
+```
+
+**User instructions:**
+After downloading, users should run:
+```bash
+xattr -cr sshTools.app
+open sshTools.app
+```
+
+See `MACOS_SIGNING.md` for detailed information about:
+- Ad-hoc signing vs. official signing
+- Apple Developer Program requirements
+- Notarization process
+- Common troubleshooting

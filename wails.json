@@ -9,5 +9,15 @@
   "author": {
     "name": "haha",
     "email": "602017206@qq.com"
-  }
+  },
+  "info": {
+    "companyName": "sshTools",
+    "productName": "sshTools",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright © 2024",
+    "comments": "Cross-platform SSH desktop client"
+  },
+  "nsisType": "multiple",
+  "obfuscated": false,
+  "garbleargs": ""
 }
