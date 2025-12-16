@@ -3,11 +3,13 @@
   import TabBar from './components/TabBar.svelte';
   import ConnectionManagerSimple from './components/ConnectionManagerSimple.svelte';
   import MonitorPanel from './components/MonitorPanel.svelte';
+  import FileManager from './components/FileManager.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
   import { ConnectSSH, SendSSHData, ResizeSSH, CloseSSH } from '../wailsjs/go/main/App.js';
   import { EventsOn } from '../wailsjs/runtime/runtime.js';
   import { showConfirm } from './utils/dialog.js';
   import { themeStore } from './stores/theme.js';
+  import { fileManagerStore } from './stores/fileManager.js';
 
   let sessions = new Map(); // sessionId -> session metadata
   let activeSessionId = null;
@@ -231,6 +233,8 @@
   onMount(async () => {
     // Initialize theme from settings
     await themeStore.init();
+    // Initialize file manager from settings
+    await fileManagerStore.init();
   });
 
   onDestroy(() => {
@@ -336,6 +340,11 @@
         {/if}
       </div>
     </div>
+
+    <!-- File Manager Panel -->
+    {#if activeSessionId}
+      <FileManager activeSessionId={activeSessionId} />
+    {/if}
 
     <!-- Monitor Panel -->
     {#if activeSessionId}

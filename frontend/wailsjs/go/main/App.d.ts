@@ -5,13 +5,31 @@ import {ssh} from '../models';
 
 export function AddConnection(arg1:config.ConnectionConfig):Promise<void>;
 
+export function CancelTransfer(arg1:string):Promise<void>;
+
+export function ChangeDirectory(arg1:string,arg2:string):Promise<void>;
+
 export function CloseSSH(arg1:string):Promise<void>;
 
 export function ConnectSSH(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:number,arg9:number):Promise<void>;
 
+export function CreateDirectory(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteFile(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteFiles(arg1:string,arg2:Array<string>):Promise<void>;
+
 export function DeletePassword(arg1:string):Promise<void>;
 
+export function DownloadFile(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function DownloadFiles(arg1:string,arg2:Array<string>,arg3:string):Promise<Array<string>>;
+
 export function GetConnections():Promise<Array<config.ConnectionConfig>>;
+
+export function GetCurrentPath(arg1:string):Promise<string>;
+
+export function GetFileInfo(arg1:string,arg2:string):Promise<ssh.FileInfo>;
 
 export function GetMonitoringData(arg1:string):Promise<ssh.MonitoringData>;
 
@@ -19,19 +37,29 @@ export function GetPassword(arg1:string):Promise<string>;
 
 export function GetSettings():Promise<config.AppSettings>;
 
+export function GetTransferStatus(arg1:string):Promise<ssh.TransferProgress>;
+
 export function Greet(arg1:string):Promise<string>;
 
 export function HasPassword(arg1:string):Promise<boolean>;
+
+export function ListFiles(arg1:string,arg2:string):Promise<Array<ssh.FileInfo>>;
 
 export function ListSSHSessions():Promise<Array<string>>;
 
 export function RemoveConnection(arg1:string):Promise<void>;
 
+export function RenameFile(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function SavePassword(arg1:string,arg2:string):Promise<void>;
 
+export function SelectDownloadDirectory():Promise<string>;
+
 export function SelectSSHKeyFile():Promise<string>;
+
+export function SelectUploadFiles():Promise<Array<string>>;
 
 export function SendSSHData(arg1:string,arg2:string):Promise<void>;
 
@@ -46,3 +74,7 @@ export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,a
 export function UpdateConnection(arg1:config.ConnectionConfig):Promise<void>;
 
 export function UpdateSettings(arg1:Record<string, any>):Promise<void>;
+
+export function UploadFile(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function UploadFiles(arg1:string,arg2:Array<string>,arg3:string):Promise<Array<string>>;

@@ -6,6 +6,14 @@ export function AddConnection(arg1) {
   return window['go']['main']['App']['AddConnection'](arg1);
 }
 
+export function CancelTransfer(arg1) {
+  return window['go']['main']['App']['CancelTransfer'](arg1);
+}
+
+export function ChangeDirectory(arg1, arg2) {
+  return window['go']['main']['App']['ChangeDirectory'](arg1, arg2);
+}
+
 export function CloseSSH(arg1) {
   return window['go']['main']['App']['CloseSSH'](arg1);
 }
@@ -14,12 +22,40 @@ export function ConnectSSH(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9)
   return window['go']['main']['App']['ConnectSSH'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }
 
+export function CreateDirectory(arg1, arg2) {
+  return window['go']['main']['App']['CreateDirectory'](arg1, arg2);
+}
+
+export function DeleteFile(arg1, arg2) {
+  return window['go']['main']['App']['DeleteFile'](arg1, arg2);
+}
+
+export function DeleteFiles(arg1, arg2) {
+  return window['go']['main']['App']['DeleteFiles'](arg1, arg2);
+}
+
 export function DeletePassword(arg1) {
   return window['go']['main']['App']['DeletePassword'](arg1);
 }
 
+export function DownloadFile(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DownloadFile'](arg1, arg2, arg3);
+}
+
+export function DownloadFiles(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DownloadFiles'](arg1, arg2, arg3);
+}
+
 export function GetConnections() {
   return window['go']['main']['App']['GetConnections']();
+}
+
+export function GetCurrentPath(arg1) {
+  return window['go']['main']['App']['GetCurrentPath'](arg1);
+}
+
+export function GetFileInfo(arg1, arg2) {
+  return window['go']['main']['App']['GetFileInfo'](arg1, arg2);
 }
 
 export function GetMonitoringData(arg1) {
@@ -34,12 +70,20 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function GetTransferStatus(arg1) {
+  return window['go']['main']['App']['GetTransferStatus'](arg1);
+}
+
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
 export function HasPassword(arg1) {
   return window['go']['main']['App']['HasPassword'](arg1);
+}
+
+export function ListFiles(arg1, arg2) {
+  return window['go']['main']['App']['ListFiles'](arg1, arg2);
 }
 
 export function ListSSHSessions() {
@@ -50,6 +94,10 @@ export function RemoveConnection(arg1) {
   return window['go']['main']['App']['RemoveConnection'](arg1);
 }
 
+export function RenameFile(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RenameFile'](arg1, arg2, arg3);
+}
+
 export function ResizeSSH(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSH'](arg1, arg2, arg3);
 }
@@ -58,8 +106,16 @@ export function SavePassword(arg1, arg2) {
   return window['go']['main']['App']['SavePassword'](arg1, arg2);
 }
 
+export function SelectDownloadDirectory() {
+  return window['go']['main']['App']['SelectDownloadDirectory']();
+}
+
 export function SelectSSHKeyFile() {
   return window['go']['main']['App']['SelectSSHKeyFile']();
+}
+
+export function SelectUploadFiles() {
+  return window['go']['main']['App']['SelectUploadFiles']();
 }
 
 export function SendSSHData(arg1, arg2) {
@@ -88,4 +144,12 @@ export function UpdateConnection(arg1) {
 
 export function UpdateSettings(arg1) {
   return window['go']['main']['App']['UpdateSettings'](arg1);
+}
+
+export function UploadFile(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UploadFile'](arg1, arg2, arg3);
+}
+
+export function UploadFiles(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UploadFiles'](arg1, arg2, arg3);
 }

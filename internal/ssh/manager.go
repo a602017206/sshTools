@@ -9,8 +9,9 @@ import (
 
 // SessionManager manages multiple SSH sessions
 type SessionManager struct {
-	mu       sync.RWMutex
-	sessions map[string]*ManagedSession
+	mu          sync.RWMutex
+	sessions    map[string]*ManagedSession
+	sftpClients map[string]*SFTPClient
 }
 
 // ManagedSession represents a managed SSH session
@@ -25,7 +26,8 @@ type ManagedSession struct {
 // NewSessionManager creates a new session manager
 func NewSessionManager() *SessionManager {
 	return &SessionManager{
-		sessions: make(map[string]*ManagedSession),
+		sessions:    make(map[string]*ManagedSession),
+		sftpClients: make(map[string]*SFTPClient),
 	}
 }
 
@@ -156,6 +158,12 @@ func (sm *SessionManager) CloseSession(sessionID string) error {
 	// Stop output reader
 	close(managed.stopChan)
 
+	// Close SFTP client if exists
+	if sftpClient, exists := sm.sftpClients[sessionID]; exists {
+		sftpClient.Close()
+		delete(sm.sftpClients, sessionID)
+	}
+
 	// Close session and client
 	if managed.Session != nil {
 		managed.Session.Close()
@@ -208,4 +216,48 @@ func (sm *SessionManager) ExecuteCommand(sessionID string, cmd string, timeout t
 	}
 
 	return managed.Session.ExecuteCommand(cmd, timeout)
+}
+
+// GetOrCreateSFTPClient gets or creates an SFTP client for a session
+func (sm *SessionManager) GetOrCreateSFTPClient(sessionID string) (*SFTPClient, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Check if SFTP client already exists
+	if sftpClient, exists := sm.sftpClients[sessionID]; exists {
+		return sftpClient, nil
+	}
+
+	// Get session
+	managed, exists := sm.sessions[sessionID]
+	if !exists {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Create SFTP client
+	sftpClient, err := NewSFTPClient(managed.Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SFTP client: %w", err)
+	}
+
+	// Store SFTP client
+	sm.sftpClients[sessionID] = sftpClient
+
+	return sftpClient, nil
+}
+
+// CloseSFTPClient closes an SFTP client for a session
+func (sm *SessionManager) CloseSFTPClient(sessionID string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	sftpClient, exists := sm.sftpClients[sessionID]
+	if !exists {
+		return nil // Already closed or never created
+	}
+
+	err := sftpClient.Close()
+	delete(sm.sftpClients, sessionID)
+
+	return err
 }

@@ -18,12 +18,14 @@ type App struct {
 	credentialStore  *store.CredentialStore
 	sessionManager   *ssh.SessionManager
 	monitorCollector *ssh.MonitorCollector
+	transferManager  *ssh.TransferManager
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		sessionManager: ssh.NewSessionManager(),
+		sessionManager:  ssh.NewSessionManager(),
+		transferManager: ssh.NewTransferManager(),
 	}
 }
 
@@ -287,4 +289,270 @@ func (a *App) GetMonitoringData(sessionID string) (*ssh.MonitoringData, error) {
 		a.monitorCollector = ssh.NewMonitorCollector(a.sessionManager)
 	}
 	return a.monitorCollector.CollectMetrics(sessionID)
+}
+
+// ListFiles lists files in a directory
+func (a *App) ListFiles(sessionID string, path string) ([]ssh.FileInfo, error) {
+	sftpClient, err := a.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.ListDirectory(path)
+}
+
+// ChangeDirectory changes the current working directory for a session
+func (a *App) ChangeDirectory(sessionID string, path string) error {
+	sftpClient, err := a.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.ChangeDirectory(path)
+}
+
+// GetCurrentPath returns the current working directory
+func (a *App) GetCurrentPath(sessionID string) (string, error) {
+	sftpClient, err := a.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.GetCurrentPath(), nil
+}
+
+// UploadFile uploads a single file
+func (a *App) UploadFile(sessionID string, localPath string, remotePath string) (string, error) {
+	sftpClient, err := a.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	// Create transfer context
+	transfer, err := a.transferManager.StartTransfer(sessionID, "upload", []string{localPath})
+	if err != nil {
+		return "", fmt.Errorf("failed to start transfer: %w", err)
+	}
+
+	// Start upload in goroutine
+	go func() {
+		// Progress callback
+		progressCb := func(progress ssh.TransferProgress) {
+			progress.TransferID = transfer.ID
+			progress.SessionID = sessionID
+			progress.Filename = localPath
+
+			// Update transfer manager
+			a.transferManager.UpdateProgress(transfer.ID, progress)
+
+			// Emit event to frontend
+			runtime.EventsEmit(a.ctx, "sftp:progress:"+transfer.ID, progress)
+		}
+
+		// Perform upload
+		err := sftpClient.UploadFile(localPath, remotePath, progressCb)
+		if err != nil {
+			// Emit error
+			errorProgress := ssh.TransferProgress{
+				TransferID: transfer.ID,
+				SessionID:  sessionID,
+				Filename:   localPath,
+				Status:     "failed",
+				Error:      err.Error(),
+			}
+			a.transferManager.UpdateProgress(transfer.ID, errorProgress)
+			runtime.EventsEmit(a.ctx, "sftp:progress:"+transfer.ID, errorProgress)
+		}
+
+		// Cleanup after some time
+		go func() {
+			<-transfer.Context().Done()
+			a.transferManager.CleanupTransfer(transfer.ID)
+		}()
+	}()
+
+	return transfer.ID, nil
+}
+
+// UploadFiles uploads multiple files
+func (a *App) UploadFiles(sessionID string, localPaths []string, remotePath string) ([]string, error) {
+	transferIDs := make([]string, 0, len(localPaths))
+
+	for _, localPath := range localPaths {
+		transferID, err := a.UploadFile(sessionID, localPath, remotePath)
+		if err != nil {
+			return transferIDs, err
+		}
+		transferIDs = append(transferIDs, transferID)
+	}
+
+	return transferIDs, nil
+}
+
+// DownloadFile downloads a single file
+func (a *App) DownloadFile(sessionID string, remotePath string, localPath string) (string, error) {
+	sftpClient, err := a.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	// Create transfer context
+	transfer, err := a.transferManager.StartTransfer(sessionID, "download", []string{remotePath})
+	if err != nil {
+		return "", fmt.Errorf("failed to start transfer: %w", err)
+	}
+
+	// Start download in goroutine
+	go func() {
+		// Progress callback
+		progressCb := func(progress ssh.TransferProgress) {
+			progress.TransferID = transfer.ID
+			progress.SessionID = sessionID
+			progress.Filename = remotePath
+
+			// Update transfer manager
+			a.transferManager.UpdateProgress(transfer.ID, progress)
+
+			// Emit event to frontend
+			runtime.EventsEmit(a.ctx, "sftp:progress:"+transfer.ID, progress)
+		}
+
+		// Perform download
+		err := sftpClient.DownloadFile(remotePath, localPath, progressCb)
+		if err != nil {
+			// Emit error
+			errorProgress := ssh.TransferProgress{
+				TransferID: transfer.ID,
+				SessionID:  sessionID,
+				Filename:   remotePath,
+				Status:     "failed",
+				Error:      err.Error(),
+			}
+			a.transferManager.UpdateProgress(transfer.ID, errorProgress)
+			runtime.EventsEmit(a.ctx, "sftp:progress:"+transfer.ID, errorProgress)
+		}
+
+		// Cleanup after some time
+		go func() {
+			<-transfer.Context().Done()
+			a.transferManager.CleanupTransfer(transfer.ID)
+		}()
+	}()
+
+	return transfer.ID, nil
+}
+
+// DownloadFiles downloads multiple files
+func (a *App) DownloadFiles(sessionID string, remotePaths []string, localPath string) ([]string, error) {
+	transferIDs := make([]string, 0, len(remotePaths))
+
+	for _, remotePath := range remotePaths {
+		transferID, err := a.DownloadFile(sessionID, remotePath, localPath)
+		if err != nil {
+			return transferIDs, err
+		}
+		transferIDs = append(transferIDs, transferID)
+	}
+
+	return transferIDs, nil
+}
+
+// DeleteFile deletes a single file
+func (a *App) DeleteFile(sessionID string, path string) error {
+	sftpClient, err := a.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	// Check if it's a directory
+	fileInfo, err := sftpClient.GetFileInfo(path)
+	if err != nil {
+		return fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	if fileInfo.IsDir {
+		return sftpClient.DeleteDirectory(path)
+	}
+
+	return sftpClient.DeleteFile(path)
+}
+
+// DeleteFiles deletes multiple files
+func (a *App) DeleteFiles(sessionID string, paths []string) error {
+	for _, path := range paths {
+		if err := a.DeleteFile(sessionID, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RenameFile renames a file or directory
+func (a *App) RenameFile(sessionID string, oldPath string, newPath string) error {
+	sftpClient, err := a.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.RenameFile(oldPath, newPath)
+}
+
+// CreateDirectory creates a new directory
+func (a *App) CreateDirectory(sessionID string, path string) error {
+	sftpClient, err := a.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.CreateDirectory(path)
+}
+
+// GetFileInfo gets information about a file
+func (a *App) GetFileInfo(sessionID string, path string) (*ssh.FileInfo, error) {
+	sftpClient, err := a.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.GetFileInfo(path)
+}
+
+// CancelTransfer cancels a file transfer
+func (a *App) CancelTransfer(transferID string) error {
+	return a.transferManager.CancelTransfer(transferID)
+}
+
+// GetTransferStatus gets the status of a transfer
+func (a *App) GetTransferStatus(transferID string) (*ssh.TransferProgress, error) {
+	progress, err := a.transferManager.GetProgress(transferID)
+	if err != nil {
+		return nil, err
+	}
+	return &progress, nil
+}
+
+// SelectUploadFiles opens a file picker for selecting files to upload
+func (a *App) SelectUploadFiles() ([]string, error) {
+	filePaths, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择要上传的文件",
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return filePaths, nil
+}
+
+// SelectDownloadDirectory opens a directory picker for selecting download destination
+func (a *App) SelectDownloadDirectory() (string, error) {
+	dirPath, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择下载目录",
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return dirPath, nil
 }

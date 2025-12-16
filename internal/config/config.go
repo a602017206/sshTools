@@ -38,6 +38,13 @@ type AppSettings struct {
 	MonitorCollapsed       bool `json:"monitor_collapsed"`
 	MonitorWidth           int  `json:"monitor_width"`
 	MonitorRefreshInterval int  `json:"monitor_refresh_interval"` // seconds
+
+	// File manager settings
+	FileManagerCollapsed  bool   `json:"file_manager_collapsed"`
+	FileManagerWidth      int    `json:"file_manager_width"`
+	FileManagerShowHidden bool   `json:"file_manager_show_hidden"`
+	FileManagerSortBy     string `json:"file_manager_sort_by"`
+	FileManagerSortOrder  string `json:"file_manager_sort_order"`
 }
 
 // DefaultSettings returns default application settings
@@ -51,6 +58,11 @@ func DefaultSettings() AppSettings {
 		MonitorCollapsed:       true,
 		MonitorWidth:           350,
 		MonitorRefreshInterval: 2,
+		FileManagerCollapsed:   true,
+		FileManagerWidth:       400,
+		FileManagerShowHidden:  false,
+		FileManagerSortBy:      "name",
+		FileManagerSortOrder:   "asc",
 	}
 }
 
@@ -185,6 +197,23 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 	if monitorRefreshInterval, ok := updates["monitor_refresh_interval"].(float64); ok {
 		cm.config.Settings.MonitorRefreshInterval = int(monitorRefreshInterval)
+	}
+
+	// File manager settings
+	if fileManagerCollapsed, ok := updates["file_manager_collapsed"].(bool); ok {
+		cm.config.Settings.FileManagerCollapsed = fileManagerCollapsed
+	}
+	if fileManagerWidth, ok := updates["file_manager_width"].(float64); ok {
+		cm.config.Settings.FileManagerWidth = int(fileManagerWidth)
+	}
+	if fileManagerShowHidden, ok := updates["file_manager_show_hidden"].(bool); ok {
+		cm.config.Settings.FileManagerShowHidden = fileManagerShowHidden
+	}
+	if fileManagerSortBy, ok := updates["file_manager_sort_by"].(string); ok {
+		cm.config.Settings.FileManagerSortBy = fileManagerSortBy
+	}
+	if fileManagerSortOrder, ok := updates["file_manager_sort_order"].(string); ok {
+		cm.config.Settings.FileManagerSortOrder = fileManagerSortOrder
 	}
 
 	return cm.Save()

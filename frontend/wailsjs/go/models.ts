@@ -9,6 +9,11 @@ export namespace config {
 	    monitor_collapsed: boolean;
 	    monitor_width: number;
 	    monitor_refresh_interval: number;
+	    file_manager_collapsed: boolean;
+	    file_manager_width: number;
+	    file_manager_show_hidden: boolean;
+	    file_manager_sort_by: string;
+	    file_manager_sort_order: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -24,6 +29,11 @@ export namespace config {
 	        this.monitor_collapsed = source["monitor_collapsed"];
 	        this.monitor_width = source["monitor_width"];
 	        this.monitor_refresh_interval = source["monitor_refresh_interval"];
+	        this.file_manager_collapsed = source["file_manager_collapsed"];
+	        this.file_manager_width = source["file_manager_width"];
+	        this.file_manager_show_hidden = source["file_manager_show_hidden"];
+	        this.file_manager_sort_by = source["file_manager_sort_by"];
+	        this.file_manager_sort_order = source["file_manager_sort_order"];
 	    }
 	}
 	export class ConnectionConfig {
@@ -113,6 +123,51 @@ export namespace ssh {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.partitions = this.convertValues(source["partitions"], PartitionInfo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class FileInfo {
+	    name: string;
+	    path: string;
+	    size: number;
+	    mode: string;
+	    // Go type: time
+	    mod_time: any;
+	    is_dir: boolean;
+	    is_symlink: boolean;
+	    link_target?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.size = source["size"];
+	        this.mode = source["mode"];
+	        this.mod_time = this.convertValues(source["mod_time"], null);
+	        this.is_dir = source["is_dir"];
+	        this.is_symlink = source["is_symlink"];
+	        this.link_target = source["link_target"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -239,6 +294,35 @@ export namespace ssh {
 	}
 	
 	
+	
+	export class TransferProgress {
+	    transfer_id: string;
+	    session_id: string;
+	    filename: string;
+	    bytes_sent: number;
+	    total_bytes: number;
+	    percentage: number;
+	    speed: number;
+	    status: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TransferProgress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.transfer_id = source["transfer_id"];
+	        this.session_id = source["session_id"];
+	        this.filename = source["filename"];
+	        this.bytes_sent = source["bytes_sent"];
+	        this.total_bytes = source["total_bytes"];
+	        this.percentage = source["percentage"];
+	        this.speed = source["speed"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	    }
+	}
 
 }
 
