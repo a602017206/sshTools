@@ -1,50 +1,78 @@
 <script>
   import Terminal from './components/Terminal.svelte';
+  import TabBar from './components/TabBar.svelte';
   import ConnectionManagerSimple from './components/ConnectionManagerSimple.svelte';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { ConnectSSH, SendSSHData, ResizeSSH, CloseSSH } from '../wailsjs/go/main/App.js';
-  import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime.js';
+  import { EventsOn } from '../wailsjs/runtime/runtime.js';
+  import { showConfirm } from './utils/dialog.js';
 
-  let sessions = new Map(); // sessionId -> { terminal, connection }
+  let sessions = new Map(); // sessionId -> session metadata
   let activeSessionId = null;
-  let terminalRef;
-  let eventUnsubscribers = [];
+  let tabOrder = []; // Array of sessionIds (maintains tab order)
+  let terminalRefs = {}; // sessionId -> Terminal component ref
+  let sessionUnsubscribers = new Map(); // sessionId -> event unsubscribe function
+
+  // Reactive declarations
+  $: activeSession = sessions.get(activeSessionId);
+  $: tabsList = Array.from(sessions.values()).map(session => ({
+    id: session.sessionId,
+    name: session.tabName || session.connection.name,
+    displayName: session.tabName || `${session.connection.user}@${session.connection.host}`,
+    connectionName: session.connection.name,
+    userAtHost: `${session.connection.user}@${session.connection.host}:${session.connection.port}`,
+    isActive: session.sessionId === activeSessionId
+  }));
 
   async function handleConnect(connection, authValue, passphrase = '') {
-    const sessionId = `session_${Date.now()}`;
+    // Generate unique session ID
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     console.log('Connecting to:', connection);
 
-    // Create a new session
-    sessions.set(sessionId, {
+    // Create session metadata
+    const newSession = {
+      sessionId,
       connection,
       authValue,
       passphrase,
-      connected: false
-    });
+      tabName: '', // Empty = use connection.name
+      connected: false,
+      createdAt: Date.now(),
+      lastActivity: Date.now()
+    };
 
+    // Add to sessions and tab order
+    sessions.set(sessionId, newSession);
+    tabOrder.push(sessionId);
+    tabOrder = tabOrder; // Trigger reactivity
+
+    // Set as active
     activeSessionId = sessionId;
 
+    // Wait for Terminal to mount, then get size
+    await tick();
+    const size = terminalRefs[sessionId]?.getSize() || { cols: 80, rows: 24 };
+
+    // Subscribe to output events
+    const eventName = `ssh:output:${sessionId}`;
+    const unsubscribe = EventsOn(eventName, (data) => {
+      const terminal = terminalRefs[sessionId];
+      if (terminal) {
+        terminal.write(data);
+      }
+    });
+    sessionUnsubscribers.set(sessionId, unsubscribe);
+
     // Show connecting message
-    if (terminalRef) {
+    const terminal = terminalRefs[sessionId];
+    if (terminal) {
       const authType = connection.auth_type === 'key' ? 'SSH key' : 'password';
-      terminalRef.writeln(`Connecting to ${connection.user}@${connection.host}:${connection.port} using ${authType}...`);
-      terminalRef.writeln('');
+      terminal.writeln(`正在连接 ${connection.user}@${connection.host}:${connection.port} (${authType})...`);
+      terminal.writeln('');
     }
 
     try {
-      // Get terminal size
-      const size = terminalRef ? terminalRef.getSize() : { cols: 80, rows: 24 };
-
-      // Subscribe to SSH output events for this session
-      const eventName = `ssh:output:${sessionId}`;
-      const unsubscribe = EventsOn(eventName, (data) => {
-        if (terminalRef && activeSessionId === sessionId) {
-          terminalRef.write(data);
-        }
-      });
-      eventUnsubscribers.push({ name: eventName, unsubscribe });
-
       // Connect to SSH
       await ConnectSSH(
         sessionId,
@@ -59,25 +87,106 @@
       );
 
       // Mark as connected
-      const session = sessions.get(sessionId);
-      session.connected = true;
-      sessions.set(sessionId, session);
+      newSession.connected = true;
+      sessions.set(sessionId, newSession);
 
       console.log('SSH connection established:', sessionId);
 
     } catch (error) {
       console.error('Failed to connect:', error);
-      if (terminalRef) {
-        terminalRef.writeln(`\r\nConnection failed: ${error}`);
-        terminalRef.writeln('');
+      if (terminal) {
+        terminal.writeln(`\r\n连接失败: ${error}`);
       }
 
       // Clean up failed session
-      sessions.delete(sessionId);
-      if (activeSessionId === sessionId) {
+      await closeSession(sessionId);
+    }
+  }
+
+  async function closeSession(sessionId) {
+    // Unsubscribe from events
+    const unsubscribe = sessionUnsubscribers.get(sessionId);
+    if (unsubscribe) {
+      unsubscribe();
+      sessionUnsubscribers.delete(sessionId);
+    }
+
+    // Dispose terminal (component's onDestroy handles cleanup)
+    delete terminalRefs[sessionId];
+
+    // Close backend session
+    try {
+      await CloseSSH(sessionId);
+    } catch (error) {
+      console.error('Failed to close session:', error);
+    }
+
+    // Remove from state
+    sessions.delete(sessionId);
+    tabOrder = tabOrder.filter(id => id !== sessionId);
+
+    // Switch to another tab or show welcome
+    if (activeSessionId === sessionId) {
+      if (tabOrder.length > 0) {
+        // Activate first remaining tab
+        activeSessionId = tabOrder[0];
+
+        // Focus terminal after switch
+        setTimeout(() => {
+          const terminal = terminalRefs[activeSessionId];
+          if (terminal) {
+            terminal.focus();
+          }
+        }, 50);
+      } else {
         activeSessionId = null;
       }
     }
+  }
+
+  function handleTabChange(sessionId) {
+    if (!sessions.has(sessionId)) return;
+
+    activeSessionId = sessionId;
+
+    // Focus terminal after render
+    setTimeout(() => {
+      const terminal = terminalRefs[sessionId];
+      if (terminal) {
+        terminal.focus();
+
+        // Sync terminal size with backend
+        const size = terminal.getSize();
+        ResizeSSH(sessionId, size.cols, size.rows).catch(console.error);
+      }
+    }, 50);
+  }
+
+  async function handleTabClose(sessionId) {
+    const session = sessions.get(sessionId);
+    if (!session) return;
+
+    // Confirm if session is connected
+    if (session.connected) {
+      const confirmed = await showConfirm('确定关闭此 SSH 会话吗？');
+      if (!confirmed) return;
+    }
+
+    await closeSession(sessionId);
+  }
+
+  function handleTabRename(sessionId, newName) {
+    const session = sessions.get(sessionId);
+    if (!session) return;
+
+    session.tabName = newName.trim();
+    sessions.set(sessionId, session);
+    sessions = sessions; // Trigger reactivity
+  }
+
+  function handleNewTab() {
+    // User can select a connection from sidebar to create new tab
+    console.log('New tab clicked - select a connection from sidebar');
   }
 
   async function handleTerminalData(sessionId, data) {
@@ -104,35 +213,20 @@
     }
   }
 
-  async function handleCloseSession(sessionId) {
-    try {
-      await CloseSSH(sessionId);
-    } catch (error) {
-      console.error('Failed to close session:', error);
-    }
-
-    sessions.delete(sessionId);
-    if (activeSessionId === sessionId) {
-      activeSessionId = null;
-    }
-  }
-
   onMount(() => {
-    // Focus terminal on mount
-    if (terminalRef) {
-      setTimeout(() => terminalRef.focus(), 100);
-    }
+    // No specific mount logic needed
   });
 
   onDestroy(() => {
-    // Clean up event listeners
-    eventUnsubscribers.forEach(({ name, unsubscribe }) => {
+    // Unsubscribe from all events
+    sessionUnsubscribers.forEach((unsubscribe) => {
       unsubscribe();
     });
 
     // Close all sessions
-    sessions.forEach((session, sessionId) => {
-      handleCloseSession(sessionId);
+    const sessionIds = Array.from(sessions.keys());
+    sessionIds.forEach((sessionId) => {
+      CloseSSH(sessionId).catch(console.error);
     });
   });
 </script>
@@ -142,22 +236,44 @@
     <aside class="sidebar">
       <ConnectionManagerSimple onConnect={handleConnect} />
     </aside>
+
     <div class="main-content">
-      {#if activeSessionId}
-        <div class="terminal-area">
-          <Terminal
-            bind:this={terminalRef}
-            sessionId={activeSessionId}
-            onData={handleTerminalData}
-            onResize={handleTerminalResize}
+      <!-- Tab bar (only show if sessions exist) -->
+      {#if sessions.size > 0}
+        <div class="tab-bar-container">
+          <TabBar
+            tabs={tabsList}
+            activeTabId={activeSessionId}
+            onTabChange={handleTabChange}
+            onTabClose={handleTabClose}
+            onTabRename={handleTabRename}
+            onNewTab={handleNewTab}
           />
         </div>
-      {:else}
-        <div class="welcome">
-          <h1>SSH Tools</h1>
-          <p>选择一个连接开始使用</p>
-        </div>
       {/if}
+
+      <!-- Terminal area with multiple instances -->
+      <div class="terminal-area">
+        {#if activeSessionId}
+          {#each tabOrder as sessionId (sessionId)}
+            {#if sessionId === activeSessionId}
+              <div class="terminal-wrapper">
+                <Terminal
+                  bind:this={terminalRefs[sessionId]}
+                  sessionId={sessionId}
+                  onData={handleTerminalData}
+                  onResize={handleTerminalResize}
+                />
+              </div>
+            {/if}
+          {/each}
+        {:else}
+          <div class="welcome">
+            <h1>SSH Tools</h1>
+            <p>选择一个连接开始使用</p>
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
 </main>
@@ -200,9 +316,25 @@
     overflow: hidden;
   }
 
+  .tab-bar-container {
+    height: 40px;
+    background: #1e1e1e;
+    border-bottom: 1px solid #3c3c3c;
+    overflow: hidden;
+  }
+
   .terminal-area {
     flex: 1;
     overflow: hidden;
+    position: relative;
+  }
+
+  .terminal-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
   }
 
   .welcome {
