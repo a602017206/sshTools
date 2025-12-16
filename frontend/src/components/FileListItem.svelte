@@ -1,59 +1,67 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import Icon from './Icon.svelte';
 
   export let file;
   export let selected = false;
 
   const dispatch = createEventDispatcher();
 
-  // Get file icon based on type
-  function getFileIcon(file) {
-    if (file.is_dir) return '📁';
-    if (file.is_symlink) return '🔗';
+  // Get file icon name based on type
+  function getFileIconName(file) {
+    if (file.is_dir) return 'folder';
+    if (file.is_symlink) return 'link';
 
     // File extensions
     const ext = file.name.split('.').pop().toLowerCase();
     const iconMap = {
-      'txt': '📄',
-      'md': '📝',
-      'pdf': '📕',
-      'doc': '📘',
-      'docx': '📘',
-      'xls': '📗',
-      'xlsx': '📗',
-      'ppt': '📙',
-      'pptx': '📙',
-      'zip': '📦',
-      'tar': '📦',
-      'gz': '📦',
-      'rar': '📦',
-      '7z': '📦',
-      'jpg': '🖼️',
-      'jpeg': '🖼️',
-      'png': '🖼️',
-      'gif': '🖼️',
-      'svg': '🖼️',
-      'mp3': '🎵',
-      'wav': '🎵',
-      'mp4': '🎬',
-      'avi': '🎬',
-      'mkv': '🎬',
-      'js': '📜',
-      'ts': '📜',
-      'py': '📜',
-      'go': '📜',
-      'java': '📜',
-      'c': '📜',
-      'cpp': '📜',
-      'rs': '📜',
-      'sh': '⚙️',
-      'json': '📋',
-      'xml': '📋',
-      'yaml': '📋',
-      'yml': '📋',
+      'txt': 'file-text',
+      'md': 'file-text',
+      'pdf': 'file-text',
+      'doc': 'file-text',
+      'docx': 'file-text',
+      'xls': 'file-text',
+      'xlsx': 'file-text',
+      'ppt': 'file-text',
+      'pptx': 'file-text',
+      'zip': 'file-archive',
+      'tar': 'file-archive',
+      'gz': 'file-archive',
+      'rar': 'file-archive',
+      '7z': 'file-archive',
+      'jpg': 'file-image',
+      'jpeg': 'file-image',
+      'png': 'file-image',
+      'gif': 'file-image',
+      'svg': 'file-image',
+      'mp3': 'file-music',
+      'wav': 'file-music',
+      'mp4': 'file-video',
+      'avi': 'file-video',
+      'mkv': 'file-video',
+      'js': 'file-code',
+      'ts': 'file-code',
+      'py': 'file-code',
+      'go': 'file-code',
+      'java': 'file-code',
+      'c': 'file-code',
+      'cpp': 'file-code',
+      'rs': 'file-code',
+      'sh': 'file-code',
+      'json': 'file-code',
+      'xml': 'file-code',
+      'yaml': 'file-code',
+      'yml': 'file-code',
     };
 
-    return iconMap[ext] || '📄';
+    return iconMap[ext] || 'file';
+  }
+  
+  // Get icon color
+  function getIconColor(file) {
+    if (file.is_dir) return 'var(--accent-primary)';
+    if (file.is_symlink) return 'var(--accent-success)';
+    return 'var(--text-secondary)';
   }
 
   // Format file size
@@ -68,7 +76,7 @@
   function formatDate(dateStr) {
     const date = new Date(dateStr);
     const now = new Date();
-    const diff = now - date;
+    const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
     if (days === 0) {
@@ -104,33 +112,41 @@
   role="button"
   tabindex="0"
 >
-  <div class="file-icon">{getFileIcon(file)}</div>
-  <div class="file-info">
-    <div class="file-name">
-      {file.name}
-      {#if file.is_symlink && file.link_target}
-        <span class="symlink-target">→ {file.link_target}</span>
-      {/if}
-    </div>
-    <div class="file-meta">
-      {#if !file.is_dir}
-        <span class="file-size">{formatSize(file.size)}</span>
-        <span class="separator">•</span>
-      {/if}
-      <span class="file-date">{formatDate(file.mod_time)}</span>
-    </div>
+  <div class="col-icon">
+    <Icon name={getFileIconName(file)} size={18} color={selected ? 'white' : getIconColor(file)} />
+  </div>
+  
+  <div class="col-name" title={file.name}>
+    {file.name}
+    {#if file.is_symlink && file.link_target}
+      <span class="symlink-target">→ {file.link_target}</span>
+    {/if}
+  </div>
+  
+  <div class="col-size">
+    {#if !file.is_dir}
+      {formatSize(file.size)}
+    {:else}
+      -
+    {/if}
+  </div>
+  
+  <div class="col-date">
+    {formatDate(file.mod_time)}
   </div>
 </div>
 
 <style>
   .file-item {
-    display: flex;
+    display: grid;
+    grid-template-columns: 32px 1fr 100px 140px;
     align-items: center;
     padding: 8px 12px;
     cursor: pointer;
     border-radius: 4px;
-    transition: background-color 0.15s;
+    transition: all 0.15s ease;
     user-select: none;
+    border-bottom: 1px solid transparent;
   }
 
   .file-item:hover {
@@ -142,38 +158,22 @@
     color: white;
   }
 
-  .file-item.selected .file-meta {
-    color: rgba(255, 255, 255, 0.8);
+  .file-item.directory .col-name {
+    font-weight: 600;
   }
 
-  .file-item.directory {
-    font-weight: 500;
+  .col-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .file-icon {
-    font-size: 20px;
-    margin-right: 12px;
-    flex-shrink: 0;
-    width: 24px;
-    text-align: center;
-  }
-
-  .file-info {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .file-name {
+  .col-name {
     font-size: 13px;
-    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .file-item.selected .file-name {
-    color: white;
+    padding-right: 12px;
   }
 
   .symlink-target {
@@ -181,21 +181,26 @@
     font-size: 11px;
     margin-left: 6px;
   }
-
+  
   .file-item.selected .symlink-target {
     color: rgba(255, 255, 255, 0.7);
   }
 
-  .file-meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
+  .col-size {
+    font-size: 12px;
     color: var(--text-secondary);
-    margin-top: 2px;
+    text-align: right;
+    padding-right: 16px;
   }
-
-  .separator {
-    opacity: 0.5;
+  
+  .col-date {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: right;
+  }
+  
+  .file-item.selected .col-size,
+  .file-item.selected .col-date {
+    color: rgba(255, 255, 255, 0.8);
   }
 </style>

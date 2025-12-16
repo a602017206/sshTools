@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { fade, fly } from 'svelte/transition';
   import { fileManagerStore } from '../stores/fileManager.js';
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
   import {
@@ -18,6 +19,7 @@
   import FileListItem from './FileListItem.svelte';
   import TransferProgressBar from './TransferProgressBar.svelte';
   import FileOperationModal from './FileOperationModal.svelte';
+  import Icon from './Icon.svelte';
 
   export let activeSessionId = null;
 
@@ -366,11 +368,13 @@
 
 {#if collapsed}
   <!-- Collapsed State -->
-  <div class="file-panel collapsed" style="width: 60px;">
+  <div class="file-panel collapsed" transition:fly={{ x: -20, duration: 200 }}>
     <div class="collapsed-content">
-      <div class="icon">📁</div>
-      <button class="expand-btn" on:click={toggleCollapsed} title="展开文件管理器">
-        ☰
+      <div class="sidebar-icon" title="文件管理器">
+        <Icon name="folder" size={24} color="var(--text-secondary)" />
+      </div>
+      <button class="expand-btn" on:click={toggleCollapsed} title="展开">
+        <Icon name="menu" size={20} />
       </button>
     </div>
   </div>
@@ -382,58 +386,84 @@
     on:mousedown={handleDragStart}
   ></div>
 
-  <div class="file-panel expanded" style="width: {width}px;">
+  <div class="file-panel expanded" style="width: {width}px;" transition:fly={{ x: -20, duration: 200 }}>
     <!-- Header -->
     <div class="header">
       <div class="breadcrumb">
-        <button class="breadcrumb-item" on:click={() => handleBreadcrumbClick(-1)}>
-          🏠
+        <button class="breadcrumb-item home" on:click={() => handleBreadcrumbClick(-1)} title="根目录">
+          <Icon name="home" size={16} />
         </button>
         {#each pathParts as part, i}
-          <span class="separator">/</span>
+          <Icon name="chevronRight" size={14} color="var(--text-secondary)" className="separator" />
           <button class="breadcrumb-item" on:click={() => handleBreadcrumbClick(i)}>
             {part}
           </button>
         {/each}
       </div>
-      <button class="collapse-btn" on:click={toggleCollapsed}>─</button>
+      <div class="header-actions">
+        <button class="action-btn" on:click={toggleCollapsed} title="折叠">
+          <Icon name="chevronLeft" size={18} />
+        </button>
+      </div>
     </div>
 
     <!-- Toolbar -->
     <div class="toolbar">
-      <button on:click={handleUpload} title="上传文件" class="toolbar-btn">
-        ↑
-      </button>
-      <button
-        on:click={handleDownload}
-        disabled={selectedFiles.size === 0}
-        title="下载文件"
-        class="toolbar-btn"
-      >
-        ↓
-      </button>
-      <button on:click={() => showCreateDirModal = true} title="新建文件夹" class="toolbar-btn">
-        +📁
-      </button>
-      <button
-        on:click={handleRename}
-        disabled={selectedFiles.size !== 1}
-        title="重命名"
-        class="toolbar-btn"
-      >
-        ✎
-      </button>
-      <button on:click={handleRefresh} title="刷新" class="toolbar-btn">
-        ⟳
-      </button>
-      <button
-        on:click={handleDelete}
-        disabled={selectedFiles.size === 0}
-        title="删除"
-        class="toolbar-btn toolbar-btn-danger"
-      >
-        🗑
-      </button>
+      <div class="toolbar-group">
+        <button on:click={handleUpload} title="上传文件" class="toolbar-btn">
+          <Icon name="upload" size={16} />
+          <span>上传</span>
+        </button>
+        <button
+          on:click={handleDownload}
+          disabled={selectedFiles.size === 0}
+          title="下载选中文件"
+          class="toolbar-btn"
+        >
+          <Icon name="download" size={16} />
+          <span>下载</span>
+        </button>
+      </div>
+      
+      <div class="toolbar-divider"></div>
+      
+      <div class="toolbar-group">
+        <button on:click={() => showCreateDirModal = true} title="新建文件夹" class="toolbar-btn icon-only">
+          <Icon name="folder-plus" size={18} />
+        </button>
+        <button
+          on:click={handleRename}
+          disabled={selectedFiles.size !== 1}
+          title="重命名"
+          class="toolbar-btn icon-only"
+        >
+          <Icon name="edit" size={16} />
+        </button>
+        <button on:click={handleRefresh} title="刷新" class="toolbar-btn icon-only">
+          <Icon name="refresh" size={16} />
+        </button>
+      </div>
+      
+      <div class="toolbar-spacer"></div>
+      
+      <div class="toolbar-group">
+        <button
+          on:click={handleDelete}
+          disabled={selectedFiles.size === 0}
+          title="删除"
+          class="toolbar-btn toolbar-btn-danger icon-only"
+        >
+          <Icon name="trash" size={16} />
+        </button>
+      </div>
+    </div>
+
+    <!-- File List Header -->
+    <div class="file-list-header">
+      <div class="col-icon"></div>
+      <div class="col-name">名称</div>
+      <div class="col-size">大小</div>
+      <div class="col-date">修改时间</div>
     </div>
 
     <!-- File list with drag-drop -->
@@ -445,11 +475,21 @@
       on:dragleave={handleDragLeave}
     >
       {#if isLoading}
-        <div class="loading">加载中...</div>
+        <div class="state-container loading" in:fade>
+          <div class="spinner"></div>
+          <p>正在加载目录...</p>
+        </div>
       {:else if error}
-        <div class="error">{error}</div>
+        <div class="state-container error" in:fade>
+          <Icon name="close" size={32} color="var(--accent-error)" />
+          <p>{error}</p>
+          <button class="retry-btn" on:click={handleRefresh}>重试</button>
+        </div>
       {:else if files.length === 0}
-        <div class="empty">此目录为空</div>
+        <div class="state-container empty" in:fade>
+          <Icon name="folder" size={48} color="var(--bg-input)" />
+          <p>此目录为空</p>
+        </div>
       {:else}
         <div class="file-list">
           {#each sortedFiles as file (file.path)}
@@ -458,22 +498,31 @@
               selected={selectedFiles.has(file.path)}
               on:click={handleFileClick}
               on:dblclick={handleFileDoubleClick}
+              on:contextmenu={(e) => {
+                 // Context menu logic could go here
+              }}
             />
           {/each}
         </div>
       {/if}
 
       {#if isDraggingOver}
-        <div class="drop-overlay">
-          <div class="drop-message">📁 拖放文件到此处上传</div>
+        <div class="drop-overlay" transition:fade={{ duration: 150 }}>
+          <div class="drop-content">
+            <Icon name="upload" size={48} color="var(--accent-primary)" />
+            <div class="drop-message">释放以上传文件</div>
+          </div>
         </div>
       {/if}
     </div>
 
     <!-- Transfer progress section -->
     {#if Object.keys(transfers).length > 0}
-      <div class="transfers">
-        <h4>传输进度</h4>
+      <div class="transfers" transition:fly={{ y: 20, duration: 200 }}>
+        <div class="transfers-header">
+          <h4>传输任务</h4>
+          <span class="badge">{Object.keys(transfers).length}</span>
+        </div>
         <div class="transfer-list">
           {#each Object.values(transfers) as transfer (transfer.transfer_id)}
             <TransferProgressBar {transfer} on:cancel={handleCancelTransfer} />
@@ -507,6 +556,7 @@
   /* Collapsed state */
   .file-panel.collapsed {
     width: 60px;
+    height: 100%;
     background: var(--bg-secondary);
     border-left: 1px solid var(--border-primary);
     display: flex;
@@ -515,6 +565,8 @@
     padding: 16px 8px;
     flex-shrink: 0;
     -webkit-app-region: no-drag;
+    box-sizing: border-box;
+    z-index: 10;
   }
 
   .collapsed-content {
@@ -523,20 +575,31 @@
     align-items: center;
     gap: 20px;
     width: 100%;
+    height: 100%;
   }
 
-  .icon {
-    font-size: 24px;
+  .sidebar-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: var(--bg-tertiary);
   }
 
   .expand-btn {
     margin-top: auto;
-    padding: 8px;
+    padding: 10px;
     background: transparent;
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 16px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
   }
 
   .expand-btn:hover {
@@ -551,7 +614,9 @@
     cursor: col-resize;
     flex-shrink: 0;
     position: relative;
+    z-index: 20;
     -webkit-app-region: no-drag;
+    margin-right: -2px; /* Overlap slightly */
   }
 
   .file-resizer:hover,
@@ -561,6 +626,7 @@
 
   /* Expanded state */
   .file-panel.expanded {
+    height: 100%;
     background: var(--bg-secondary);
     border-left: 1px solid var(--border-primary);
     display: flex;
@@ -568,6 +634,8 @@
     flex-shrink: 0;
     overflow: hidden;
     -webkit-app-region: no-drag;
+    box-sizing: border-box;
+    position: relative;
   }
 
   /* Header */
@@ -575,9 +643,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
+    padding: 0 16px;
     border-bottom: 1px solid var(--border-primary);
-    min-height: 48px;
+    height: 48px;
+    background: var(--bg-secondary);
   }
 
   .breadcrumb {
@@ -587,43 +656,61 @@
     min-width: 0;
     overflow-x: auto;
     gap: 4px;
+    padding-right: 8px;
+    scrollbar-width: none; /* Firefox */
   }
-
+  
   .breadcrumb::-webkit-scrollbar {
-    height: 4px;
+    display: none; /* Chrome/Safari */
   }
 
   .breadcrumb-item {
     padding: 4px 8px;
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--text-secondary);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 13px;
     white-space: nowrap;
     border-radius: 4px;
+    transition: all 0.2s;
   }
 
   .breadcrumb-item:hover {
     background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+  
+  .breadcrumb-item:last-child {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+  
+  .breadcrumb-item.home {
+    padding: 4px;
+    display: flex;
+    align-items: center;
   }
 
-  .separator {
-    color: var(--text-secondary);
-    font-size: 12px;
+  /* Header Actions */
+  .header-actions {
+    display: flex;
+    align-items: center;
   }
 
-  .collapse-btn {
-    padding: 4px 8px;
+  .action-btn {
+    padding: 6px;
     background: transparent;
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 16px;
-    margin-left: 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .collapse-btn:hover {
+  .action-btn:hover {
     color: var(--text-primary);
     background: var(--bg-hover);
   }
@@ -631,26 +718,58 @@
   /* Toolbar */
   .toolbar {
     display: flex;
-    gap: 4px;
+    align-items: center;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border-primary);
     background: var(--bg-tertiary);
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  
+  .toolbar-group {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  
+  .toolbar-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border-primary);
+    margin: 0 4px;
+  }
+  
+  .toolbar-spacer {
+    flex: 1;
   }
 
   .toolbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 10px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-primary);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 4px;
     color: var(--text-primary);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     transition: all 0.2s;
+    white-space: nowrap;
+  }
+  
+  .toolbar-btn.icon-only {
+    padding: 6px;
   }
 
   .toolbar-btn:hover:not(:disabled) {
     background: var(--bg-hover);
-    border-color: var(--accent-primary);
+    border-color: var(--border-primary);
+  }
+  
+  .toolbar-btn:active:not(:disabled) {
+    background: var(--bg-input);
   }
 
   .toolbar-btn:disabled {
@@ -659,8 +778,32 @@
   }
 
   .toolbar-btn-danger:hover:not(:disabled) {
-    border-color: var(--accent-error);
+    background: rgba(244, 67, 54, 0.1);
     color: var(--accent-error);
+    border-color: rgba(244, 67, 54, 0.2);
+  }
+  
+  /* File List Header */
+  .file-list-header {
+    display: grid;
+    grid-template-columns: 32px 1fr 100px 140px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    user-select: none;
+  }
+  
+  .file-list-header .col-size,
+  .file-list-header .col-date {
+    text-align: right;
+    padding-right: 16px;
+  }
+  
+  .file-list-header .col-date {
+    padding-right: 0;
   }
 
   /* File list container */
@@ -668,70 +811,148 @@
     flex: 1;
     overflow-y: auto;
     position: relative;
+    background: var(--bg-primary);
   }
 
   .file-list-container.drag-over {
-    background: rgba(14, 99, 156, 0.1);
+    background: rgba(14, 99, 156, 0.05);
   }
 
   .file-list {
-    padding: 8px;
+    padding-bottom: 20px;
   }
 
-  .loading,
-  .error,
-  .empty {
-    padding: 40px 20px;
-    text-align: center;
+  /* States */
+  .state-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
     color: var(--text-secondary);
-    font-size: 13px;
+    gap: 16px;
   }
-
+  
+  .state-container p {
+    margin: 0;
+    font-size: 14px;
+  }
+  
+  .empty {
+    opacity: 0.7;
+  }
+  
   .error {
     color: var(--accent-error);
   }
+  
+  .retry-btn {
+    padding: 6px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+  
+  .retry-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+  }
+  
+  /* Spinner */
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--bg-input);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 
+  /* Drop Overlay */
   .drop-overlay {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(14, 99, 156, 0.2);
+    background: rgba(14, 99, 156, 0.15);
+    backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
     justify-content: center;
     pointer-events: none;
+    z-index: 50;
     border: 2px dashed var(--accent-primary);
-    margin: 8px;
+    margin: 10px;
     border-radius: 8px;
+  }
+  
+  .drop-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 40px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
   }
 
   .drop-message {
     font-size: 16px;
     color: var(--accent-primary);
-    font-weight: 500;
+    font-weight: 600;
   }
 
   /* Transfers */
   .transfers {
     border-top: 1px solid var(--border-primary);
-    background: var(--bg-primary);
-    max-height: 300px;
-    overflow-y: auto;
+    background: var(--bg-secondary);
+    max-height: 250px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+  }
+  
+  .transfers-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-tertiary);
   }
 
-  .transfers h4 {
+  .transfers-header h4 {
     margin: 0;
-    padding: 12px 16px;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-secondary);
     text-transform: uppercase;
-    border-bottom: 1px solid var(--border-primary);
+    letter-spacing: 0.5px;
+  }
+  
+  .badge {
+    background: var(--accent-primary);
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 600;
   }
 
   .transfer-list {
-    padding: 12px;
+    padding: 0;
+    overflow-y: auto;
+    max-height: 200px;
   }
 </style>

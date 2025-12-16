@@ -1,4 +1,5 @@
 <script>
+  import { createEventDispatcher } from 'svelte';
   import { GetConnections, AddConnection, UpdateConnection, RemoveConnection, TestConnection, SelectSSHKeyFile, SavePassword, GetPassword, HasPassword } from '../../wailsjs/go/main/App.js';
   import { onMount } from 'svelte';
   import { showAlert, showError, showConfirm } from '../utils/dialog.js';
@@ -6,6 +7,8 @@
   import Settings from './Settings.svelte';
 
   export let onConnect = null;
+  
+  const dispatch = createEventDispatcher();
 
   let connections = [];
   let showConnectionForm = false;
@@ -309,137 +312,150 @@
 
 <div class="manager">
   <div class="header-bar">
-    <button class="settings-btn" on:click={openSettings} title="设置">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M14 7v2h-2.1c-.1.5-.3 1-.6 1.4l1.5 1.5-1.4 1.4-1.5-1.5c-.4.3-.9.5-1.4.6V14H7v-2.1c-.5-.1-1-.3-1.4-.6l-1.5 1.5L2.7 11.4l1.5-1.5c-.3-.4-.5-.9-.6-1.4H2V7h2.1c.1-.5.3-1 .6-1.4L3.2 4.1 4.6 2.7l1.5 1.5C6.5 4 7 3.8 7.5 3.7V2h2v1.7c.5.1 1 .3 1.4.6l1.5-1.5 1.4 1.4-1.5 1.5c.3.4.5.9.6 1.4H14zm-5.5 3c1.4 0 2.5-1.1 2.5-2.5S9.9 5 8.5 5 6 6.1 6 7.5 7.1 10 8.5 10z"/>
-      </svg>
-    </button>
     <h2>SSH 连接</h2>
-    <!-- 使用原生onclick -->
-    <button class="new-btn" onclick="document.getElementById('new-conn-trigger').click()">
-      + 新建连接
-    </button>
-    <button id="new-conn-trigger" style="display:none" on:click={showNewConnectionForm}></button>
+    <div class="header-actions">
+      <button class="icon-btn" on:click={openSettings} title="设置">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M14 7v2h-2.1c-.1.5-.3 1-.6 1.4l1.5 1.5-1.4 1.4-1.5-1.5c-.4.3-.9.5-1.4.6V14H7v-2.1c-.5-.1-1-.3-1.4-.6l-1.5 1.5L2.7 11.4l1.5-1.5c-.3-.4-.5-.9-.6-1.4H2V7h2.1c.1-.5.3-1 .6-1.4L3.2 4.1 4.6 2.7l1.5 1.5C6.5 4 7 3.8 7.5 3.7V2h2v1.7c.5.1 1 .3 1.4.6l1.5-1.5 1.4 1.4-1.5 1.5c.3.4.5.9.6 1.4H14zm-5.5 3c1.4 0 2.5-1.1 2.5-2.5S9.9 5 8.5 5 6 6.1 6 7.5 7.1 10 8.5 10z"/>
+        </svg>
+      </button>
+      <button class="icon-btn" on:click={() => dispatch('collapse')} title="收起侧边栏">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M14 2.5H2V3.5H14V2.5ZM2 7.5H14V8.5H2V7.5ZM2 12.5H14V13.5H2V12.5ZM5 2.5V13.5H4V2.5H5Z"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
-  {#if showConnectionForm}
-    <div class="form-box">
-      <h3>{editingConnection ? '编辑连接' : '新建连接'}</h3>
+  <div class="content-area">
+    {#if showConnectionForm}
+      <div class="form-box">
+        <h3>{editingConnection ? '编辑连接' : '新建连接'}</h3>
 
-      <div class="field">
-        <label>连接名称 *</label>
-        <input type="text" bind:value={formData.name} placeholder="例如: 生产服务器" />
-      </div>
-
-      <div class="field">
-        <label>主机地址 *</label>
-        <input type="text" bind:value={formData.host} placeholder="例如: 192.168.1.100" />
-      </div>
-
-      <div class="field-row">
         <div class="field">
-          <label>端口</label>
-          <input type="number" bind:value={formData.port} />
+          <label>连接名称 *</label>
+          <input type="text" bind:value={formData.name} placeholder="例如: 生产服务器" />
         </div>
-        <div class="field">
-          <label>用户名 *</label>
-          <input type="text" bind:value={formData.user} placeholder="例如: root" />
-        </div>
-      </div>
 
-      <div class="field">
-        <label>认证方式</label>
-        <select bind:value={formData.auth_type}>
-          <option value="password">密码</option>
-          <option value="key">SSH 密钥</option>
-        </select>
-      </div>
-
-      {#if formData.auth_type === 'password'}
         <div class="field">
-          <label>密码</label>
-          <input type="password" bind:value={formData.password} placeholder="用于测试连接" />
+          <label>主机地址 *</label>
+          <input type="text" bind:value={formData.host} placeholder="例如: 192.168.1.100" />
         </div>
-      {:else if formData.auth_type === 'key'}
+
+        <div class="field-row">
+          <div class="field">
+            <label>端口</label>
+            <input type="number" bind:value={formData.port} />
+          </div>
+          <div class="field">
+            <label>用户名 *</label>
+            <input type="text" bind:value={formData.user} placeholder="例如: root" />
+          </div>
+        </div>
+
         <div class="field">
-          <label>SSH 私钥文件</label>
-          <div class="key-file-selector">
+          <label>认证方式</label>
+          <select bind:value={formData.auth_type}>
+            <option value="password">密码</option>
+            <option value="key">SSH 密钥</option>
+          </select>
+        </div>
+
+        {#if formData.auth_type === 'password'}
+          <div class="field">
+            <label>密码</label>
+            <input type="password" bind:value={formData.password} placeholder="用于测试连接" />
+          </div>
+        {:else if formData.auth_type === 'key'}
+          <div class="field">
+            <label>SSH 私钥文件</label>
+            <div class="key-file-selector">
+              <input
+                type="text"
+                bind:value={formData.key_path}
+                placeholder="点击选择密钥文件"
+                readonly
+              />
+              <button class="btn-select-file" on:click={handleSelectKeyFile} type="button">
+                选择文件
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Passphrase（可选）</label>
             <input
-              type="text"
-              bind:value={formData.key_path}
-              placeholder="点击选择密钥文件"
-              readonly
+              type="password"
+              bind:value={formData.passphrase}
+              placeholder="如果密钥已加密，请输入 passphrase"
             />
-            <button class="btn-select-file" on:click={handleSelectKeyFile} type="button">
-              选择文件
-            </button>
+            <div class="hint-text">
+              如果您的 SSH 密钥文件已加密，请输入 passphrase。否则留空即可。
+            </div>
           </div>
-        </div>
-        <div class="field">
-          <label>Passphrase（可选）</label>
-          <input
-            type="password"
-            bind:value={formData.passphrase}
-            placeholder="如果密钥已加密，请输入 passphrase"
-          />
-          <div class="hint-text">
-            如果您的 SSH 密钥文件已加密，请输入 passphrase。否则留空即可。
+        {/if}
+
+        {#if testResult}
+          <div class="result {testResult.includes('成功') ? 'success' : 'error'}">
+            {testResult}
           </div>
+        {/if}
+
+        <div class="actions">
+          <button on:click={cancelForm}>取消</button>
+          <button on:click={handleTestConnection} disabled={testingConnection}>
+            {testingConnection ? '测试中...' : '测试连接'}
+          </button>
+          <button on:click={handleSaveConnection} class="primary">保存</button>
         </div>
-      {/if}
-
-      {#if testResult}
-        <div class="result {testResult.includes('成功') ? 'success' : 'error'}">
-          {testResult}
-        </div>
-      {/if}
-
-      <div class="actions">
-        <button on:click={cancelForm}>取消</button>
-        <button on:click={handleTestConnection} disabled={testingConnection}>
-          {testingConnection ? '测试中...' : '测试连接'}
-        </button>
-        <button on:click={handleSaveConnection} class="primary">保存</button>
-      </div>
-    </div>
-  {/if}
-
-  <div class="list">
-    {#if connections.length === 0}
-      <div class="empty">
-        <p>暂无连接</p>
-        <p>点击"新建连接"开始添加</p>
       </div>
     {:else}
-      {#each connections as connection, index (connection.id)}
-        <div class="item">
-          <div class="info">
-            <div class="name">{connection.name}</div>
-            <div class="details">{connection.user}@{connection.host}:{connection.port}</div>
+      <div class="list">
+        {#if connections.length === 0}
+          <div class="empty">
+            <p>暂无连接</p>
+            <p>点击下方"新建连接"开始添加</p>
           </div>
-          <div class="item-actions">
-            <!-- 使用原生onclick和索引 -->
-            <button
-              class="act-btn connect-btn"
-              onclick="window.sshToolsConnect({index})"
-            >
-              连接
-            </button>
-            <button
-              class="act-btn edit-btn"
-              onclick="window.sshToolsEdit({index})"
-            >
-              编辑
-            </button>
-            <button
-              class="act-btn delete-btn"
-              onclick="window.sshToolsDelete('{connection.id}')"
-            >
-              删除
-            </button>
-          </div>
-        </div>
-      {/each}
+        {:else}
+          {#each connections as connection, index (connection.id)}
+            <div class="item">
+              <div class="info">
+                <div class="name">{connection.name}</div>
+                <div class="details">{connection.user}@{connection.host}:{connection.port}</div>
+              </div>
+              <div class="item-actions">
+                <!-- 使用原生onclick和索引 -->
+                <button
+                  class="act-btn connect-btn"
+                  onclick="window.sshToolsConnect({index})"
+                >
+                  连接
+                </button>
+                <button
+                  class="act-btn edit-btn"
+                  onclick="window.sshToolsEdit({index})"
+                >
+                  编辑
+                </button>
+                <button
+                  class="act-btn delete-btn"
+                  onclick="window.sshToolsDelete('{connection.id}')"
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+          {/each}
+        {/if}
+      </div>
+    {/if}
+  </div>
+
+  <div class="footer-bar">
+    {#if !showConnectionForm}
+      <button class="new-btn full-width" onclick="document.getElementById('new-conn-trigger').click()">
+        + 新建连接
+      </button>
+      <button id="new-conn-trigger" style="display:none" on:click={showNewConnectionForm}></button>
     {/if}
   </div>
 </div>
@@ -462,17 +478,37 @@
     padding: 20px;
     background: var(--bg-secondary);
     color: var(--text-primary);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   .header-bar {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
     margin-bottom: 20px;
+    flex-shrink: 0;
   }
 
-  .settings-btn {
+  .content-area {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0; /* Important for flex child scrolling */
+  }
+
+  .footer-bar {
+    margin-top: 20px;
+    flex-shrink: 0;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .icon-btn {
     padding: 6px;
     background: transparent;
     color: var(--text-secondary);
@@ -486,13 +522,12 @@
     flex-shrink: 0;
   }
 
-  .settings-btn:hover {
+  .icon-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
   }
 
   h2 {
-    flex: 1;
     margin: 0;
     font-size: 18px;
   }
@@ -522,6 +557,10 @@
   .new-btn {
     background: var(--accent-primary);
     color: white;
+  }
+
+  .full-width {
+    width: 100%;
   }
 
   .new-btn:hover {
@@ -595,7 +634,7 @@
   }
 
   .list {
-    margin-top: 20px;
+    /* margin-top removed as it's now handled by layout */
   }
 
   .empty {

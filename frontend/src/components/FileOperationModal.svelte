@@ -1,5 +1,7 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
+  import { fade, scale } from 'svelte/transition';
+  import Icon from './Icon.svelte';
 
   export let visible = false;
   export let title = '';
@@ -59,11 +61,16 @@
 </script>
 
 {#if visible}
-  <div class="modal-overlay" on:click={handleOverlayClick} role="dialog" aria-modal="true">
-    <div class="modal-content">
+  <div class="modal-overlay" on:click={handleOverlayClick} role="dialog" aria-modal="true" transition:fade={{ duration: 150 }}>
+    <div class="modal-content" transition:scale={{ start: 0.95, duration: 150 }}>
       <div class="modal-header">
-        <h3>{title}</h3>
-        <button class="btn-close" on:click={handleCancel}>✕</button>
+        <div class="title-container">
+          <Icon name="edit" size={18} color="var(--accent-primary)" />
+          <h3>{title}</h3>
+        </div>
+        <button class="btn-close" on:click={handleCancel}>
+          <Icon name="close" size={16} />
+        </button>
       </div>
 
       <div class="modal-body">
@@ -77,6 +84,7 @@
           bind:this={inputElement}
           on:keydown={handleKeyDown}
           placeholder={placeholder}
+          autocomplete="off"
         />
       </div>
 
@@ -98,6 +106,7 @@
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -111,7 +120,7 @@
     border-radius: 8px;
     width: 90%;
     max-width: 400px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   }
 
   .modal-header {
@@ -122,6 +131,12 @@
     border-bottom: 1px solid var(--border-primary);
   }
 
+  .title-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
   .modal-header h3 {
     margin: 0;
     font-size: 16px;
@@ -130,47 +145,51 @@
   }
 
   .btn-close {
-    padding: 4px 8px;
+    padding: 4px;
     background: transparent;
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 18px;
-    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
   }
 
   .btn-close:hover {
     color: var(--text-primary);
     background: var(--bg-hover);
-    border-radius: 4px;
   }
 
   .modal-body {
-    padding: 20px;
+    padding: 24px 20px;
   }
 
   .modal-body label {
     display: block;
     margin-bottom: 8px;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--text-secondary);
+    font-weight: 500;
   }
 
   .modal-body input {
     width: 100%;
-    padding: 8px 12px;
+    padding: 10px 12px;
     background: var(--bg-input);
     border: 1px solid var(--border-primary);
-    border-radius: 4px;
+    border-radius: 6px;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 14px;
     font-family: inherit;
     outline: none;
-    transition: border-color 0.2s;
+    transition: all 0.2s;
   }
 
   .modal-body input:focus {
     border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(14, 99, 156, 0.2);
   }
 
   .modal-body input::placeholder {
@@ -181,15 +200,18 @@
   .modal-footer {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
+    gap: 10px;
     padding: 16px 20px;
     border-top: 1px solid var(--border-primary);
+    background: var(--bg-tertiary);
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
   }
 
   .btn-primary,
   .btn-secondary {
-    padding: 8px 16px;
-    border: none;
+    padding: 8px 20px;
+    border: 1px solid transparent;
     border-radius: 4px;
     font-size: 13px;
     font-weight: 500;
@@ -203,7 +225,7 @@
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #0d5a99;
+    background: var(--accent-hover);
   }
 
   .btn-primary:disabled {
@@ -212,11 +234,13 @@
   }
 
   .btn-secondary {
-    background: var(--bg-tertiary);
+    background: transparent;
+    border-color: var(--border-primary);
     color: var(--text-primary);
   }
 
   .btn-secondary:hover {
     background: var(--bg-hover);
+    border-color: var(--text-secondary);
   }
 </style>

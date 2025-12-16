@@ -1,13 +1,17 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { fade } from 'svelte/transition';
   import { monitorStore } from '../stores/monitor.js';
   import { GetMonitoringData } from '../../wailsjs/go/main/App.js';
 
   export let activeSessionId = null;
 
+  // Cache for monitoring data to prevent flickering on tab switch
+  const metricsCache = {};
+
   let collapsed = true;
   let width = 350;
-  let refreshInterval = 2;
+  let refreshInterval = 30; // Default 30s as requested
   let monitoringData = null;
   let isLoading = false;
   let error = null;
@@ -18,25 +22,40 @@
   monitorStore.subscribe(state => {
     collapsed = state.collapsed;
     width = state.width;
-    refreshInterval = state.refreshInterval;
+    // Use stored interval if available, otherwise default
+    if (state.refreshInterval) {
+      refreshInterval = state.refreshInterval;
+    }
   });
 
   // Fetch monitoring data
-  async function fetchMetrics() {
+  async function fetchMetrics(isAutoRefresh = false) {
     if (!activeSessionId || collapsed) return;
 
-    isLoading = true;
+    // Use cache first if available and not auto-refreshing
+    if (!isAutoRefresh && metricsCache[activeSessionId] && !monitoringData) {
+      monitoringData = metricsCache[activeSessionId];
+    }
+
+    if (!monitoringData && !isAutoRefresh) {
+      isLoading = true;
+    }
+    
     error = null;
 
     try {
       const data = await GetMonitoringData(activeSessionId);
       monitoringData = data;
+      metricsCache[activeSessionId] = data;
 
       // Update CPU history (keep last 60 samples)
       cpuHistory = [...cpuHistory, data.cpu.overall].slice(-60);
     } catch (err) {
       console.error('Failed to fetch monitoring data:', err);
-      error = err.message;
+      // Only show error if we have no data
+      if (!monitoringData) {
+        error = err.message;
+      }
     } finally {
       isLoading = false;
     }
@@ -82,9 +101,9 @@
 
   // Polling logic
   $: if (activeSessionId && !collapsed) {
-    fetchMetrics();
+    fetchMetrics(false); // Initial fetch
     if (intervalId) clearInterval(intervalId);
-    intervalId = setInterval(fetchMetrics, refreshInterval * 1000);
+    intervalId = setInterval(() => fetchMetrics(true), refreshInterval * 1000);
   } else {
     if (intervalId) {
       clearInterval(intervalId);
@@ -166,14 +185,17 @@
       <button class="collapse-btn" on:click={toggleCollapsed}>─</button>
     </div>
 
-    <div class="content">
+    <div class="content" transition:fade={{ duration: 200 }}>
       {#if error}
         <div class="error-message">{error}</div>
       {:else if !monitoringData && isLoading}
-        <div class="loading">加载中...</div>
+        <div class="loading">
+          <div class="spinner"></div>
+          <p>加载中...</p>
+        </div>
       {:else if monitoringData}
         <!-- System Info -->
-        <section>
+        <section class="monitor-card">
           <h3>系统信息</h3>
           <div class="info-grid">
             <div class="info-item">
@@ -188,7 +210,7 @@
         </section>
 
         <!-- CPU -->
-        <section>
+        <section class="monitor-card">
           <h3>CPU</h3>
           <div class="progress-item">
             <div class="progress-header">
@@ -210,7 +232,7 @@
         </section>
 
         <!-- Memory -->
-        <section>
+        <section class="monitor-card">
           <h3>内存</h3>
           <div class="progress-item">
             <div class="progress-header">
@@ -227,7 +249,7 @@
         </section>
 
         <!-- Network -->
-        <section>
+        <section class="monitor-card">
           <h3>网络</h3>
           <div class="info-grid">
             <div class="info-item">
@@ -250,7 +272,7 @@
         </section>
 
         <!-- Disk -->
-        <section>
+        <section class="monitor-card">
           <h3>磁盘</h3>
           {#each monitoringData.disk.partitions.slice(0, 5) as partition}
             <div class="progress-item">
@@ -274,11 +296,11 @@
       <label>
         刷新:
         <select bind:value={refreshInterval} on:change={() => monitorStore.setRefreshInterval(refreshInterval)}>
-          <option value={1}>1秒</option>
           <option value={2}>2秒</option>
-          <option value={3}>3秒</option>
           <option value={5}>5秒</option>
           <option value={10}>10秒</option>
+          <option value={30}>30秒</option>
+          <option value={60}>60秒</option>
         </select>
       </label>
     </div>
@@ -287,11 +309,19 @@
 
 <style>
   .monitor-panel {
+    height: 100%;
     background: var(--bg-secondary);
     border-left: 1px solid var(--border-primary);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     flex-shrink: 0;
     -webkit-app-region: no-drag;
+    box-sizing: border-box;
+    transition: width 0.3s ease;
+  }
+
+  .monitor-panel.dragging {
+    transition: none;
   }
 
   .monitor-panel.collapsed {
@@ -299,6 +329,60 @@
     flex-direction: column;
     align-items: center;
     padding: 16px 8px;
+    transition: width 0.3s ease;
+  }
+
+  /* ... */
+
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden; /* Prevent horizontal scroll on body */
+    padding: 16px;
+  }
+
+  /* Card Style */
+  .monitor-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+
+  .monitor-card:last-child {
+    margin-bottom: 0;
+  }
+
+  .monitor-card h3 {
+    margin-top: 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-primary);
+    margin-bottom: 12px;
+  }
+
+  /* Loading Spinner */
+  .loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    gap: 16px;
+  }
+
+  .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--bg-tertiary);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   .collapsed-content {
@@ -388,28 +472,6 @@
   .collapse-btn:hover {
     color: var(--text-primary);
     background: var(--bg-hover);
-  }
-
-  .content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-  }
-
-  section {
-    margin-bottom: 20px;
-  }
-
-  section:last-child {
-    margin-bottom: 0;
-  }
-
-  h3 {
-    margin: 0 0 12px 0;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
   }
 
   .info-grid {

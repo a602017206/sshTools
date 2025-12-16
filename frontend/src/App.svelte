@@ -20,6 +20,7 @@
   // Sidebar dragging state
   let sidebarWidth = 300;
   let isDragging = false;
+  let isSidebarCollapsed = false;
   let startX = 0;
   let startWidth = 0;
 
@@ -29,6 +30,15 @@
       sidebarWidth = state.sidebarWidth;
     }
   });
+
+  function toggleSidebar() {
+    isSidebarCollapsed = !isSidebarCollapsed;
+  }
+
+  function toggleTheme() {
+    const newTheme = $themeStore.theme === 'light' ? 'dark' : 'light';
+    themeStore.setTheme(newTheme);
+  }
 
   // Reactive declarations
   $: activeSession = sessions.get(activeSessionId);
@@ -292,20 +302,36 @@
 
 <main>
   <div class="app-container">
-    <aside class="sidebar" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px;">
-      <ConnectionManagerSimple onConnect={handleConnect} />
+    <aside
+      class="sidebar"
+      class:collapsed={isSidebarCollapsed}
+      class:dragging={isDragging}
+      style="width: {isSidebarCollapsed ? 0 : sidebarWidth}px; min-width: {isSidebarCollapsed ? 0 : sidebarWidth}px;"
+    >
+      <div class="sidebar-content" style="width: {sidebarWidth}px">
+        <ConnectionManagerSimple onConnect={handleConnect} on:collapse={toggleSidebar} />
+      </div>
     </aside>
 
-    <div
-      class="sidebar-resizer"
-      class:dragging={isDragging}
-      on:mousedown={handleDragStart}
-    ></div>
+    {#if !isSidebarCollapsed}
+      <div
+        class="sidebar-resizer"
+        class:dragging={isDragging}
+        on:mousedown={handleDragStart}
+      ></div>
+    {/if}
 
     <div class="main-content">
       <!-- Tab bar (only show if sessions exist) -->
-      {#if sessions.size > 0}
-        <div class="tab-bar-container">
+      <div class="tab-bar-container">
+        {#if isSidebarCollapsed}
+          <button class="expand-btn" on:click={toggleSidebar} title="展开侧边栏">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M2 2.5H14V3.5H2V2.5ZM2 7.5H14V8.5H2V7.5ZM2 12.5H14V13.5H2V12.5ZM11 2.5V13.5H12V2.5H11Z"/>
+            </svg>
+          </button>
+        {/if}
+        {#if sessions.size > 0}
           <TabBar
             tabs={tabsList}
             activeTabId={activeSessionId}
@@ -314,7 +340,29 @@
             onTabRename={handleTabRename}
             onNewTab={handleNewTab}
           />
-        </div>
+        {/if}
+        <div class="header-spacer"></div>
+        <button class="theme-toggle-btn" on:click={toggleTheme} title="切换主题">
+          {#if $themeStore.theme === 'light'}
+            <!-- Sun icon for light mode -->
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-1.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zm5.657-8.157a.75.75 0 0 1 0 1.061l-1.061 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zm-9.193 9.193a.75.75 0 0 1 0 1.06l-1.06 1.061a.75.75 0 1 1-1.061-1.06l1.06-1.061a.75.75 0 0 1 1.061 0zM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0zM.75 8a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 .75 8zm12.25 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM13.657 13.657a.75.75 0 0 1 0 1.061l-1.061 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zm-9.193-9.193a.75.75 0 0 1 0-1.06l-1.06-1.061a.75.75 0 1 1-1.061 1.06l1.06 1.061a.75.75 0 0 1 1.061 0z"/>
+            </svg>
+          {:else}
+            <!-- Moon icon for dark mode -->
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278zM4.858 1.311A7.269 7.269 0 0 0 1.025 7.71c0 4.02 3.279 7.276 7.319 7.276a7.316 7.316 0 0 0 5.205-2.162c-.337.042-.68.063-1.029.063-4.61 0-8.343-3.714-8.343-8.29 0-1.167.242-2.278.681-3.286z"/>
+            </svg>
+          {/if}
+        </button>
+      </div>
+      
+      {#if sessions.size === 0 && isSidebarCollapsed}
+        <button class="expand-btn floating" on:click={toggleSidebar} title="展开侧边栏">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M2 2.5H14V3.5H2V2.5ZM2 7.5H14V8.5H2V7.5ZM2 12.5H14V13.5H2V12.5ZM11 2.5V13.5H12V2.5H11Z"/>
+          </svg>
+        </button>
       {/if}
 
       <!-- Terminal area with multiple instances -->
@@ -369,14 +417,25 @@
     display: flex;
     height: 100%;
     background-color: var(--bg-primary);
+    overflow-x: auto; /* Allow horizontal scroll if panels take too much space */
   }
 
   .sidebar {
     background: var(--bg-secondary);
     border-right: 1px solid var(--border-primary);
-    overflow-y: auto;
+    overflow: hidden;
     -webkit-app-region: no-drag !important;
+    transition: width 0.3s ease, min-width 0.3s ease;
+    position: relative;
+    flex-shrink: 0; /* Prevent sidebar shrinking */
+  }
+
+  .sidebar.dragging {
     transition: none;
+  }
+
+  .sidebar.collapsed {
+    border-right: none;
   }
 
   .sidebar-resizer {
@@ -385,7 +444,8 @@
     cursor: col-resize;
     flex-shrink: 0;
     position: relative;
-    -webkit-app-region: no-drag;
+    z-index: 100;
+    margin-left: -2px;
   }
 
   .sidebar-resizer:hover,
@@ -393,18 +453,47 @@
     background: var(--accent-primary);
   }
 
-  .sidebar-resizer::before {
-    content: '';
+  .sidebar-content {
+    height: 100%;
+    /* Fixed width to prevent content squashing during transition */
+    flex-shrink: 0;
+  }
+
+  .expand-btn {
+    width: 40px;
+    height: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-right: 1px solid var(--border-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  .expand-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .expand-btn.floating {
     position: absolute;
-    top: 0;
-    left: -2px;
-    right: -2px;
-    bottom: 0;
+    top: 10px;
+    left: 10px;
+    height: 32px;
+    width: 32px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    z-index: 100;
   }
 
   .main-content {
     flex: 1;
-    min-width: 0; /* Allow shrinking */
+    min-width: 400px; /* Prevent shrinking too much */
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -415,6 +504,35 @@
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border-primary);
     overflow: hidden;
+    display: flex;
+    align-items: center;
+    padding-right: 8px; /* Add padding for the button */
+  }
+
+  .header-spacer {
+    flex: 1;
+  }
+
+  .theme-toggle-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+
+  .theme-toggle-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
 
   .terminal-area {
