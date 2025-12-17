@@ -67,6 +67,25 @@ export namespace config {
 
 }
 
+export namespace service {
+	
+	export class JSONValidationResult {
+	    valid: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new JSONValidationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.valid = source["valid"];
+	        this.error = source["error"];
+	    }
+	}
+
+}
+
 export namespace ssh {
 	
 	export class CPUMetrics {

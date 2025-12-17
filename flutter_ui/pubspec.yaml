@@ -1,0 +1,67 @@
+name: sshtools_flutter
+description: SSH Tools Flutter frontend for cross-platform support
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+
+  # HTTP Client
+  dio: ^5.4.0
+
+  # WebSocket
+  web_socket_channel: ^2.4.0
+
+  # Terminal Emulator
+  xterm: ^3.5.0
+
+  # Routing
+  go_router: ^12.1.3
+
+  # JSON Serialization
+  json_annotation: ^4.8.1
+  freezed_annotation: ^2.4.1
+
+  # Local Storage
+  shared_preferences: ^2.2.2
+  flutter_secure_storage: ^9.0.0
+
+  # Charts for Monitoring
+  fl_chart: ^0.65.0
+
+  # File Picker
+  file_picker: ^6.1.1
+
+  # Logging
+  logger: ^2.0.2+1
+
+  # UUID Generation
+  uuid: ^4.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^3.0.1
+
+  # Code Generation
+  build_runner: ^2.4.7
+  json_serializable: ^6.7.1
+  freezed: ^2.4.6
+  riverpod_generator: ^2.3.9
+
+flutter:
+  uses-material-design: true
+
+  # Assets (if needed)
+  # assets:
+  #   - assets/images/
+  #   - assets/fonts/

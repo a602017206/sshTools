@@ -46,6 +46,14 @@ export function DownloadFiles(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadFiles'](arg1, arg2, arg3);
 }
 
+export function EscapeJSON(arg1) {
+  return window['go']['main']['App']['EscapeJSON'](arg1);
+}
+
+export function FormatJSON(arg1) {
+  return window['go']['main']['App']['FormatJSON'](arg1);
+}
+
 export function GetConnections() {
   return window['go']['main']['App']['GetConnections']();
 }
@@ -88,6 +96,10 @@ export function ListFiles(arg1, arg2) {
 
 export function ListSSHSessions() {
   return window['go']['main']['App']['ListSSHSessions']();
+}
+
+export function MinifyJSON(arg1) {
+  return window['go']['main']['App']['MinifyJSON'](arg1);
 }
 
 export function RemoveConnection(arg1) {
@@ -152,4 +164,8 @@ export function UploadFile(arg1, arg2, arg3) {
 
 export function UploadFiles(arg1, arg2, arg3) {
   return window['go']['main']['App']['UploadFiles'](arg1, arg2, arg3);
+}
+
+export function ValidateJSON(arg1) {
+  return window['go']['main']['App']['ValidateJSON'](arg1);
 }

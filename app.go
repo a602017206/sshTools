@@ -22,6 +22,7 @@ type App struct {
 	sftpService       *service.SFTPService
 	monitorService    *service.MonitorService
 	settingsService   *service.SettingsService
+	devToolsService   *service.DevToolsService
 }
 
 // NewApp creates a new App application struct
@@ -53,6 +54,7 @@ func (a *App) startup(ctx context.Context) {
 	a.sftpService = service.NewSFTPService(sessionManager, transferManager)
 	a.monitorService = service.NewMonitorService(sessionManager)
 	a.settingsService = service.NewSettingsService(configManager)
+	a.devToolsService = service.NewDevToolsService()
 }
 
 // Greet returns a greeting for the given name
@@ -333,4 +335,28 @@ func (a *App) SelectDownloadDirectory() (string, error) {
 	}
 
 	return dirPath, nil
+}
+
+// ============================================================================
+// DevTools Methods - 开发工具集相关方法
+// ============================================================================
+
+// FormatJSON 格式化JSON字符串
+func (a *App) FormatJSON(input string) (string, error) {
+	return a.devToolsService.FormatJSON(input)
+}
+
+// ValidateJSON 验证JSON字符串
+func (a *App) ValidateJSON(input string) (service.JSONValidationResult, error) {
+	return a.devToolsService.ValidateJSON(input)
+}
+
+// MinifyJSON 压缩JSON
+func (a *App) MinifyJSON(input string) (string, error) {
+	return a.devToolsService.MinifyJSON(input)
+}
+
+// EscapeJSON 转义JSON字符串
+func (a *App) EscapeJSON(input string) (string, error) {
+	return a.devToolsService.EscapeJSON(input)
 }
