@@ -2,9 +2,9 @@
 
 一个功能完整的跨平台SSH桌面客户端工具，使用Go和Wails构建。
 
-**功能齐全** · **安全可靠** · **跨平台** · **现代化UI**
+**功能齐全** · **安全可靠** · **跨平台** · **现代化UI** · **可扩展**
 
-集成终端、文件管理、系统监控于一体的现代化SSH工具，让远程服务器管理更加高效便捷。
+集成终端、文件管理、系统监控、开发工具集于一体的现代化SSH工具，让远程服务器管理和日常开发更加高效便捷。
 
 ## 欢迎赞助
 
@@ -86,7 +86,35 @@
   - 系统运行时间
   - 进程数量统计
 
+**开发工具集 🛠️**
+- ✅ **可扩展的工具架构** - 插件化设计，轻松添加新工具
+- ✅ **可折叠工具面板** - 右侧独立可调整大小的面板（300-900px）
+- ✅ **工具注册机制** - 动态注册和管理开发工具
+- ✅ **JSON 格式化工具**
+  - 美化JSON输出（4空格缩进）
+  - 压缩JSON（移除空白）
+  - 实时语法验证（500ms防抖）
+  - 语法高亮显示（键/值/类型）
+  - 一键复制功能
+  - 字符数和行数统计
+  - 友好的中文错误提示
+- ✅ **完整的后端服务** - FormatJSON、ValidateJSON、MinifyJSON、EscapeJSON
+- ✅ **单元测试覆盖** - 24个测试用例全部通过
+- ✅ **详细文档** - 完整的使用指南和扩展教程
+
 ### 计划中 🚀
+
+**开发工具集扩展**
+- 🔸 **Base64 编解码工具** - Base64编码和解码（优先级：高）
+- 🔸 **URL 编解码工具** - URL encode/decode（优先级：高）
+- 🔸 **时间戳转换工具** - Unix时间戳与日期时间互转（优先级：高）
+- 🔸 **UUID 生成器** - 生成UUID v1/v4（优先级：高）
+- 🔸 **Hash 计算器** - MD5/SHA256/SHA512哈希计算（优先级：中）
+- 🔸 **颜色转换器** - HEX/RGB/HSL颜色格式转换（优先级：中）
+- 🔸 **正则表达式测试器** - 正则表达式测试和匹配（优先级：低）
+- 🔸 **JWT 解码器** - JWT Token解析和验证（优先级：低）
+- 🔸 **Markdown 预览器** - Markdown实时预览（优先级：低）
+- 🔸 **ASCII 艺术生成器** - 文本转ASCII艺术（优先级：低）
 
 **核心功能增强**
 - 🔸 **端口转发/SSH隧道**
@@ -154,14 +182,17 @@
   - golang.org/x/crypto/ssh - SSH协议实现
   - github.com/pkg/sftp - SFTP文件传输
   - github.com/shirou/gopsutil/v3 - 系统性能监控
+  - encoding/json - JSON处理（开发工具集）
   - AES-GCM - 密码加密存储
   - Wails Runtime - 原生对话框和文件选择器
 
 - **前端**: Svelte + Vite
   - xterm.js - 终端模拟器
+  - Svelte Store - 状态管理（主题、文件管理器、监控、工具集）
   - 现代化的响应式UI
   - 通过Wails绑定与Go后端通信
   - 自定义模态对话框组件
+  - 正则表达式语法高亮（JSON工具）
 
 ## 快速开始
 
@@ -294,6 +325,35 @@ wails build
 - 点击折叠按钮隐藏面板
 - 数据每秒自动刷新
 
+### 使用开发工具集
+
+**打开工具集**:
+1. 点击右上角工具栏的齿轮图标（⚙️）
+2. 工具面板从右侧优雅滑出
+
+**使用JSON格式化工具**:
+1. 从左侧工具列表选择 **JSON 格式化**
+2. 在输入区粘贴或输入JSON内容
+3. 工具会自动进行实时验证（500ms防抖）
+4. 点击 **✨ 格式化** 按钮美化JSON
+5. 点击 **🗜️ 压缩** 按钮移除所有空白
+6. 点击 **📋 复制** 按钮复制结果到剪贴板
+
+**JSON工具特性**:
+- ✓ **实时验证**: 输入时自动检查语法，显示✓/✗状态徽章
+- ✓ **语法高亮**: 键（蓝色）、字符串（绿色）、数字、布尔值、null自动高亮
+- ✓ **友好错误**: 中文错误提示，清晰指出问题所在
+- ✓ **统计信息**: 实时显示字符数和行数
+- ✓ **一键清空**: 快速清除所有内容
+
+**面板操作**:
+- 拖动面板左侧边缘调整宽度（300-900px）
+- 按 Esc 键快速关闭面板
+- 工具列表按优先级排序
+
+**添加新工具**:
+开发者可以轻松添加新工具，详见 [DEVTOOLS_GUIDE.md](./DEVTOOLS_GUIDE.md)
+
 ### 支持的 SSH 密钥格式
 
 - RSA (`id_rsa`)
@@ -316,6 +376,9 @@ sshTools/
 │   │   ├── sftp.go          # SFTP文件传输
 │   │   ├── transfer.go      # 传输任务管理
 │   │   └── monitor.go       # 系统性能监控
+│   ├── service/        # 业务服务层
+│   │   ├── devtools_service.go       # 开发工具集服务
+│   │   └── devtools_service_test.go  # 单元测试（24个测试）
 │   ├── config/         # 配置管理
 │   ├── store/          # 凭证存储
 │   ├── terminal/       # 终端模拟器
@@ -331,11 +394,17 @@ sshTools/
 │   │   │   ├── FileOperationModal.svelte   # 文件操作对话框
 │   │   │   ├── TransferProgressBar.svelte  # 传输进度条
 │   │   │   ├── MonitorPanel.svelte         # 监控面板
+│   │   │   ├── DevToolsPanel.svelte        # 开发工具集面板
+│   │   │   ├── tools/                      # 开发工具组件
+│   │   │   │   └── JsonFormatter.svelte    # JSON格式化工具
 │   │   │   └── Icon.svelte                 # 图标组件
 │   │   ├── stores/
 │   │   │   ├── theme.js           # 主题状态
 │   │   │   ├── fileManager.js     # 文件管理器状态
-│   │   │   └── monitor.js         # 监控面板状态
+│   │   │   ├── monitor.js         # 监控面板状态
+│   │   │   └── devtools.js        # 开发工具集状态
+│   │   ├── tools/
+│   │   │   └── index.js           # 工具注册中心
 │   │   └── App.svelte             # 主应用
 │   └── wailsjs/       # Wails自动生成的绑定
 ├── build/             # 构建配置
@@ -350,6 +419,7 @@ sshTools/
   - 应用设置（主题、字体、窗口大小等）
   - 文件管理器设置（面板宽度、排序方式等）
   - 监控面板设置（面板宽度、刷新间隔等）
+  - 开发工具集设置（面板宽度、激活工具等）
 - `credentials.enc` - AES-GCM加密的密码存储（仅当用户选择保存密码时）
 
 **安全说明**：密码使用AES-GCM加密算法存储，加密密钥基于机器特征生成，确保数据安全。
@@ -374,10 +444,12 @@ sshTools/
     "file_manager_collapsed": false,
     "file_manager_width": 400,
     "monitor_collapsed": false,
-    "monitor_width": 350
+    "monitor_width": 350,
+    "devtools_collapsed": true,
+    "devtools_width": 500
   }
 }
-
+```
 ## 安全和隐私
 
 ### 密码加密存储
@@ -402,6 +474,9 @@ sshTools/
 
 - [CLAUDE.md](./CLAUDE.md) - 项目架构和开发指南
 - [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) - 详细的开发计划和功能清单
+- [DEVTOOLS_GUIDE.md](./DEVTOOLS_GUIDE.md) - 开发工具集完整使用指南
+- [DEVTOOLS_QUICKSTART.md](./DEVTOOLS_QUICKSTART.md) - 开发工具集5分钟快速上手
+- [DEVTOOLS_SUCCESS.md](./DEVTOOLS_SUCCESS.md) - 开发工具集部署成功报告
 
 ## 构建
 
@@ -474,6 +549,24 @@ wails dev
 1. **权限问题**: 某些系统信息需要特定权限
 2. **系统兼容性**: 确保在支持的系统上运行（Linux、macOS、Windows）
 3. **网络问题**: 检查 SSH 连接是否正常
+
+### 开发工具集相关问题
+
+**JSON格式化失败**:
+1. **语法错误**: 检查输入的JSON是否有语法错误，工具会提示具体问题
+2. **特殊字符**: 确保JSON中的特殊字符正确转义
+3. **编码问题**: 确保使用UTF-8编码
+
+**工具面板无法打开**:
+1. **按钮位置**: 确认点击的是右上角的齿轮图标⚙️（主题按钮左侧）
+2. **刷新应用**: 尝试重启应用 `wails dev`
+3. **检查控制台**: 打开开发者工具查看错误信息
+
+**如何添加自定义工具**:
+参考 [DEVTOOLS_GUIDE.md](./DEVTOOLS_GUIDE.md) 中的"🔧 添加新工具"章节，仅需4个步骤即可完成。
+
+**TypeScript绑定不存在**:
+运行 `wails dev` 会自动生成 `frontend/wailsjs/go/main/App.js` 绑定文件。
 
 ## 贡献
 
