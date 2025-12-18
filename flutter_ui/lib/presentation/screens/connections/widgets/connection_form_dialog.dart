@@ -34,7 +34,7 @@ class _ConnectionFormDialogState extends State<ConnectionFormDialog> {
     _portController = TextEditingController(text: conn?.port.toString() ?? '22');
     _userController = TextEditingController(text: conn?.user ?? '');
     _tagsController = TextEditingController(
-      text: conn?.tags.join(', ') ?? '',
+      text: conn?.tags?.join(', ') ?? '',
     );
     _authType = conn?.authType ?? 'password';
   }
@@ -152,7 +152,7 @@ class _ConnectionFormDialogState extends State<ConnectionFormDialog> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: _authType,
+                    initialValue: _authType,
                     decoration: const InputDecoration(
                       labelText: 'Authentication Type',
                       prefixIcon: Icon(Icons.security),

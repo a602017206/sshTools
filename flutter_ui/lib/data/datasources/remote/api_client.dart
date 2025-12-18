@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:logger/logger.dart';
 import '../../../core/constants/api_constants.dart';
 
@@ -20,6 +23,22 @@ class ApiClient {
         },
       ),
     );
+
+    // Configure HTTP client adapter to bypass proxy for localhost
+    // This fixes issues when system has a proxy configured (e.g., 127.0.0.1:7890)
+    (_dio.httpClientAdapter as DefaultHttpClientAdapter).onHttpClientCreate =
+        (client) {
+      client.findProxy = (uri) {
+        // Always bypass proxy for localhost and 127.0.0.1
+        if (uri.host == 'localhost' || uri.host == '127.0.0.1') {
+          return 'DIRECT';
+        }
+        // For other hosts, use DIRECT (no proxy) as well
+        // Can be changed to use system proxy if needed
+        return 'DIRECT';
+      };
+      return client;
+    };
 
     // Add interceptors
     _dio.interceptors.add(

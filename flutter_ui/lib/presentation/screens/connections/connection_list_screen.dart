@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/connection_model.dart';
-import '../../providers/connection_provider.dart';
+import '../../providers/connection_provider.dart' as conn_provider;
 import 'widgets/connection_form_dialog.dart';
 
 /// Connection list screen
@@ -10,7 +10,7 @@ class ConnectionListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final connectionState = ref.watch(connectionProvider);
+    final connectionState = ref.watch(conn_provider.connectionProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -19,7 +19,7 @@ class ConnectionListScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              ref.read(connectionProvider.notifier).loadConnections();
+              ref.read(conn_provider.connectionProvider.notifier).loadConnections();
             },
             tooltip: 'Refresh',
           ),
@@ -37,7 +37,7 @@ class ConnectionListScreen extends ConsumerWidget {
   Widget _buildBody(
     BuildContext context,
     WidgetRef ref,
-    ConnectionState state,
+    conn_provider.ConnectionState state,
   ) {
     // Show error if present
     if (state.error != null) {
@@ -50,12 +50,12 @@ class ConnectionListScreen extends ConsumerWidget {
               label: 'Dismiss',
               textColor: Colors.white,
               onPressed: () {
-                ref.read(connectionProvider.notifier).clearError();
+                ref.read(conn_provider.connectionProvider.notifier).clearError();
               },
             ),
           ),
         );
-        ref.read(connectionProvider.notifier).clearError();
+        ref.read(conn_provider.connectionProvider.notifier).clearError();
       });
     }
 
@@ -75,7 +75,7 @@ class ConnectionListScreen extends ConsumerWidget {
             Icon(
               Icons.storage_outlined,
               size: 80,
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 16),
             Text(
@@ -89,7 +89,7 @@ class ConnectionListScreen extends ConsumerWidget {
                     color: Theme.of(context)
                         .colorScheme
                         .onSurface
-                        .withOpacity(0.6),
+                        .withValues(alpha: 0.6),
                   ),
             ),
           ],
@@ -136,7 +136,7 @@ class ConnectionListScreen extends ConsumerWidget {
     );
 
     if (result != null) {
-      final notifier = ref.read(connectionProvider.notifier);
+      final notifier = ref.read(conn_provider.connectionProvider.notifier);
       final success = connection == null
           ? await notifier.addConnection(result)
           : await notifier.updateConnection(result);
@@ -182,7 +182,7 @@ class ConnectionListScreen extends ConsumerWidget {
 
     if (confirmed == true) {
       final success =
-          await ref.read(connectionProvider.notifier).deleteConnection(
+          await ref.read(conn_provider.connectionProvider.notifier).deleteConnection(
                 connection.id,
               );
 
@@ -206,6 +206,21 @@ class ConnectionListScreen extends ConsumerWidget {
     WidgetRef ref,
     ConnectionModel connection,
   ) async {
+    // Show password/key input dialog
+    final authValue = await showDialog<String>(
+      context: context,
+      builder: (context) => _AuthInputDialog(
+        authType: connection.authType,
+        connectionName: connection.name,
+      ),
+    );
+
+    if (authValue == null || authValue.isEmpty) {
+      return; // User cancelled
+    }
+
+    if (!context.mounted) return;
+
     // Show loading dialog
     showDialog(
       context: context,
@@ -228,12 +243,12 @@ class ConnectionListScreen extends ConsumerWidget {
     );
 
     final success =
-        await ref.read(connectionProvider.notifier).testConnection(
+        await ref.read(conn_provider.connectionProvider.notifier).testConnection(
               host: connection.host,
               port: connection.port,
               user: connection.user,
               authType: connection.authType,
-              authValue: '', // Would need to get from credential store
+              authValue: authValue,
             );
 
     if (context.mounted) {
@@ -305,7 +320,7 @@ class _ConnectionCard extends StatelessWidget {
                                     color: Theme.of(context)
                                         .colorScheme
                                         .onSurface
-                                        .withOpacity(0.7),
+                                        .withValues(alpha: 0.7),
                                   ),
                         ),
                       ],
@@ -360,11 +375,11 @@ class _ConnectionCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (connection.tags.isNotEmpty) ...[
+              if (connection.tags != null && connection.tags!.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
-                  children: connection.tags.map((tag) {
+                  children: connection.tags!.map((tag) {
                     return Chip(
                       label: Text(tag),
                       labelStyle: const TextStyle(fontSize: 12),
@@ -379,5 +394,91 @@ class _ConnectionCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Auth input dialog for testing connections
+class _AuthInputDialog extends StatefulWidget {
+  final String authType;
+  final String connectionName;
+
+  const _AuthInputDialog({
+    required this.authType,
+    required this.connectionName,
+  });
+
+  @override
+  State<_AuthInputDialog> createState() => _AuthInputDialogState();
+}
+
+class _AuthInputDialogState extends State<_AuthInputDialog> {
+  final _controller = TextEditingController();
+  bool _obscureText = true;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPassword = widget.authType == 'password';
+
+    return AlertDialog(
+      title: Text('Test Connection: ${widget.connectionName}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            isPassword ? 'Enter password:' : 'Enter private key path:',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            obscureText: isPassword && _obscureText,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: isPassword ? 'Password' : 'Private Key Path',
+              hintText: isPassword ? 'Your password' : '/path/to/private/key',
+              border: const OutlineInputBorder(),
+              prefixIcon: Icon(isPassword ? Icons.lock : Icons.vpn_key),
+              suffixIcon: isPassword
+                  ? IconButton(
+                      icon: Icon(
+                        _obscureText ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscureText = !_obscureText;
+                        });
+                      },
+                    )
+                  : null,
+            ),
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Test'),
+        ),
+      ],
+    );
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    if (value.isNotEmpty) {
+      Navigator.pop(context, value);
+    }
   }
 }

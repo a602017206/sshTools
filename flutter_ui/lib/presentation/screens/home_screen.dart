@@ -60,7 +60,7 @@ class HomeScreen extends ConsumerWidget {
                       title: 'SFTP File Manager',
                     ),
                     _FeatureItem(
-                      icon: Icons.monitoring,
+                      icon: Icons.monitor_heart,
                       title: 'System Monitoring',
                     ),
                   ],

@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../presentation/screens/connections/connection_list_screen.dart';
 import '../../presentation/screens/home_screen.dart';
