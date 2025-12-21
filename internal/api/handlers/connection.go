@@ -3,10 +3,10 @@ package handlers
 import (
 	"net/http"
 
+	"AHaSSHTools/internal/api/dto"
+	"AHaSSHTools/internal/config"
+	"AHaSSHTools/internal/service"
 	"github.com/gin-gonic/gin"
-	"sshTools/internal/api/dto"
-	"sshTools/internal/config"
-	"sshTools/internal/service"
 )
 
 // ConnectionHandler handles connection-related HTTP requests

@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"sshTools/internal/config"
+	"AHaSSHTools/internal/config"
 )
 
 // SettingsService handles application settings operations

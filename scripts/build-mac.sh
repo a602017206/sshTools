@@ -6,19 +6,19 @@
 set -e
 
 echo "=================================="
-echo "Building sshTools for macOS"
+echo "Building AHaSSHTools for macOS"
 echo "=================================="
 
 # Clean previous build
 echo "Cleaning previous build..."
-rm -rf build/bin/sshTools.app
+rm -rf build/bin/AHaSSHTools.app
 
 # Build the app
 echo "Building application..."
 wails build -clean
 
 # Post-build processing
-APP_PATH="./build/bin/sshTools.app"
+APP_PATH="./build/bin/AHaSSHTools.app"
 
 if [ ! -d "$APP_PATH" ]; then
     echo "❌ Error: Build failed, app not found at $APP_PATH"
@@ -52,11 +52,11 @@ echo "Distribution Instructions"
 echo "=================================="
 echo ""
 echo "1. Compress the app:"
-echo "   cd build/bin && zip -r sshTools.zip sshTools.app"
+echo "   cd build/bin && zip -r AHaSSHTools.zip AHaSSHTools.app"
 echo ""
 echo "2. Tell users to extract and run:"
-echo "   xattr -cr sshTools.app"
-echo "   open sshTools.app"
+echo "   xattr -cr AHaSSHTools.app"
+echo "   open AHaSSHTools.app"
 echo ""
 echo "3. Or users can allow in System Preferences:"
 echo "   System Preferences → Security & Privacy → General"

@@ -79,7 +79,7 @@ func NewConfigManager() (*ConfigManager, error) {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	configDir := filepath.Join(homeDir, ".sshtools")
+	configDir := filepath.Join(homeDir, ".ahasshtools")
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create config directory: %w", err)
 	}

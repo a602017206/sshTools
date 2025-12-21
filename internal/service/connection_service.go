@@ -3,9 +3,9 @@ package service
 import (
 	"fmt"
 
-	"sshTools/internal/config"
-	"sshTools/internal/ssh"
-	"sshTools/internal/store"
+	"AHaSSHTools/internal/config"
+	"AHaSSHTools/internal/ssh"
+	"AHaSSHTools/internal/store"
 )
 
 // ConnectionService handles SSH connection management operations

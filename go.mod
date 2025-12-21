@@ -1,4 +1,4 @@
-module sshTools
+module AHaSSHTools
 
 go 1.24.0
 

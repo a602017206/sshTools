@@ -9,11 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"sshTools/internal/api"
-	"sshTools/internal/config"
-	"sshTools/internal/service"
-	"sshTools/internal/ssh"
-	"sshTools/internal/store"
+	"AHaSSHTools/internal/api"
+	"AHaSSHTools/internal/config"
+	"AHaSSHTools/internal/service"
+	"AHaSSHTools/internal/ssh"
+	"AHaSSHTools/internal/store"
 )
 
 func main() {

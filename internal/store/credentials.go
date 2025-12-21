@@ -25,7 +25,7 @@ type CredentialStore struct {
 // NewCredentialStore creates a new credential store
 func NewCredentialStore() *CredentialStore {
 	homeDir, _ := os.UserHomeDir()
-	storePath := filepath.Join(homeDir, ".sshtools", "credentials.enc")
+	storePath := filepath.Join(homeDir, ".ahasshtools", "credentials.enc")
 
 	// Generate encryption key from machine-specific data
 	// In production, you might want to use system keychain instead

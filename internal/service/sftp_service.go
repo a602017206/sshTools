@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"sshTools/internal/ssh"
+	"AHaSSHTools/internal/ssh"
 )
 
 // ProgressCallback is a callback function for transfer progress

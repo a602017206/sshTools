@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"AHaSSHTools/internal/api/dto"
+	"AHaSSHTools/internal/api/websocket"
+	"AHaSSHTools/internal/service"
 	"github.com/gin-gonic/gin"
-	"sshTools/internal/api/dto"
-	"sshTools/internal/api/websocket"
-	"sshTools/internal/service"
 )
 
 // SessionHandler handles SSH session-related HTTP requests

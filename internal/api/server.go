@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
+	"AHaSSHTools/internal/api/handlers"
+	"AHaSSHTools/internal/api/websocket"
+	"AHaSSHTools/internal/service"
 	"github.com/gin-gonic/gin"
-	"sshTools/internal/api/handlers"
-	"sshTools/internal/api/websocket"
-	"sshTools/internal/service"
 )
 
 // Server represents the HTTP/WebSocket server

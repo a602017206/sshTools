@@ -1,7 +1,7 @@
 package service
 
 import (
-	"sshTools/internal/ssh"
+	"AHaSSHTools/internal/ssh"
 )
 
 // MonitorService handles system monitoring operations
