@@ -77,6 +77,7 @@
 
     // Add to sessions and tab order
     sessions.set(sessionId, newSession);
+    sessions = new Map(sessions);
     tabOrder.push(sessionId);
     tabOrder = tabOrder; // Trigger reactivity
 
@@ -122,6 +123,7 @@
       // Mark as connected
       newSession.connected = true;
       sessions.set(sessionId, newSession);
+      sessions = new Map(sessions);
 
       console.log('SSH connection established:', sessionId);
 
@@ -156,6 +158,7 @@
 
     // Remove from state
     sessions.delete(sessionId);
+    sessions = new Map(sessions);
     tabOrder = tabOrder.filter(id => id !== sessionId);
 
     // Switch to another tab or show welcome
@@ -384,18 +387,20 @@
 
       <!-- Terminal area with multiple instances -->
       <div class="terminal-area">
-        {#if activeSessionId}
+        {#if sessions.size > 0}
           {#each tabOrder as sessionId (sessionId)}
-            {#if sessionId === activeSessionId}
-              <div class="terminal-wrapper">
-                <Terminal
-                  bind:this={terminalRefs[sessionId]}
-                  sessionId={sessionId}
-                  onData={handleTerminalData}
-                  onResize={handleTerminalResize}
-                />
-              </div>
-            {/if}
+            <div
+              class="terminal-wrapper"
+              class:active={sessionId === activeSessionId}
+              class:inactive={sessionId !== activeSessionId}
+            >
+              <Terminal
+                bind:this={terminalRefs[sessionId]}
+                sessionId={sessionId}
+                onData={handleTerminalData}
+                onResize={handleTerminalResize}
+              />
+            </div>
           {/each}
         {:else}
           <div class="welcome">
@@ -578,6 +583,14 @@
     width: 100%;
     height: 100%;
     padding: 0; /* Terminals usually need full bleeding edge */
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .terminal-wrapper.active {
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
   }
 
   /* Welcome Screen */

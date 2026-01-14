@@ -11,7 +11,7 @@
     GetPassword,
     HasPassword,
   } from "../../wailsjs/go/main/App.js";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { showAlert, showError, showConfirm } from "../utils/dialog.js";
   import PasswordPrompt from "./PasswordPrompt.svelte";
   import Settings from "./Settings.svelte";
@@ -25,6 +25,12 @@
   let editingConnection = null;
   let testingConnection = false;
   let testResult = "";
+  let showCreateMenu = false;
+  let passwordVisible = false;
+  let passwordLoading = false;
+  let hasSavedPassword = false;
+  let passwordLoaded = false;
+  let passwordLoadError = "";
 
   // Password prompt modal
   let showPasswordPrompt = false;
@@ -55,6 +61,13 @@
     await loadConnections();
   });
 
+  $: updateModalOpenClass(showConnectionForm);
+
+  function updateModalOpenClass(isOpen) {
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle("modal-open", isOpen);
+  }
+
   async function loadConnections() {
     try {
       connections = await GetConnections();
@@ -69,9 +82,37 @@
     showSettings = true;
   }
 
+  function toggleCreateMenu() {
+    showCreateMenu = !showCreateMenu;
+  }
+
+  function closeCreateMenu() {
+    showCreateMenu = false;
+  }
+
+  function handleCreateConnection() {
+    showCreateMenu = false;
+    showNewConnectionForm();
+  }
+
+  async function handleCreateGroup() {
+    showCreateMenu = false;
+    await showAlert("新建组功能待实现");
+  }
+
+  async function handleTodoCreate(label) {
+    showCreateMenu = false;
+    await showAlert(`${label}功能待实现`);
+  }
+
   function showNewConnectionForm() {
     editingConnection = null;
     resetForm();
+    passwordVisible = false;
+    passwordLoading = false;
+    hasSavedPassword = false;
+    passwordLoaded = false;
+    passwordLoadError = "";
     showConnectionForm = true;
   }
 
@@ -90,6 +131,12 @@
       passphrase: "",
       tags: connection.tags || [],
     };
+    passwordVisible = false;
+    passwordLoading = false;
+    hasSavedPassword = false;
+    passwordLoaded = false;
+    passwordLoadError = "";
+    refreshSavedPasswordState(connection.id);
     showConnectionForm = true;
   }
 
@@ -291,12 +338,56 @@
       tags: [],
     };
     testResult = "";
+    passwordVisible = false;
+    passwordLoading = false;
+    hasSavedPassword = false;
+    passwordLoaded = false;
+    passwordLoadError = "";
   }
 
   function cancelForm() {
     resetForm();
     showConnectionForm = false;
     editingConnection = null;
+  }
+
+  onDestroy(() => {
+    updateModalOpenClass(false);
+  });
+
+  async function refreshSavedPasswordState(connectionId) {
+    if (!connectionId) return;
+    try {
+      hasSavedPassword = await HasPassword(connectionId);
+    } catch (error) {
+      console.error("Failed to check saved password:", error);
+      hasSavedPassword = false;
+    }
+  }
+
+  async function togglePasswordVisibility() {
+    const nextVisible = !passwordVisible;
+    passwordVisible = nextVisible;
+
+    if (
+      nextVisible &&
+      !passwordLoaded &&
+      hasSavedPassword &&
+      !formData.password &&
+      formData.id
+    ) {
+      passwordLoading = true;
+      passwordLoadError = "";
+      try {
+        formData.password = await GetPassword(formData.id);
+        passwordLoaded = true;
+      } catch (error) {
+        console.error("Failed to load saved password:", error);
+        passwordLoadError = "读取已保存密码失败";
+      } finally {
+        passwordLoading = false;
+      }
+    }
   }
 
   // 使用window方法暴露全局函数供onclick使用
@@ -323,7 +414,35 @@
 
 <div class="manager">
   <div class="header-bar">
-    <h2>资产</h2>
+    <div class="header-title">
+      <h2>资产</h2>
+      <div class="create-menu-wrapper">
+        <button class="create-btn" on:click={toggleCreateMenu} title="新建">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M7.25 2.5a.75.75 0 0 1 1.5 0v4.75H13a.75.75 0 0 1 0 1.5H8.75V13a.75.75 0 0 1-1.5 0V8.75H2.5a.75.75 0 0 1 0-1.5h4.75V2.5z"/>
+          </svg>
+          新建
+        </button>
+        {#if showCreateMenu}
+          <div class="menu-backdrop" on:click={closeCreateMenu}></div>
+          <div class="create-menu">
+            <button class="menu-item" on:click={handleCreateConnection}>
+              新建连接
+            </button>
+            <button class="menu-item" on:click={handleCreateGroup}>
+              新建组
+            </button>
+            <div class="menu-divider"></div>
+            <button class="menu-item disabled" disabled>
+              添加数据库连接（待实现）
+            </button>
+            <button class="menu-item disabled" disabled>
+              添加 Docker 连接（待实现）
+            </button>
+          </div>
+        {/if}
+      </div>
+    </div>
     <div class="header-actions">
       <button class="icon-btn" on:click={openSettings} title="设置">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -350,105 +469,151 @@
 
   <div class="content-area">
     {#if showConnectionForm}
-      <div class="form-box">
-        <h3>{editingConnection ? "编辑连接" : "新建连接"}</h3>
-
-        <div class="field">
-          <label>连接名称 *</label>
-          <input
-            type="text"
-            bind:value={formData.name}
-            placeholder="例如: 生产服务器"
-          />
-        </div>
-
-        <div class="field">
-          <label>主机地址 *</label>
-          <input
-            type="text"
-            bind:value={formData.host}
-            placeholder="例如: 192.168.1.100"
-          />
-        </div>
-
-        <div class="field-row">
-          <div class="field">
-            <label>端口</label>
-            <input type="number" bind:value={formData.port} />
+      <div class="modal-backdrop" on:click={cancelForm}>
+        <div class="modal" on:click|stopPropagation>
+          <div class="modal-header">
+            <h3>{editingConnection ? "编辑连接" : "新建连接"}</h3>
+            <button class="icon-btn" on:click={cancelForm} title="关闭">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/>
+              </svg>
+            </button>
           </div>
-          <div class="field">
-            <label>用户名 *</label>
-            <input
-              type="text"
-              bind:value={formData.user}
-              placeholder="例如: root"
-            />
-          </div>
-        </div>
 
-        <div class="field">
-          <label>认证方式</label>
-          <select bind:value={formData.auth_type}>
-            <option value="password">密码</option>
-            <option value="key">SSH 密钥</option>
-          </select>
-        </div>
-
-        {#if formData.auth_type === "password"}
-          <div class="field">
-            <label>密码</label>
-            <input
-              type="password"
-              bind:value={formData.password}
-              placeholder="用于测试连接"
-            />
-          </div>
-        {:else if formData.auth_type === "key"}
-          <div class="field">
-            <label>SSH 私钥文件</label>
-            <div class="key-file-selector">
+          <div class="form-box">
+            <div class="field">
+              <label>连接名称 *</label>
               <input
                 type="text"
-                bind:value={formData.key_path}
-                placeholder="点击选择密钥文件"
-                readonly
+                bind:value={formData.name}
+                placeholder="例如: 生产服务器"
               />
-              <button
-                class="btn-select-file"
-                on:click={handleSelectKeyFile}
-                type="button"
+            </div>
+
+            <div class="field">
+              <label>主机地址 *</label>
+              <input
+                type="text"
+                bind:value={formData.host}
+                placeholder="例如: 192.168.1.100"
+              />
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label>端口</label>
+                <input type="number" bind:value={formData.port} />
+              </div>
+              <div class="field">
+                <label>用户名 *</label>
+                <input
+                  type="text"
+                  bind:value={formData.user}
+                  placeholder="例如: root"
+                />
+              </div>
+            </div>
+
+            <div class="field">
+              <label>认证方式</label>
+              <select bind:value={formData.auth_type}>
+                <option value="password">密码</option>
+                <option value="key">SSH 密钥</option>
+              </select>
+            </div>
+
+            {#if formData.auth_type === "password"}
+              <div class="field">
+                <label>密码</label>
+                <div class="password-field">
+                  {#if passwordVisible}
+                    <input
+                      class="with-toggle"
+                      type="text"
+                      bind:value={formData.password}
+                      placeholder="用于测试连接"
+                    />
+                  {:else}
+                    <input
+                      class="with-toggle"
+                      type="password"
+                      bind:value={formData.password}
+                      placeholder="用于测试连接"
+                    />
+                  {/if}
+                  <button
+                    type="button"
+                    class="toggle-visibility"
+                    on:click={togglePasswordVisibility}
+                    title={passwordVisible ? "隐藏密码" : "显示已保存密码"}
+                    disabled={passwordLoading}
+                  >
+                    {#if passwordVisible}
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M8 3c3.5 0 6.3 2.2 7.4 5-1.1 2.8-3.9 5-7.4 5S1.7 10.8.6 8C1.7 5.2 4.5 3 8 3zm0 2c-1.7 0-3 1.3-3 3s1.3 3 3 3 3-1.3 3-3-1.3-3-3-3zm0 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/>
+                      </svg>
+                    {:else}
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M3.2 2.5a.75.75 0 0 1 1.06 0l9.5 9.5a.75.75 0 1 1-1.06 1.06l-1.6-1.6A7.9 7.9 0 0 1 8 13c-3.5 0-6.3-2.2-7.4-5a8.4 8.4 0 0 1 2.7-3.4L3.2 3.56a.75.75 0 0 1 0-1.06zM8 5c-.4 0-.8.1-1.1.3l1.1 1.1a1.5 1.5 0 0 1 1.9 1.9l1.1 1.1c.2-.3.3-.7.3-1.1 0-1.7-1.3-3-3-3zm-3.3 1.2a6.5 6.5 0 0 0-2.4 1.8c1.1 2.2 3.3 3.7 5.7 3.7.7 0 1.4-.1 2-.3l-1.1-1.1a3 3 0 0 1-4.2-4.1zM8 3c1.6 0 3.1.5 4.4 1.4L11.1 5.7A3 3 0 0 0 6.3 1.9L4.8 3.4A7.7 7.7 0 0 1 8 3z"/>
+                      </svg>
+                    {/if}
+                  </button>
+                </div>
+                {#if passwordLoadError}
+                  <div class="hint-text error-text">{passwordLoadError}</div>
+                {/if}
+                {#if !hasSavedPassword && editingConnection}
+                  <div class="hint-text">未检测到已保存的密码</div>
+                {/if}
+              </div>
+            {:else if formData.auth_type === "key"}
+              <div class="field">
+                <label>SSH 私钥文件</label>
+                <div class="key-file-selector">
+                  <input
+                    type="text"
+                    bind:value={formData.key_path}
+                    placeholder="点击选择密钥文件"
+                    readonly
+                  />
+                  <button
+                    class="btn-select-file"
+                    on:click={handleSelectKeyFile}
+                    type="button"
+                  >
+                    选择文件
+                  </button>
+                </div>
+              </div>
+              <div class="field">
+                <label>Passphrase（可选）</label>
+                <input
+                  type="password"
+                  bind:value={formData.passphrase}
+                  placeholder="如果密钥已加密，请输入 passphrase"
+                />
+                <div class="hint-text">
+                  如果您的 SSH 密钥文件已加密，请输入 passphrase。否则留空即可。
+                </div>
+              </div>
+            {/if}
+
+            {#if testResult}
+              <div
+                class="result {testResult.includes('成功') ? 'success' : 'error'}"
               >
-                选择文件
+                {testResult}
+              </div>
+            {/if}
+
+            <div class="actions">
+              <button on:click={cancelForm}>取消</button>
+              <button on:click={handleTestConnection} disabled={testingConnection}>
+                {testingConnection ? "测试中..." : "测试连接"}
               </button>
+              <button on:click={handleSaveConnection} class="primary">保存</button>
             </div>
           </div>
-          <div class="field">
-            <label>Passphrase（可选）</label>
-            <input
-              type="password"
-              bind:value={formData.passphrase}
-              placeholder="如果密钥已加密，请输入 passphrase"
-            />
-            <div class="hint-text">
-              如果您的 SSH 密钥文件已加密，请输入 passphrase。否则留空即可。
-            </div>
-          </div>
-        {/if}
-
-        {#if testResult}
-          <div
-            class="result {testResult.includes('成功') ? 'success' : 'error'}"
-          >
-            {testResult}
-          </div>
-        {/if}
-
-        <div class="actions">
-          <button on:click={cancelForm}>取消</button>
-          <button on:click={handleTestConnection} disabled={testingConnection}>
-            {testingConnection ? "测试中..." : "测试连接"}
-          </button>
-          <button on:click={handleSaveConnection} class="primary">保存</button>
         </div>
       </div>
     {:else}
@@ -494,22 +659,6 @@
       </div>
     {/if}
   </div>
-
-  <div class="footer-bar">
-    {#if !showConnectionForm}
-      <button
-        class="new-btn full-width"
-        onclick="document.getElementById('new-conn-trigger').click()"
-      >
-        + 新建连接
-      </button>
-      <button
-        id="new-conn-trigger"
-        style="display:none"
-        on:click={showNewConnectionForm}
-      ></button>
-    {/if}
-  </div>
 </div>
 
 <PasswordPrompt
@@ -545,6 +694,12 @@
     flex-shrink: 0;
   }
 
+  .header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
   h2 {
     margin: 0;
     font-size: 16px;
@@ -571,13 +726,6 @@
     overflow-y: auto;
     min-height: 0;
     padding: 16px;
-  }
-
-  .footer-bar {
-    padding: 16px;
-    border-top: 1px solid var(--border-secondary);
-    background: var(--bg-secondary);
-    flex-shrink: 0;
   }
 
   /* Buttons & Icons */
@@ -616,29 +764,119 @@
     gap: 6px;
   }
 
-  .new-btn {
-    background: var(--accent-primary);
-    color: white;
-    box-shadow: var(--shadow-sm);
-    width: 100%;
-    padding: 10px;
-    font-size: 14px;
+  .create-menu-wrapper {
+    position: relative;
   }
 
-  .new-btn:hover {
-    background: var(--accent-hover);
-    transform: translateY(-1px);
+  .create-btn {
+    padding: 6px 10px;
+    background: var(--accent-subtle);
+    color: var(--accent-primary);
+    border: 1px solid transparent;
+    font-weight: 600;
+  }
+
+  .create-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+  }
+
+  .menu-backdrop {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    z-index: 180;
+  }
+
+  .create-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 220px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-secondary);
+    border-radius: 8px;
     box-shadow: var(--shadow-md);
+    padding: 6px;
+    z-index: 190;
+  }
+
+  .menu-item {
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    text-align: left;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .menu-item:hover {
+    background: var(--bg-hover);
+  }
+
+  .menu-item.disabled {
+    color: var(--text-tertiary);
+    cursor: default;
+  }
+
+  .menu-item.disabled:hover {
+    background: transparent;
+  }
+
+  .menu-divider {
+    height: 1px;
+    background: var(--border-secondary);
+    margin: 6px 4px;
   }
 
   /* Form Styling */
-  .form-box {
-    background: var(--bg-tertiary);
-    padding: 24px;
-    border-radius: 8px;
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    animation: modalFadeIn 160ms ease-out;
+  }
+
+  .modal {
+    width: min(640px, calc(100vw - 32px));
+    max-height: calc(100vh - 80px);
+    overflow: hidden;
+    background: var(--bg-secondary);
     border: 1px solid var(--border-secondary);
-    margin-bottom: 20px;
-    box-shadow: var(--shadow-md);
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    animation: modalPopIn 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  :global(.modal-open .sidebar-resizer) {
+    pointer-events: none;
+    cursor: default;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 0 20px;
+  }
+
+  .form-box {
+    background: var(--bg-secondary);
+    padding: 16px 20px 20px 20px;
+    border-radius: 0;
+    border: none;
+    margin-bottom: 0;
+    box-shadow: none;
+    overflow-y: auto;
   }
 
   .field {
@@ -706,6 +944,63 @@
     color: var(--text-tertiary);
     margin-top: 6px;
     line-height: 1.4;
+  }
+
+  .hint-text.error-text {
+    color: var(--accent-error);
+  }
+
+  .password-field {
+    position: relative;
+  }
+
+  .with-toggle {
+    padding-right: 36px;
+  }
+
+  .toggle-visibility {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+  }
+
+  .toggle-visibility:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .toggle-visibility:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  @keyframes modalFadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes modalPopIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   /* Result Box */
