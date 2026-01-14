@@ -1,8 +1,8 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
-  import { fade } from 'svelte/transition';
-  import { monitorStore } from '../stores/monitor.js';
-  import { GetMonitoringData } from '../../wailsjs/go/main/App.js';
+  import { onMount, onDestroy } from "svelte";
+  import { fade } from "svelte/transition";
+  import { monitorStore } from "../stores/monitor.js";
+  import { GetMonitoringData } from "../../wailsjs/go/main/App.js";
 
   export let activeSessionId = null;
 
@@ -19,7 +19,7 @@
   let cpuHistory = [];
 
   // Subscribe to store
-  monitorStore.subscribe(state => {
+  monitorStore.subscribe((state) => {
     collapsed = state.collapsed;
     width = state.width;
     // Use stored interval if available, otherwise default
@@ -30,7 +30,7 @@
 
   // Fetch monitoring data
   async function fetchMetrics(isAutoRefresh = false) {
-    if (!activeSessionId || collapsed) return;
+    if (!activeSessionId) return;
 
     // Use cache first if available and not auto-refreshing
     if (!isAutoRefresh && metricsCache[activeSessionId] && !monitoringData) {
@@ -40,7 +40,7 @@
     if (!monitoringData && !isAutoRefresh) {
       isLoading = true;
     }
-    
+
     error = null;
 
     try {
@@ -51,7 +51,7 @@
       // Update CPU history (keep last 60 samples)
       cpuHistory = [...cpuHistory, data.cpu.overall].slice(-60);
     } catch (err) {
-      console.error('Failed to fetch monitoring data:', err);
+      console.error("Failed to fetch monitoring data:", err);
       // Only show error if we have no data
       if (!monitoringData) {
         error = err.message;
@@ -76,11 +76,11 @@
     startX = event.clientX;
     startWidth = width;
 
-    document.addEventListener('mousemove', handleDragMove);
-    document.addEventListener('mouseup', handleDragEnd);
+    document.addEventListener("mousemove", handleDragMove);
+    document.addEventListener("mouseup", handleDragEnd);
 
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
   }
 
   function handleDragMove(event) {
@@ -92,15 +92,15 @@
 
   async function handleDragEnd() {
     isDragging = false;
-    document.removeEventListener('mousemove', handleDragMove);
-    document.removeEventListener('mouseup', handleDragEnd);
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
+    document.removeEventListener("mousemove", handleDragMove);
+    document.removeEventListener("mouseup", handleDragEnd);
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
     await monitorStore.setWidth(width);
   }
 
   // Polling logic
-  $: if (activeSessionId && !collapsed) {
+  $: if (activeSessionId) {
     fetchMetrics(false); // Initial fetch
     if (intervalId) clearInterval(intervalId);
     intervalId = setInterval(() => fetchMetrics(true), refreshInterval * 1000);
@@ -121,22 +121,23 @@
 
   // Format bytes
   function formatBytes(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    if (bytes < 1024 * 1024 * 1024)
+      return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
   }
 
   // Format rate
   function formatRate(bytesPerSec) {
-    return formatBytes(bytesPerSec) + '/s';
+    return formatBytes(bytesPerSec) + "/s";
   }
 
   // Get color based on percentage
   function getColor(percent) {
-    if (percent < 60) return 'var(--accent-success)';
-    if (percent < 80) return '#f9a825';
-    return 'var(--accent-error)';
+    if (percent < 60) return "var(--accent-success)";
+    if (percent < 80) return "#f9a825";
+    return "var(--accent-error)";
   }
 </script>
 
@@ -146,25 +147,37 @@
     <div class="collapsed-content">
       <div class="metric">
         <div class="label">CPU</div>
-        <div class="value">{monitoringData?.cpu?.overall.toFixed(0) || '--'}%</div>
+        <div class="value">
+          {monitoringData?.cpu?.overall.toFixed(0) || "--"}%
+        </div>
       </div>
 
       <div class="metric">
         <div class="label">MEM</div>
-        <div class="value">{monitoringData?.memory?.used_percent.toFixed(0) || '--'}%</div>
+        <div class="value">
+          {monitoringData?.memory?.used_percent.toFixed(0) || "--"}%
+        </div>
       </div>
 
       <div class="metric">
         <div class="label">↑</div>
-        <div class="value small">{formatBytes(monitoringData?.network?.tx_rate || 0)}</div>
+        <div class="value small">
+          {formatBytes(monitoringData?.network?.tx_rate || 0)}
+        </div>
       </div>
 
       <div class="metric">
         <div class="label">↓</div>
-        <div class="value small">{formatBytes(monitoringData?.network?.rx_rate || 0)}</div>
+        <div class="value small">
+          {formatBytes(monitoringData?.network?.rx_rate || 0)}
+        </div>
       </div>
 
-      <button class="expand-btn" on:click={toggleCollapsed} title="展开监控面板">
+      <button
+        class="expand-btn"
+        on:click={toggleCollapsed}
+        title="展开监控面板"
+      >
         ☰
       </button>
     </div>
@@ -177,10 +190,15 @@
     on:mousedown={handleDragStart}
   ></div>
 
-  <div class="monitor-panel expanded" style="width: {width}px;">
+  <div
+    class="monitor-panel expanded"
+    class:dragging={isDragging}
+    style="width: {width}px;"
+  >
     <div class="header">
       <span class="title">
-        {monitoringData?.system?.username || ''}@{monitoringData?.system?.hostname || '服务器监控'}
+        {monitoringData?.system?.username || ""}@{monitoringData?.system
+          ?.hostname || "服务器监控"}
       </span>
       <button class="collapse-btn" on:click={toggleCollapsed}>─</button>
     </div>
@@ -220,7 +238,10 @@
             <div class="progress-bar">
               <div
                 class="progress-fill"
-                style="width: {monitoringData.cpu.overall}%; background: {getColor(monitoringData.cpu.overall)};"
+                style="width: {monitoringData.cpu
+                  .overall}%; background: {getColor(
+                  monitoringData.cpu.overall,
+                )};"
               ></div>
             </div>
           </div>
@@ -237,12 +258,19 @@
           <div class="progress-item">
             <div class="progress-header">
               <span>物理内存</span>
-              <span>{formatBytes(monitoringData.memory.used)} / {formatBytes(monitoringData.memory.total)}</span>
+              <span
+                >{formatBytes(monitoringData.memory.used)} / {formatBytes(
+                  monitoringData.memory.total,
+                )}</span
+              >
             </div>
             <div class="progress-bar">
               <div
                 class="progress-fill"
-                style="width: {monitoringData.memory.used_percent}%; background: {getColor(monitoringData.memory.used_percent)};"
+                style="width: {monitoringData.memory
+                  .used_percent}%; background: {getColor(
+                  monitoringData.memory.used_percent,
+                )};"
               ></div>
             </div>
           </div>
@@ -254,19 +282,27 @@
           <div class="info-grid">
             <div class="info-item">
               <span class="info-label">总上行:</span>
-              <span class="info-value">{formatBytes(monitoringData.network.total_tx_bytes)}</span>
+              <span class="info-value"
+                >{formatBytes(monitoringData.network.total_tx_bytes)}</span
+              >
             </div>
             <div class="info-item">
               <span class="info-label">总下行:</span>
-              <span class="info-value">{formatBytes(monitoringData.network.total_rx_bytes)}</span>
+              <span class="info-value"
+                >{formatBytes(monitoringData.network.total_rx_bytes)}</span
+              >
             </div>
             <div class="info-item">
               <span class="info-label">实时上行:</span>
-              <span class="info-value">{formatRate(monitoringData.network.tx_rate)}</span>
+              <span class="info-value"
+                >{formatRate(monitoringData.network.tx_rate)}</span
+              >
             </div>
             <div class="info-item">
               <span class="info-label">实时下行:</span>
-              <span class="info-value">{formatRate(monitoringData.network.rx_rate)}</span>
+              <span class="info-value"
+                >{formatRate(monitoringData.network.rx_rate)}</span
+              >
             </div>
           </div>
         </section>
@@ -278,12 +314,18 @@
             <div class="progress-item">
               <div class="progress-header">
                 <span>{partition.mount_point}</span>
-                <span>{formatBytes(partition.used)} / {formatBytes(partition.total)}</span>
+                <span
+                  >{formatBytes(partition.used)} / {formatBytes(
+                    partition.total,
+                  )}</span
+                >
               </div>
               <div class="progress-bar">
                 <div
                   class="progress-fill"
-                  style="width: {partition.used_percent}%; background: {getColor(partition.used_percent)};"
+                  style="width: {partition.used_percent}%; background: {getColor(
+                    partition.used_percent,
+                  )};"
                 ></div>
               </div>
             </div>
@@ -295,7 +337,10 @@
     <div class="footer">
       <label>
         刷新:
-        <select bind:value={refreshInterval} on:change={() => monitorStore.setRefreshInterval(refreshInterval)}>
+        <select
+          bind:value={refreshInterval}
+          on:change={() => monitorStore.setRefreshInterval(refreshInterval)}
+        >
           <option value={2}>2秒</option>
           <option value={5}>5秒</option>
           <option value={10}>10秒</option>
@@ -348,7 +393,7 @@
     border-radius: 6px;
     padding: 12px;
     margin-bottom: 16px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
 
   .monitor-card:last-child {
@@ -382,7 +427,9 @@
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .collapsed-content {

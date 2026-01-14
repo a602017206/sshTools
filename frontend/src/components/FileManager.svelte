@@ -1,8 +1,8 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
-  import { fade, fly } from 'svelte/transition';
-  import { fileManagerStore } from '../stores/fileManager.js';
-  import { EventsOn } from '../../wailsjs/runtime/runtime.js';
+  import { onMount, onDestroy } from "svelte";
+  import { fade, fly } from "svelte/transition";
+  import { fileManagerStore } from "../stores/fileManager.js";
+  import { EventsOn } from "../../wailsjs/runtime/runtime.js";
   import {
     ListFiles,
     UploadFiles,
@@ -14,18 +14,18 @@
     SelectDownloadDirectory,
     CancelTransfer,
     ShowQuestionDialog,
-    ShowErrorDialog
-  } from '../../wailsjs/go/main/App.js';
-  import FileListItem from './FileListItem.svelte';
-  import TransferProgressBar from './TransferProgressBar.svelte';
-  import FileOperationModal from './FileOperationModal.svelte';
-  import Icon from './Icon.svelte';
+    ShowErrorDialog,
+  } from "../../wailsjs/go/main/App.js";
+  import FileListItem from "./FileListItem.svelte";
+  import TransferProgressBar from "./TransferProgressBar.svelte";
+  import FileOperationModal from "./FileOperationModal.svelte";
+  import Icon from "./Icon.svelte";
 
   export let activeSessionId = null;
 
   let collapsed = true;
   let width = 400;
-  let currentPath = '/';
+  let currentPath = "/";
   let files = [];
   let selectedFiles = new Set();
   let isLoading = false;
@@ -40,8 +40,8 @@
   let showCreateDirModal = false;
   let showGoToPathModal = false;
   let renameTarget = null;
-  let newName = '';
-  let goToPath = '';
+  let newName = "";
+  let goToPath = "";
 
   // Resize state
   let isDragging = false;
@@ -52,14 +52,14 @@
   let progressUnsubscribers = [];
 
   // Subscribe to store
-  const unsubscribe = fileManagerStore.subscribe(state => {
+  const unsubscribe = fileManagerStore.subscribe((state) => {
     collapsed = state.collapsed;
     width = state.width;
     transfers = state.transfers;
 
     if (activeSessionId && state.sessionStates[activeSessionId]) {
       const sessionState = state.sessionStates[activeSessionId];
-      currentPath = sessionState.currentPath || '/';
+      currentPath = sessionState.currentPath || "/";
       files = sessionState.files || [];
       selectedFiles = new Set(sessionState.selectedFiles || []);
     }
@@ -98,12 +98,12 @@
       fileManagerStore.setSessionState(activeSessionId, {
         currentPath: path,
         files: files,
-        selectedFiles: []
+        selectedFiles: [],
       });
       selectedFiles.clear();
     } catch (err) {
-      console.error('Failed to load directory:', err);
-      error = err.message || '加载目录失败';
+      console.error("Failed to load directory:", err);
+      error = err.message || "加载目录失败";
     } finally {
       isLoading = false;
     }
@@ -119,11 +119,11 @@
     startX = event.clientX;
     startWidth = width;
 
-    document.addEventListener('mousemove', handleDragMove);
-    document.addEventListener('mouseup', handleDragEnd);
+    document.addEventListener("mousemove", handleDragMove);
+    document.addEventListener("mouseup", handleDragEnd);
 
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
   }
 
   function handleDragMove(event) {
@@ -135,10 +135,10 @@
 
   async function handleDragEnd() {
     isDragging = false;
-    document.removeEventListener('mousemove', handleDragMove);
-    document.removeEventListener('mouseup', handleDragEnd);
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
+    document.removeEventListener("mousemove", handleDragMove);
+    document.removeEventListener("mouseup", handleDragEnd);
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
     await fileManagerStore.setWidth(width);
   }
 
@@ -162,7 +162,7 @@
     }
 
     fileManagerStore.setSessionState(activeSessionId, {
-      selectedFiles: Array.from(selectedFiles)
+      selectedFiles: Array.from(selectedFiles),
     });
   }
 
@@ -178,14 +178,18 @@
       const localPaths = await SelectUploadFiles();
       if (!localPaths || localPaths.length === 0) return;
 
-      const transferIDs = await UploadFiles(activeSessionId, localPaths, currentPath);
-      transferIDs.forEach(id => subscribeToTransfer(id));
+      const transferIDs = await UploadFiles(
+        activeSessionId,
+        localPaths,
+        currentPath,
+      );
+      transferIDs.forEach((id) => subscribeToTransfer(id));
 
       // Refresh directory after a short delay
       setTimeout(() => loadDirectory(currentPath), 2000);
     } catch (err) {
-      console.error('Upload failed:', err);
-      await ShowErrorDialog('上传失败', err.message || '上传文件时发生错误');
+      console.error("Upload failed:", err);
+      await ShowErrorDialog("上传失败", err.message || "上传文件时发生错误");
     }
   }
 
@@ -197,11 +201,15 @@
       if (!localDir) return;
 
       const remotePaths = Array.from(selectedFiles);
-      const transferIDs = await DownloadFiles(activeSessionId, remotePaths, localDir);
-      transferIDs.forEach(id => subscribeToTransfer(id));
+      const transferIDs = await DownloadFiles(
+        activeSessionId,
+        remotePaths,
+        localDir,
+      );
+      transferIDs.forEach((id) => subscribeToTransfer(id));
     } catch (err) {
-      console.error('Download failed:', err);
-      await ShowErrorDialog('下载失败', err.message || '下载文件时发生错误');
+      console.error("Download failed:", err);
+      await ShowErrorDialog("下载失败", err.message || "下载文件时发生错误");
     }
   }
 
@@ -210,8 +218,8 @@
 
     try {
       const confirmed = await ShowQuestionDialog(
-        '确认删除',
-        `确定要删除选中的 ${selectedFiles.size} 个项目吗？`
+        "确认删除",
+        `确定要删除选中的 ${selectedFiles.size} 个项目吗？`,
       );
 
       if (!confirmed) return;
@@ -220,8 +228,8 @@
       selectedFiles.clear();
       await loadDirectory(currentPath);
     } catch (err) {
-      console.error('Delete failed:', err);
-      await ShowErrorDialog('删除失败', err.message || '删除文件时发生错误');
+      console.error("Delete failed:", err);
+      await ShowErrorDialog("删除失败", err.message || "删除文件时发生错误");
     }
   }
 
@@ -229,7 +237,7 @@
     if (selectedFiles.size !== 1) return;
 
     const filePath = Array.from(selectedFiles)[0];
-    const file = files.find(f => f.path === filePath);
+    const file = files.find((f) => f.path === filePath);
     if (!file) return;
 
     renameTarget = file;
@@ -242,18 +250,20 @@
     if (!renameTarget || !name) return;
 
     try {
-      const dirPath = currentPath.endsWith('/') ? currentPath : currentPath + '/';
+      const dirPath = currentPath.endsWith("/")
+        ? currentPath
+        : currentPath + "/";
       const newPath = dirPath + name;
 
       await RenameFile(activeSessionId, renameTarget.path, newPath);
       await loadDirectory(currentPath);
     } catch (err) {
-      console.error('Rename failed:', err);
-      await ShowErrorDialog('重命名失败', err.message || '重命名时发生错误');
+      console.error("Rename failed:", err);
+      await ShowErrorDialog("重命名失败", err.message || "重命名时发生错误");
     }
 
     renameTarget = null;
-    newName = '';
+    newName = "";
   }
 
   async function handleCreateDir(event) {
@@ -261,14 +271,19 @@
     if (!name) return;
 
     try {
-      const dirPath = currentPath.endsWith('/') ? currentPath : currentPath + '/';
+      const dirPath = currentPath.endsWith("/")
+        ? currentPath
+        : currentPath + "/";
       const newPath = dirPath + name;
 
       await CreateDirectory(activeSessionId, newPath);
       await loadDirectory(currentPath);
     } catch (err) {
-      console.error('Create directory failed:', err);
-      await ShowErrorDialog('创建文件夹失败', err.message || '创建文件夹时发生错误');
+      console.error("Create directory failed:", err);
+      await ShowErrorDialog(
+        "创建文件夹失败",
+        err.message || "创建文件夹时发生错误",
+      );
     }
   }
 
@@ -278,16 +293,16 @@
 
     try {
       // Normalize path - ensure it starts with /
-      const normalizedPath = path.startsWith('/') ? path : '/' + path;
+      const normalizedPath = path.startsWith("/") ? path : "/" + path;
 
       // Try to load the directory
       await loadDirectory(normalizedPath);
 
       // Clear the input
-      goToPath = '';
+      goToPath = "";
     } catch (err) {
-      console.error('Go to path failed:', err);
-      await ShowErrorDialog('跳转失败', err.message || '无法访问该路径');
+      console.error("Go to path failed:", err);
+      await ShowErrorDialog("跳转失败", err.message || "无法访问该路径");
     }
   }
 
@@ -300,13 +315,13 @@
   }
 
   // Breadcrumb navigation
-  $: pathParts = currentPath.split('/').filter(p => p);
+  $: pathParts = currentPath.split("/").filter((p) => p);
 
   function handleBreadcrumbClick(index) {
     if (index === -1) {
-      navigateTo('/');
+      navigateTo("/");
     } else {
-      const path = '/' + pathParts.slice(0, index + 1).join('/');
+      const path = "/" + pathParts.slice(0, index + 1).join("/");
       navigateTo(path);
     }
   }
@@ -333,8 +348,11 @@
     // 尝试使用拖放 API
     const files = event.dataTransfer.files;
     if (!files || files.length === 0) {
-      console.warn('No files in drop event');
-      await ShowErrorDialog('拖放失败', '请使用上传按钮选择文件。\n\n注意：由于 Wails 框架限制，拖放文件功能可能无法使用。');
+      console.warn("No files in drop event");
+      await ShowErrorDialog(
+        "拖放失败",
+        "请使用上传按钮选择文件。\n\n注意：由于 Wails 框架限制，拖放文件功能可能无法使用。",
+      );
       return;
     }
 
@@ -350,22 +368,26 @@
 
     // 如果无法获取路径，提示用户使用上传按钮
     if (filePaths.length === 0) {
-      console.warn('Cannot access file paths from drop event in Wails');
+      console.warn("Cannot access file paths from drop event in Wails");
       await ShowErrorDialog(
-        '拖放功能不可用',
-        '抱歉，Wails 应用暂不支持拖放上传。\n\n请点击工具栏的"上传"按钮选择文件。'
+        "拖放功能不可用",
+        '抱歉，Wails 应用暂不支持拖放上传。\n\n请点击工具栏的"上传"按钮选择文件。',
       );
       return;
     }
 
     // 如果成功获取路径，执行上传
     try {
-      const transferIDs = await UploadFiles(activeSessionId, filePaths, currentPath);
-      transferIDs.forEach(id => subscribeToTransfer(id));
+      const transferIDs = await UploadFiles(
+        activeSessionId,
+        filePaths,
+        currentPath,
+      );
+      transferIDs.forEach((id) => subscribeToTransfer(id));
       setTimeout(() => loadDirectory(currentPath), 2000);
     } catch (err) {
-      console.error('Drop upload failed:', err);
-      await ShowErrorDialog('上传失败', err.message || '上传文件时发生错误');
+      console.error("Drop upload failed:", err);
+      await ShowErrorDialog("上传失败", err.message || "上传文件时发生错误");
     }
   }
 
@@ -376,7 +398,7 @@
       fileManagerStore.updateTransfer(transferID, progress);
 
       // Auto-cleanup completed transfers after 3 seconds
-      if (progress.status === 'completed' || progress.status === 'failed') {
+      if (progress.status === "completed" || progress.status === "failed") {
         setTimeout(() => {
           fileManagerStore.removeTransfer(transferID);
         }, 3000);
@@ -391,7 +413,7 @@
     try {
       await CancelTransfer(transferID);
     } catch (err) {
-      console.error('Cancel transfer failed:', err);
+      console.error("Cancel transfer failed:", err);
     }
   }
 
@@ -401,7 +423,7 @@
 
   onDestroy(() => {
     unsubscribe();
-    progressUnsubscribers.forEach(unsub => unsub());
+    progressUnsubscribers.forEach((unsub) => unsub());
   });
 </script>
 
@@ -409,7 +431,14 @@
   <!-- Collapsed State -->
   <div class="file-panel collapsed" transition:fly={{ x: -20, duration: 200 }}>
     <div class="collapsed-content">
-      <div class="sidebar-icon" title="文件管理器">
+      <div
+        class="sidebar-icon"
+        title="点击展开"
+        on:click={toggleCollapsed}
+        on:keydown={(e) => e.key === "Enter" && toggleCollapsed()}
+        role="button"
+        tabindex="0"
+      >
         <Icon name="folder" size={24} color="var(--text-secondary)" />
       </div>
       <button class="expand-btn" on:click={toggleCollapsed} title="展开">
@@ -425,16 +454,32 @@
     on:mousedown={handleDragStart}
   ></div>
 
-  <div class="file-panel expanded" style="width: {width}px;" transition:fly={{ x: -20, duration: 200 }}>
+  <div
+    class="file-panel expanded"
+    style="width: {width}px;"
+    transition:fly={{ x: -20, duration: 200 }}
+  >
     <!-- Header -->
     <div class="header">
       <div class="breadcrumb">
-        <button class="breadcrumb-item home" on:click={() => handleBreadcrumbClick(-1)} title="根目录">
+        <button
+          class="breadcrumb-item home"
+          on:click={() => handleBreadcrumbClick(-1)}
+          title="根目录"
+        >
           <Icon name="home" size={16} />
         </button>
         {#each pathParts as part, i}
-          <Icon name="chevronRight" size={14} color="var(--text-secondary)" className="separator" />
-          <button class="breadcrumb-item" on:click={() => handleBreadcrumbClick(i)}>
+          <Icon
+            name="chevronRight"
+            size={14}
+            color="var(--text-secondary)"
+            className="separator"
+          />
+          <button
+            class="breadcrumb-item"
+            on:click={() => handleBreadcrumbClick(i)}
+          >
             {part}
           </button>
         {/each}
@@ -463,11 +508,15 @@
           <span>下载</span>
         </button>
       </div>
-      
+
       <div class="toolbar-divider"></div>
-      
+
       <div class="toolbar-group">
-        <button on:click={() => showCreateDirModal = true} title="新建文件夹" class="toolbar-btn icon-only">
+        <button
+          on:click={() => (showCreateDirModal = true)}
+          title="新建文件夹"
+          class="toolbar-btn icon-only"
+        >
           <Icon name="folder-plus" size={18} />
         </button>
         <button
@@ -478,16 +527,24 @@
         >
           <Icon name="edit" size={16} />
         </button>
-        <button on:click={handleRefresh} title="刷新" class="toolbar-btn icon-only">
+        <button
+          on:click={handleRefresh}
+          title="刷新"
+          class="toolbar-btn icon-only"
+        >
           <Icon name="refresh" size={16} />
         </button>
-        <button on:click={() => showGoToPathModal = true} title="跳转到路径" class="toolbar-btn icon-only">
+        <button
+          on:click={() => (showGoToPathModal = true)}
+          title="跳转到路径"
+          class="toolbar-btn icon-only"
+        >
           <Icon name="search" size={16} />
         </button>
       </div>
-      
+
       <div class="toolbar-spacer"></div>
-      
+
       <div class="toolbar-group">
         <button
           on:click={handleDelete}
@@ -541,7 +598,7 @@
               on:click={handleFileClick}
               on:dblclick={handleFileDoubleClick}
               on:contextmenu={(e) => {
-                 // Context menu logic could go here
+                // Context menu logic could go here
               }}
             />
           {/each}
@@ -710,7 +767,7 @@
     padding-right: 8px;
     scrollbar-width: none; /* Firefox */
   }
-  
+
   .breadcrumb::-webkit-scrollbar {
     display: none; /* Chrome/Safari */
   }
@@ -731,12 +788,12 @@
     background: var(--bg-hover);
     color: var(--text-primary);
   }
-  
+
   .breadcrumb-item:last-child {
     color: var(--text-primary);
     font-weight: 500;
   }
-  
+
   .breadcrumb-item.home {
     padding: 4px;
     display: flex;
@@ -777,20 +834,20 @@
     flex-wrap: nowrap;
     overflow-x: auto;
   }
-  
+
   .toolbar-group {
     display: flex;
     gap: 4px;
     align-items: center;
   }
-  
+
   .toolbar-divider {
     width: 1px;
     height: 20px;
     background: var(--border-primary);
     margin: 0 4px;
   }
-  
+
   .toolbar-spacer {
     flex: 1;
   }
@@ -809,7 +866,7 @@
     transition: all 0.2s;
     white-space: nowrap;
   }
-  
+
   .toolbar-btn.icon-only {
     padding: 6px;
   }
@@ -818,7 +875,7 @@
     background: var(--bg-hover);
     border-color: var(--border-primary);
   }
-  
+
   .toolbar-btn:active:not(:disabled) {
     background: var(--bg-input);
   }
@@ -833,7 +890,7 @@
     color: var(--accent-error);
     border-color: rgba(244, 67, 54, 0.2);
   }
-  
+
   /* File List Header */
   .file-list-header {
     display: grid;
@@ -846,13 +903,13 @@
     color: var(--text-secondary);
     user-select: none;
   }
-  
+
   .file-list-header .col-size,
   .file-list-header .col-date {
     text-align: right;
     padding-right: 16px;
   }
-  
+
   .file-list-header .col-date {
     padding-right: 0;
   }
@@ -884,20 +941,20 @@
     color: var(--text-secondary);
     gap: 16px;
   }
-  
+
   .state-container p {
     margin: 0;
     font-size: 14px;
   }
-  
+
   .empty {
     opacity: 0.7;
   }
-  
+
   .error {
     color: var(--accent-error);
   }
-  
+
   .retry-btn {
     padding: 6px 16px;
     background: var(--bg-secondary);
@@ -908,12 +965,12 @@
     font-size: 13px;
     transition: all 0.2s;
   }
-  
+
   .retry-btn:hover {
     background: var(--bg-hover);
     border-color: var(--accent-primary);
   }
-  
+
   /* Spinner */
   .spinner {
     width: 32px;
@@ -923,9 +980,11 @@
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }
-  
+
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* Drop Overlay */
@@ -946,7 +1005,7 @@
     margin: 10px;
     border-radius: 8px;
   }
-  
+
   .drop-content {
     display: flex;
     flex-direction: column;
@@ -955,7 +1014,7 @@
     padding: 40px;
     background: var(--bg-secondary);
     border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
   }
 
   .drop-message {
@@ -971,9 +1030,9 @@
     max-height: 250px;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
   }
-  
+
   .transfers-header {
     display: flex;
     align-items: center;
@@ -991,7 +1050,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-  
+
   .badge {
     background: var(--accent-primary);
     color: white;

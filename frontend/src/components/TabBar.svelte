@@ -133,64 +133,71 @@
   .tab-bar {
     display: flex;
     align-items: center;
-    padding: 0 8px;
-    gap: 4px;
+    padding: 0 4px;
     height: 100%;
     overflow-x: auto;
     overflow-y: hidden;
+    /* Hide scrollbar */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
 
-  /* Hide scrollbar for cleaner look */
   .tab-bar::-webkit-scrollbar {
-    height: 4px;
-  }
-
-  .tab-bar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .tab-bar::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 2px;
-  }
-
-  .tab-bar::-webkit-scrollbar-thumb:hover {
-    background: var(--scrollbar-thumb-hover);
+    display: none;
   }
 
   .tab {
     display: flex;
     align-items: center;
-    padding: 8px 12px;
-    background: var(--bg-hover);
-    border: 1px solid transparent;
-    border-radius: 4px 4px 0 0;
+    height: 32px; /* Slightly smaller than header */
+    padding: 0 10px;
+    margin-right: 2px;
+    background: transparent;
+    border-radius: 4px; /* Rounded tabs */
     cursor: pointer;
     user-select: none;
-    transition: background 0.15s;
+    transition: all 0.15s ease;
     min-width: 120px;
     max-width: 200px;
     position: relative;
     flex-shrink: 0;
-  }
-
-  .tab.active {
-    background: var(--bg-primary);
-    border-color: var(--border-active);
-    border-bottom-color: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid transparent;
   }
 
   .tab:hover:not(.active) {
     background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .tab.active {
+    background: var(--bg-active);
+    color: var(--text-on-accent);
+    /* Try a subtle accent color background or just lighter grey */
+    background: var(--bg-tertiary); /* active tab distinctive */
+    color: var(--text-primary);
+    border: 1px solid var(--border-secondary);
+    box-shadow: var(--shadow-sm);
+  }
+  
+  /* Active tab text should be brighter */
+  .tab.active .tab-title {
+    font-weight: 500;
   }
 
   .tab-status {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--accent-success);
     margin-right: 8px;
     flex-shrink: 0;
+    opacity: 0.8;
+  }
+
+  .tab.active .tab-status {
+    opacity: 1;
+    box-shadow: 0 0 4px var(--accent-success);
   }
 
   .tab-title {
@@ -199,14 +206,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 13px;
-    color: var(--text-primary);
     min-width: 0;
+    padding-right: 4px;
   }
 
   .tab-title-input {
     flex: 1;
-    background: var(--bg-input);
-    border: 1px solid var(--border-active);
+    background: var(--bg-primary);
+    border: 1px solid var(--accent-primary);
     color: var(--text-primary);
     padding: 2px 4px;
     font-size: 13px;
@@ -216,39 +223,45 @@
   }
 
   .tab-close {
-    width: 16px;
-    height: 16px;
-    margin-left: 8px;
+    width: 18px;
+    height: 18px;
+    margin-left: 2px;
     padding: 0;
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: currentColor;
+    opacity: 0.6;
     cursor: pointer;
-    font-size: 18px;
-    line-height: 16px;
-    flex-shrink: 0;
+    border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-size: 14px;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: all 0.15s;
   }
 
   .tab-close:hover {
-    color: var(--text-primary);
     background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
+    opacity: 1;
   }
 
   .add-tab-btn {
-    padding: 8px 12px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     color: var(--text-secondary);
     border: none;
     cursor: pointer;
     font-size: 18px;
-    line-height: 1;
-    flex-shrink: 0;
     border-radius: 4px;
-    transition: background 0.15s, color 0.15s;
+    margin-left: 4px;
+    transition: all 0.15s;
+    flex-shrink: 0;
   }
 
   .add-tab-btn:hover {

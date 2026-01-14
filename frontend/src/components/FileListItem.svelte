@@ -1,6 +1,6 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
-  import Icon from './Icon.svelte';
+  import { createEventDispatcher } from "svelte";
+  import Icon from "./Icon.svelte";
 
   export let file;
   export let selected = false;
@@ -9,67 +9,68 @@
 
   // Get file icon name based on type
   function getFileIconName(file) {
-    if (file.is_dir) return 'folder';
-    if (file.is_symlink) return 'link';
+    if (file.is_dir) return "folder";
+    if (file.is_symlink) return "link";
 
     // File extensions
-    const ext = file.name.split('.').pop().toLowerCase();
+    const ext = file.name.split(".").pop().toLowerCase();
     const iconMap = {
-      'txt': 'file-text',
-      'md': 'file-text',
-      'pdf': 'file-text',
-      'doc': 'file-text',
-      'docx': 'file-text',
-      'xls': 'file-text',
-      'xlsx': 'file-text',
-      'ppt': 'file-text',
-      'pptx': 'file-text',
-      'zip': 'file-archive',
-      'tar': 'file-archive',
-      'gz': 'file-archive',
-      'rar': 'file-archive',
-      '7z': 'file-archive',
-      'jpg': 'file-image',
-      'jpeg': 'file-image',
-      'png': 'file-image',
-      'gif': 'file-image',
-      'svg': 'file-image',
-      'mp3': 'file-music',
-      'wav': 'file-music',
-      'mp4': 'file-video',
-      'avi': 'file-video',
-      'mkv': 'file-video',
-      'js': 'file-code',
-      'ts': 'file-code',
-      'py': 'file-code',
-      'go': 'file-code',
-      'java': 'file-code',
-      'c': 'file-code',
-      'cpp': 'file-code',
-      'rs': 'file-code',
-      'sh': 'file-code',
-      'json': 'file-code',
-      'xml': 'file-code',
-      'yaml': 'file-code',
-      'yml': 'file-code',
+      txt: "file-text",
+      md: "file-text",
+      pdf: "file-text",
+      doc: "file-text",
+      docx: "file-text",
+      xls: "file-text",
+      xlsx: "file-text",
+      ppt: "file-text",
+      pptx: "file-text",
+      zip: "file-archive",
+      tar: "file-archive",
+      gz: "file-archive",
+      rar: "file-archive",
+      "7z": "file-archive",
+      jpg: "file-image",
+      jpeg: "file-image",
+      png: "file-image",
+      gif: "file-image",
+      svg: "file-image",
+      mp3: "file-music",
+      wav: "file-music",
+      mp4: "file-video",
+      avi: "file-video",
+      mkv: "file-video",
+      js: "file-code",
+      ts: "file-code",
+      py: "file-code",
+      go: "file-code",
+      java: "file-code",
+      c: "file-code",
+      cpp: "file-code",
+      rs: "file-code",
+      sh: "file-code",
+      json: "file-code",
+      xml: "file-code",
+      yaml: "file-code",
+      yml: "file-code",
     };
 
-    return iconMap[ext] || 'file';
+    return iconMap[ext] || "file";
   }
-  
+
   // Get icon color
   function getIconColor(file) {
-    if (file.is_dir) return 'var(--accent-primary)';
-    if (file.is_symlink) return 'var(--accent-success)';
-    return 'var(--text-secondary)';
+    if (file.is_dir) return "var(--accent-primary)";
+    if (file.is_symlink) return "var(--accent-success)";
+    return "var(--text-secondary)";
   }
 
   // Format file size
   function formatSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    if (bytes < 1024 * 1024 * 1024)
+      return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
   }
 
   // Format date
@@ -80,25 +81,38 @@
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
     if (days === 0) {
-      return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     } else if (days < 7) {
       return `${days}天前`;
     } else {
-      return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+      return date.toLocaleDateString("zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+      });
     }
   }
 
   function handleClick(event) {
-    dispatch('click', { file, event });
+    dispatch("click", { file, event });
   }
 
   function handleDoubleClick() {
-    dispatch('dblclick', file);
+    dispatch("dblclick", file);
   }
 
   function handleContextMenu(event) {
     event.preventDefault();
-    dispatch('contextmenu', { file, event });
+    dispatch("contextmenu", { file, event });
+  }
+  function handleIconClick(event) {
+    // If directory, clicking icon directly enters it (like double click)
+    if (file.is_dir) {
+      event.stopPropagation();
+      dispatch("dblclick", file);
+    }
   }
 </script>
 
@@ -112,17 +126,22 @@
   role="button"
   tabindex="0"
 >
-  <div class="col-icon">
-    <Icon name={getFileIconName(file)} size={18} color={selected ? 'white' : getIconColor(file)} />
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <div class="col-icon" on:click={handleIconClick} role="button" tabindex="0">
+    <Icon
+      name={getFileIconName(file)}
+      size={18}
+      color={selected ? "white" : getIconColor(file)}
+    />
   </div>
-  
+
   <div class="col-name" title={file.name}>
     {file.name}
     {#if file.is_symlink && file.link_target}
       <span class="symlink-target">→ {file.link_target}</span>
     {/if}
   </div>
-  
+
   <div class="col-size">
     {#if !file.is_dir}
       {formatSize(file.size)}
@@ -130,7 +149,7 @@
       -
     {/if}
   </div>
-  
+
   <div class="col-date">
     {formatDate(file.mod_time)}
   </div>
@@ -181,7 +200,7 @@
     font-size: 11px;
     margin-left: 6px;
   }
-  
+
   .file-item.selected .symlink-target {
     color: rgba(255, 255, 255, 0.7);
   }
@@ -192,13 +211,13 @@
     text-align: right;
     padding-right: 16px;
   }
-  
+
   .col-date {
     font-size: 12px;
     color: var(--text-secondary);
     text-align: right;
   }
-  
+
   .file-item.selected .col-size,
   .file-item.selected .col-date {
     color: rgba(255, 255, 255, 0.8);

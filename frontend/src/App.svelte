@@ -425,6 +425,8 @@
   :global(body) {
     margin: 0;
     padding: 0;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
   }
 
   main {
@@ -437,155 +439,136 @@
     display: flex;
     height: 100%;
     background-color: var(--bg-primary);
-    overflow-x: auto; /* Allow horizontal scroll if panels take too much space */
   }
 
+  /* Sidebar */
   .sidebar {
     background: var(--bg-secondary);
     border-right: 1px solid var(--border-primary);
-    overflow: hidden;
-    -webkit-app-region: no-drag !important;
-    transition: width 0.3s ease, min-width 0.3s ease;
+    display: flex;
+    flex-direction: column;
     position: relative;
-    flex-shrink: 0; /* Prevent sidebar shrinking */
+    flex-shrink: 0;
+    transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 10;
   }
 
   .sidebar.dragging {
     transition: none;
+    pointer-events: none; /* Prevent events during drag */
   }
 
   .sidebar.collapsed {
-    border-right: none;
-  }
-
-  .sidebar-resizer {
-    width: 4px;
-    background: transparent;
-    cursor: col-resize;
-    flex-shrink: 0;
-    position: relative;
-    z-index: 100;
-    margin-left: -2px;
-  }
-
-  .sidebar-resizer:hover,
-  .sidebar-resizer.dragging {
-    background: var(--accent-primary);
+    border-right: 1px solid var(--border-primary); /* Keep border even when collapsed */
   }
 
   .sidebar-content {
     height: 100%;
-    /* Fixed width to prevent content squashing during transition */
+    width: 100%;
+    overflow: hidden;
+  }
+
+  /* Resizer */
+  .sidebar-resizer {
+    width: 12px; /* Touch target size */
+    margin-left: -6px; /* Center over border */
+    position: relative;
+    z-index: 20;
+    cursor: col-resize;
     flex-shrink: 0;
   }
 
-  .expand-btn {
-    width: 40px;
-    height: 100%;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-right: 1px solid var(--border-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    flex-shrink: 0;
-  }
-
-  .expand-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .expand-btn.floating {
+  .sidebar-resizer::after {
+    content: '';
     position: absolute;
-    top: 10px;
-    left: 10px;
-    height: 32px;
-    width: 32px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-primary);
-    border-radius: 4px;
-    z-index: 100;
+    left: 6px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: transparent;
+    transition: background 0.2s;
   }
 
+  .sidebar-resizer:hover::after,
+  .sidebar-resizer.dragging::after {
+    background: var(--accent-primary);
+    width: 2px;
+  }
+
+  /* Main Content Area */
   .main-content {
     flex: 1;
-    min-width: 400px; /* Prevent shrinking too much */
+    min-width: 0; /* Important for flex child to shrink */
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background-color: var(--bg-primary);
+    position: relative;
   }
 
+  /* Header / Tab Bar Area */
   .tab-bar-container {
-    height: 40px;
-    background: var(--bg-primary);
+    height: 38px;
+    background: var(--bg-secondary); /* Same as sidebar for unified header look */
     border-bottom: 1px solid var(--border-primary);
-    overflow: hidden;
     display: flex;
     align-items: center;
-    padding-right: 8px; /* Add padding for the button */
+    padding: 0 8px;
+    flex-shrink: 0;
   }
 
   .header-spacer {
     flex: 1;
+    -webkit-app-region: drag; /* Allow dragging window from empty header space */
+    height: 100%;
   }
 
-  .devtools-toggle-btn {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-left: 4px;
-    flex-shrink: 0;
-  }
-
-  .devtools-toggle-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .devtools-toggle-btn.active {
-    background: var(--accent-primary);
-    color: white;
-  }
-
+  /* Buttons */
+  .expand-btn,
+  .devtools-toggle-btn,
   .theme-toggle-btn {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
+    width: 28px;
+    height: 28px;
     border: none;
+    background: transparent;
     color: var(--text-secondary);
     border-radius: 4px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all 0.2s;
-    margin-left: 8px;
     flex-shrink: 0;
   }
 
+  .expand-btn:hover,
+  .devtools-toggle-btn:hover,
   .theme-toggle-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
   }
 
+  .devtools-toggle-btn.active {
+    color: var(--accent-primary);
+    background: var(--bg-active);
+  }
+
+  .expand-btn.floating {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 50;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Terminal Area */
   .terminal-area {
     flex: 1;
-    overflow: hidden;
     position: relative;
+    overflow: hidden;
+    background-color: var(--bg-primary);
   }
 
   .terminal-wrapper {
@@ -594,25 +577,29 @@
     left: 0;
     width: 100%;
     height: 100%;
+    padding: 0; /* Terminals usually need full bleeding edge */
   }
 
+  /* Welcome Screen */
   .welcome {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: flex-start;
-    padding: 40px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -60%);
+    text-align: center;
     color: var(--text-secondary);
   }
 
   .welcome h1 {
-    font-size: 32px;
-    margin-bottom: 10px;
+    font-size: 24px;
+    font-weight: 500;
     color: var(--text-primary);
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
   }
 
   .welcome p {
-    font-size: 16px;
+    font-size: 14px;
+    opacity: 0.8;
   }
 </style>
