@@ -31,6 +31,7 @@
   let hasSavedPassword = false;
   let passwordLoaded = false;
   let passwordLoadError = "";
+  let passwordFetchInFlight = false;
 
   // Password prompt modal
   let showPasswordPrompt = false;
@@ -164,6 +165,17 @@
         await AddConnection(connectionData);
       }
 
+      // Save password if user provided one and chose to save it
+      if (formData.auth_type === "password" && formData.savePassword && formData.password) {
+        try {
+          await SavePassword(connectionData.id, formData.password);
+          console.log("Password saved for connection:", connectionData.id);
+        } catch (error) {
+          console.error("Failed to save password:", error);
+          await showError("密码保存失败: " + error);
+        }
+      }
+
       await loadConnections();
       resetForm();
       showConnectionForm = false;
@@ -261,6 +273,10 @@
           console.log("Using saved password");
           onConnect(connection, password, "");
           return;
+        } else {
+          // No saved password, show提示 before prompting
+          console.log("No saved password found for connection:", connection.id);
+          await showAlert(`未保存密码\n连接 ${connection.name} 需要输入密码`);
         }
       } catch (error) {
         console.error("Failed to get saved password:", error);
@@ -365,42 +381,56 @@
     }
   }
 
-  async function togglePasswordVisibility() {
+  function togglePasswordVisibility() {
     const nextVisible = !passwordVisible;
     passwordVisible = nextVisible;
+    if (nextVisible) {
+      ensureSavedPasswordLoaded();
+    }
+  }
 
-    if (
-      nextVisible &&
-      !passwordLoaded &&
-      hasSavedPassword &&
-      !formData.password &&
-      formData.id
-    ) {
-      passwordLoading = true;
-      passwordLoadError = "";
-      try {
-        formData.password = await GetPassword(formData.id);
-        passwordLoaded = true;
-      } catch (error) {
-        console.error("Failed to load saved password:", error);
-        passwordLoadError = "读取已保存密码失败";
-      } finally {
-        passwordLoading = false;
+  $: if (passwordVisible) {
+    ensureSavedPasswordLoaded();
+  }
+
+  async function ensureSavedPasswordLoaded() {
+    if (passwordFetchInFlight) return;
+    if (passwordLoaded || formData.password || !formData.id) return;
+    if (!passwordVisible) return;
+
+    passwordFetchInFlight = true;
+    passwordLoading = true;
+    passwordLoadError = "";
+    try {
+      const saved = await HasPassword(formData.id);
+      hasSavedPassword = saved;
+      if (!saved) {
+        return;
       }
+      formData.password = await GetPassword(formData.id);
+      passwordLoaded = true;
+    } catch (error) {
+      console.error("Failed to load saved password:", error);
+      passwordLoadError = "读取已保存密码失败";
+    } finally {
+      passwordLoading = false;
+      passwordFetchInFlight = false;
     }
   }
 
   // 使用window方法暴露全局函数供onclick使用
   if (typeof window !== "undefined") {
-    window.sshToolsConnect = async (index) => {
-      const connection = connections[index];
+    window.sshToolsConnect = async (connJson) => {
+      const connection =
+        typeof connJson === "string" ? JSON.parse(connJson) : connJson;
       if (connection) {
         await handleConnect(connection);
       }
     };
 
-    window.sshToolsEdit = (index) => {
-      const connection = connections[index];
+    window.sshToolsEdit = (connJson) => {
+      const connection =
+        typeof connJson === "string" ? JSON.parse(connJson) : connJson;
       if (connection) {
         handleEditConnection(connection);
       }
@@ -624,7 +654,7 @@
             <p>点击下方"新建连接"开始添加</p>
           </div>
         {:else}
-          {#each connections as connection, index (connection.id)}
+          {#each connections as connection (connection.id)}
             <div class="item">
               <div class="info">
                 <div class="name">{connection.name}</div>
@@ -633,16 +663,17 @@
                 </div>
               </div>
               <div class="item-actions">
-                <!-- 使用原生onclick和索引 -->
                 <button
                   class="act-btn connect-btn"
-                  onclick="window.sshToolsConnect({index})"
+                  data-connection={JSON.stringify(connection)}
+                  onclick="window.sshToolsConnect(this.dataset.connection)"
                 >
                   连接
                 </button>
                 <button
                   class="act-btn edit-btn"
-                  onclick="window.sshToolsEdit({index})"
+                  data-connection={JSON.stringify(connection)}
+                  onclick="window.sshToolsEdit(this.dataset.connection)"
                 >
                   编辑
                 </button>
