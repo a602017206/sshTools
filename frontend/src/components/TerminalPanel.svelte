@@ -1,12 +1,17 @@
 <script>
   import { connectionsStore, activeSessionIdStore } from '../stores.js';
   import Terminal from './Terminal.svelte';
+  import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
-  
+
   let terminalRefs = {};
   let sessionsList = [];
   let sessionUnsubscribers = new Map();
+
+  // Close confirmation dialog state
+  let showCloseConfirm = false;
+  let sessionToClose = null;
 
   $: sessionsList = $connectionsStore ? Array.from($connectionsStore.values()) : [];
 
@@ -230,14 +235,26 @@
     const session = $connectionsStore.get(sessionId);
     if (!session) return;
 
-    // 如果已连接，确认关闭
+    // 如果已连接，显示确认对话框
     if (session.connected) {
-      if (!confirm('确定关闭此 SSH 会话吗？')) {
-        return;
-      }
+      sessionToClose = sessionId;
+      showCloseConfirm = true;
+    } else {
+      closeSession(sessionId);
     }
+  }
 
-    closeSession(sessionId);
+  function handleConfirmClose() {
+    if (sessionToClose) {
+      closeSession(sessionToClose);
+      sessionToClose = null;
+    }
+    showCloseConfirm = false;
+  }
+
+  function handleCancelClose() {
+    sessionToClose = null;
+    showCloseConfirm = false;
   }
   
   function handleTabRename(sessionId, newName) {
@@ -367,8 +384,8 @@
       {#each sessionsList as session (session.sessionId)}
         <div
           class="group flex items-center gap-2 px-4 py-2.5 border-r border-gray-200 dark:border-gray-700 cursor-pointer transition-all min-w-[180px] {
-            $activeSessionIdStore === session.sessionId 
-              ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-b-2 border-b-purple-600' 
+            $activeSessionIdStore === session.sessionId
+              ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-b-2 border-b-purple-600'
               : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
           }"
           on:click={() => handleTabChange(session.sessionId)}
@@ -377,7 +394,7 @@
           <div class={`w-2 h-2 rounded-full flex-shrink-0 ${
             session.connected ? 'bg-green-500' : 'bg-gray-400 dark:bg-gray-600'
           }`} />
-          
+
           {#if editingTabId === session.sessionId}
             <input
               type="text"
@@ -390,7 +407,7 @@
           {:else}
             <span class="text-sm font-medium truncate flex-1">{session.tabName || session.connection.name}</span>
           {/if}
-          
+
           <button
             on:click={(e) => handleTabClose(session.sessionId, e)}
             class="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-opacity"
@@ -458,6 +475,17 @@
     </div>
   {/if}
 </div>
+
+<ConfirmDialog
+  bind:isOpen={showCloseConfirm}
+  title="关闭 SSH 会话"
+  message="确定要关闭此 SSH 会话吗？"
+  type="warning"
+  confirmText="确定关闭"
+  cancelText="取消"
+  onConfirm={handleConfirmClose}
+  onCancel={handleCancelClose}
+/>
 
 <style>
   .terminal-content-area {

@@ -4,11 +4,24 @@
 
   let cpuData = [];
   let memoryData = [];
+  let cpuPerCore = []; // Per-core CPU usage array
   let currentStats = {
     cpu: 45,
     memory: 62,
     disk: 78,
     network: { in: 125.5, out: 89.3 }
+  };
+
+  let systemInfo = {
+    os: 'Ubuntu 22.04 LTS',
+    kernel: '5.15.0-91-generic',
+    uptime: '15天 7小时 32分',
+    processes: 187
+  };
+
+  let diskInfo = {
+    used: '156 GB',
+    total: '200 GB'
   };
 
   let dataInterval = null;
@@ -23,6 +36,68 @@
     return '#ef4444'; // red
   }
 
+  // Convert bytes to appropriate unit
+  function formatBytesPerSecond(bytesPerSecond) {
+    if (bytesPerSecond === 0) return '0 KB/s';
+
+    const units = ['KB/s', 'MB/s', 'GB/s'];
+    let unitIndex = -1;
+    let value = bytesPerSecond;
+
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex++;
+    }
+
+    return `${value.toFixed(1)} ${units[unitIndex]}`;
+  }
+
+  // Normalize backend monitoring data to component's expected format
+  function normalizeMonitoringData(data) {
+    if (!data) return null;
+
+    // Handle per-core CPU data
+    if (data.cpu?.per_core && Array.isArray(data.cpu.per_core)) {
+      cpuPerCore = data.cpu.per_core;
+    }
+
+    // Backend returns detailed structure, normalize to simple format
+    const normalized = {
+      cpu: typeof data.cpu === 'number' ? data.cpu : (data.cpu?.overall || 0),
+      memory: typeof data.memory === 'number' ? data.memory : (data.memory?.used_percent || 0),
+      disk: typeof data.disk === 'number' ? data.disk : (data.disk?.partitions?.[0]?.used_percent || 0),
+      network: {
+        in: typeof data.network?.in === 'number' ? data.network.in * (1024 * 1024) : // Convert MB to bytes
+              (typeof data.network?.rx_rate === 'number' ? data.network.rx_rate : 0), // Already in bytes/s
+        out: typeof data.network?.out === 'number' ? data.network.out * (1024 * 1024) : // Convert MB to bytes
+               (typeof data.network?.tx_rate === 'number' ? data.network.tx_rate : 0) // Already in bytes/s
+      }
+    };
+
+    // Update system info if available
+    if (data.system) {
+      systemInfo = {
+        os: data.system.os || systemInfo.os,
+        kernel: data.system.kernel || systemInfo.kernel,
+        uptime: data.system.uptime || systemInfo.uptime,
+        processes: systemInfo.processes // Backend doesn't provide process count
+      };
+    }
+
+    // Update disk info if available
+    if (data.disk?.partitions?.[0]) {
+      const partition = data.disk.partitions[0];
+      const usedGB = (partition.used / (1024 * 1024 * 1024)).toFixed(1);
+      const totalGB = (partition.total / (1024 * 1024 * 1024)).toFixed(1);
+      diskInfo = {
+        used: `${usedGB} GB`,
+        total: `${totalGB} GB`
+      };
+    }
+
+    return normalized;
+  }
+
   // 获取监控数据
   async function fetchMonitoringData() {
     if (!$activeSessionIdStore || !isSessionConnected) return;
@@ -32,13 +107,16 @@
 
     try {
       const data = await GetMonitoringData($activeSessionIdStore);
-      if (data) {
-        currentStats = {
-          cpu: data.cpu || 45,
-          memory: data.memory || 62,
-          disk: data.disk || 78,
-          network: data.network || { in: 125.5, out: 89.3 }
-        };
+      const normalizedData = normalizeMonitoringData(data);
+      console.log('normalizedData:', normalizedData);
+      if (normalizedData) {
+        currentStats = normalizedData;
+
+        // Update CPU history array (keep last 60 data points)
+        cpuData = [...cpuData, normalizedData.cpu].slice(-60);
+
+        // Update memory history array (keep last 60 data points)
+        memoryData = [...memoryData, normalizedData.memory].slice(-60);
       }
     } catch (error) {
       console.error('Failed to fetch monitoring data:', error);
@@ -108,7 +186,7 @@
           <span class="text-xs font-semibold text-gray-900 dark:text-white">内存</span>
         </div>
         <span class="text-xs font-bold px-2 py-1 rounded-lg bg-white dark:bg-gray-800" style="color: {getStatusColor(currentStats.memory)}">
-          {currentStats.memory}%
+          {currentStats.memory.toFixed(2)}%
         </span>
       </div>
       <div class="h-[80px] bg-white dark:bg-gray-800 rounded-lg flex items-center justify-center text-xs text-gray-400">
@@ -138,8 +216,8 @@
         />
       </div>
       <div class="flex justify-between mt-2 text-[10px] text-gray-600 dark:text-gray-400">
-        <span>已用 156 GB</span>
-        <span>总计 200 GB</span>
+        <span>已用 {diskInfo.used}</span>
+        <span>总计 {diskInfo.total}</span>
       </div>
     </div>
 
@@ -160,7 +238,7 @@
             <span class="text-xs text-gray-700 dark:text-gray-300 font-medium">入站</span>
           </div>
           <span class="text-xs font-mono font-bold text-gray-900 dark:text-white">
-            {currentStats.network?.in?.toFixed(1) || '0.0'} MB/s
+            {formatBytesPerSecond(currentStats.network?.in || 0)}
           </span>
         </div>
         <div class="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg p-2">
@@ -169,7 +247,7 @@
             <span class="text-xs text-gray-700 dark:text-gray-300 font-medium">出站</span>
           </div>
           <span class="text-xs font-mono font-bold text-gray-900 dark:text-white">
-            {currentStats.network?.out?.toFixed(1) || '0.0'} MB/s
+            {formatBytesPerSecond(currentStats.network?.out || 0)}
           </span>
         </div>
       </div>
@@ -181,19 +259,19 @@
       <div class="space-y-1.5 text-[10px]">
         <div class="flex justify-between py-1">
           <span class="text-gray-600 dark:text-gray-400">操作系统</span>
-          <span class="text-gray-900 dark:text-white font-medium">Ubuntu 22.04 LTS</span>
+          <span class="text-gray-900 dark:text-white font-medium">{systemInfo.os || 'Unknown'}</span>
         </div>
         <div class="flex justify-between py-1">
           <span class="text-gray-600 dark:text-gray-400">内核版本</span>
-          <span class="text-gray-900 dark:text-white font-medium">5.15.0-91-generic</span>
+          <span class="text-gray-900 dark:text-white font-medium">{systemInfo.kernel || 'Unknown'}</span>
         </div>
         <div class="flex justify-between py-1">
           <span class="text-gray-600 dark:text-gray-400">运行时间</span>
-          <span class="text-gray-900 dark:text-white font-medium">15天 7小时 32分</span>
+          <span class="text-gray-900 dark:text-white font-medium">{systemInfo.uptime || 'Unknown'}</span>
         </div>
         <div class="flex justify-between py-1">
           <span class="text-gray-600 dark:text-gray-400">进程数</span>
-          <span class="text-gray-900 dark:text-white font-medium">187</span>
+          <span class="text-gray-900 dark:text-white font-medium">{systemInfo.processes || 'N/A'}</span>
         </div>
       </div>
     </div>

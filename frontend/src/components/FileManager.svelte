@@ -19,6 +19,12 @@
   // Transfer progress unsubscribers
   let progressUnsubscribers = [];
 
+  // Editable path and search input
+  let isEditingPath = false;
+  let editPathValue = '';
+  let isPathInputOpen = false;
+  let pathInput = '';
+
   // Get current session object
   $: currentSession = $activeSessionIdStore ? $connectionsStore.get($activeSessionIdStore) : null;
   $: isSessionConnected = currentSession?.connected || false;
@@ -132,6 +138,31 @@
     }
   }
 
+  function handleStartEditPath() {
+    editPathValue = currentPath;
+    isEditingPath = true;
+  }
+
+  function handleSaveEditPath() {
+    if (editPathValue.trim()) {
+      navigateTo(editPathValue.trim());
+    }
+    isEditingPath = false;
+  }
+
+  function handleCancelEditPath() {
+    isEditingPath = false;
+    editPathValue = '';
+  }
+
+  function handlePathJump() {
+    if (pathInput.trim()) {
+      navigateTo(pathInput.trim());
+      isPathInputOpen = false;
+      pathInput = '';
+    }
+  }
+
   // React to active session changes - only load when session is connected
   $: if ($activeSessionIdStore && isSessionConnected) {
     loadDirectory(currentPath);
@@ -180,28 +211,94 @@
         </button>
       </div>
     </div>
-    
+
     <!-- 路径导航 -->
-    <div class="flex items-center gap-1 text-xs bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+    <div class="flex items-center gap-2">
+      <div class="flex-1 flex items-center gap-1 text-xs bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+        <button
+          on:click={() => handleBreadcrumbClick(-1)}
+          class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+          title="根目录"
+        >
+          <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+        </button>
+        <span class="text-gray-400 dark:text-gray-500">/</span>
+        {#if isEditingPath}
+          <input
+            type="text"
+            bind:value={editPathValue}
+            on:keydown={(e) => {
+              if (e.key === 'Enter') {
+                handleSaveEditPath();
+              } else if (e.key === 'Escape') {
+                handleCancelEditPath();
+              }
+            }}
+            on:blur={handleSaveEditPath}
+            use:focus
+            class="flex-1 bg-white dark:bg-gray-800 border border-purple-300 dark:border-purple-600 rounded px-2 py-1 text-purple-600 dark:text-purple-400 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+        {:else}
+          <span
+            on:click={handleStartEditPath}
+            class="text-purple-600 dark:text-purple-400 font-medium cursor-text hover:bg-purple-100 dark:hover:bg-purple-900/30 px-2 py-1 rounded transition-colors"
+            title="点击编辑路径"
+          >
+            {currentPath.split('/').filter(Boolean).join(' / ')}
+          </span>
+        {/if}
+      </div>
+
       <button
-        on:click={() => handleBreadcrumbClick(-1)}
-        class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
-        title="根目录"
+        on:click={() => isPathInputOpen = !isPathInputOpen}
+        class="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
+        title="跳转到指定目录"
       >
-        <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        <svg class="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
       </button>
-      {#each pathParts as part, i}
-        <span class="text-gray-400 dark:text-gray-500">/</span>
-        <button
-          on:click={() => handleBreadcrumbClick(i)}
-          class="text-purple-600 dark:text-purple-400 font-medium hover:bg-gray-200 dark:hover:bg-gray-600 px-1 rounded transition-colors"
-        >
-          {part}
-        </button>
-      {/each}
     </div>
+
+    {#if isPathInputOpen}
+      <div class="mt-2 flex items-center gap-2">
+        <input
+          type="text"
+          bind:value={pathInput}
+          on:keydown={(e) => {
+            if (e.key === 'Enter') {
+              handlePathJump();
+            } else if (e.key === 'Escape') {
+              isPathInputOpen = false;
+              pathInput = '';
+            }
+          }}
+          placeholder="输入路径,如：/var/www/html"
+          use:focus
+          class="flex-1 px-3 py-2 text-xs bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        />
+        <button
+          on:click={handlePathJump}
+          class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-lg transition-colors font-medium"
+        >
+          跳转
+        </button>
+        <button
+          on:click={() => {
+            isPathInputOpen = false;
+            pathInput = '';
+          }}
+          class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          title="取消"
+        >
+          <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    {/if}
   </div>
 
   <!-- 文件列表 -->
