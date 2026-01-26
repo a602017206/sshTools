@@ -108,7 +108,7 @@
     try {
       const data = await GetMonitoringData($activeSessionIdStore);
       const normalizedData = normalizeMonitoringData(data);
-      console.log('normalizedData:', normalizedData);
+      console.log('data:', data);
       if (normalizedData) {
         currentStats = normalizedData;
 

@@ -34,10 +34,10 @@
     <div class="absolute inset-0 bg-black/20 backdrop-blur-sm transition-opacity pointer-events-auto" />
     
     <!-- 对话框 -->
-    <div class="relative w-60 max-w-{size} bg-white dark:bg-gray-800 rounded-2xl shadow-2xl m-4 max-h-[90vh] overflow-hidden flex flex-col transform transition-all">
+    <div class="relative w-full max-w-xs bg-white dark:bg-gray-800 rounded-xl shadow-2xl m-4 max-h-[90vh] overflow-hidden flex flex-col transform transition-all">
       <!-- 头部 -->
-      <div class="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{title}</h2>
+      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-white">{title}</h2>
         <button
           on:click={onClose}
           class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"

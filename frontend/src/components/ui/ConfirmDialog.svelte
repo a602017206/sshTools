@@ -33,7 +33,7 @@
       <button
         type="button"
         on:click={onConfirm}
-        class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all shadow-sm {
+        class="px-3 py-1.5 rounded-md text-xs font-medium transition-all shadow-sm {
           type === 'danger'
             ? 'bg-red-600 hover:bg-red-700 text-white'
             : type === 'warning'
