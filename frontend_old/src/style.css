@@ -1,0 +1,142 @@
+/* ========== Modern Theme Variables ========== */
+:root {
+  /* Dark Theme (Default) - Inspired by Modern Dark Interfaces */
+  --bg-primary: #0f1115;      /* Deep background */
+  --bg-secondary: #181b21;    /* Sidebar/Panel background */
+  --bg-tertiary: #22262e;     /* Inputs/Cards */
+  --bg-hover: #2d323b;        /* Hover states */
+  --bg-active: #363b45;       /* Active states */
+  
+  --bg-input: #181b21;
+  --bg-input-focus: #1f2329;
+
+  /* Borders & Dividers */
+  --border-primary: rgba(255, 255, 255, 0.08);
+  --border-secondary: rgba(255, 255, 255, 0.05);
+  --border-active: #3b82f6;
+
+  /* Text Colors */
+  --text-primary: #e2e8f0;    /* High contrast text */
+  --text-secondary: #94a3b8;  /* Muted text */
+  --text-tertiary: #64748b;   /* Disabled/Subtle text */
+  --text-on-accent: #ffffff;
+
+  /* Accent Colors (Blue-500 based) */
+  --accent-primary: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-active: #1d4ed8;
+  --accent-subtle: rgba(59, 130, 246, 0.1);
+
+  /* Status Colors */
+  --accent-success: #10b981;
+  --accent-warning: #f59e0b;
+  --accent-error: #ef4444;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  
+  /* Scrollbar */
+  --scrollbar-bg: transparent;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+
+  /* Transitions */
+  --trans-fast: 0.15s ease;
+  --trans-normal: 0.25s ease;
+}
+
+/* Light Theme Overrides */
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --bg-hover: #e2e8f0;
+  --bg-active: #cbd5e1;
+  
+  --bg-input: #ffffff;
+  --bg-input-focus: #f8fafc;
+
+  --border-primary: #e2e8f0;
+  --border-secondary: #f1f5f9;
+  --border-active: #3b82f6;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
+
+  --accent-primary: #3b82f6;
+  --accent-hover: #2563eb;
+  
+  --scrollbar-bg: transparent;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.2);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+}
+
+/* Global Reset & Base Styles */
+html {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', 'Nunito', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+}
+
+/* Wails Drag Region Fix */
+button, input, select, textarea, a, label, .clickable {
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+/* Utility Classes */
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.flex-1 { flex: 1; }
+.w-full { width: 100%; }
+.w-70 { width: 70%; }
+.h-full { height: 100%; }
+.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+  border: 2px solid transparent; /* Creates padding around thumb */
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+/* Font Loading */
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 400;
+  src: local(""), url("assets/fonts/nunito-v16-latin-regular.woff2") format("woff2");
+}

@@ -30,6 +30,14 @@ func (s *ConnectionService) GetConnections() ([]config.ConnectionConfig, error) 
 	return s.configManager.GetConfig().Connections, nil
 }
 
+// GetConnection retrieves a single connection by ID
+func (s *ConnectionService) GetConnection(id string) (config.ConnectionConfig, error) {
+	if s.configManager == nil {
+		return config.ConnectionConfig{}, fmt.Errorf("config manager not initialized")
+	}
+	return s.configManager.GetConnection(id)
+}
+
 // AddConnection adds a new SSH connection
 func (s *ConnectionService) AddConnection(conn config.ConnectionConfig) error {
 	if s.configManager == nil {

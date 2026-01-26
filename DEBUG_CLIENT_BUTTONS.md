@@ -125,7 +125,7 @@ Frameless: false,  // 确保这个是 false
 运行这个命令检查修改是否保存：
 
 ```bash
-grep -n "webkit-app-region" frontend/src/components/ConnectionManager.svelte
+grep -n "webkit-app-region" frontend_old/src/components/ConnectionManager.svelte
 ```
 
 应该看到多行输出，包含 `no-drag`。

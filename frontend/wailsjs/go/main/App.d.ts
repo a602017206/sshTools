@@ -30,6 +30,8 @@ export function EscapeJSON(arg1:string):Promise<string>;
 
 export function FormatJSON(arg1:string):Promise<string>;
 
+export function GetConnection(arg1:string):Promise<config.ConnectionConfig>;
+
 export function GetConnections():Promise<Array<config.ConnectionConfig>>;
 
 export function GetCurrentPath(arg1:string):Promise<string>;

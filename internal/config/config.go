@@ -143,6 +143,16 @@ func (cm *ConfigManager) AddConnection(conn ConnectionConfig) error {
 	return cm.Save()
 }
 
+// GetConnection retrieves a single connection configuration by ID
+func (cm *ConfigManager) GetConnection(id string) (ConnectionConfig, error) {
+	for _, conn := range cm.config.Connections {
+		if conn.ID == id {
+			return conn, nil
+		}
+	}
+	return ConnectionConfig{}, fmt.Errorf("connection not found: %s", id)
+}
+
 // RemoveConnection removes a connection by ID
 func (cm *ConfigManager) RemoveConnection(id string) error {
 	for i, conn := range cm.config.Connections {

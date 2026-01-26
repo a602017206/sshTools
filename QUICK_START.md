@@ -119,7 +119,7 @@ $HOME/go/bin/wails dev
 ### 应用无法启动
 ```bash
 # 检查依赖是否完整
-cd frontend && npm install && cd ..
+cd frontend_old && npm install && cd ..
 
 # 重新构建
 go build -v

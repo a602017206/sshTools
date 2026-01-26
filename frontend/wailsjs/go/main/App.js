@@ -54,6 +54,10 @@ export function FormatJSON(arg1) {
   return window['go']['main']['App']['FormatJSON'](arg1);
 }
 
+export function GetConnection(arg1) {
+  return window['go']['main']['App']['GetConnection'](arg1);
+}
+
 export function GetConnections() {
   return window['go']['main']['App']['GetConnections']();
 }

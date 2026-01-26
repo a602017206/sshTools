@@ -108,6 +108,7 @@ button, input, select, textarea, a, label, .clickable {
 .justify-between { justify-content: space-between; }
 .flex-1 { flex: 1; }
 .w-full { width: 100%; }
+.w-70{ width: 70%; }
 .h-full { height: 100%; }
 .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

@@ -215,7 +215,7 @@ go install github.com/wailsapp/wails/v2/cmd/wails@latest
 cd sshTools
 
 # 安装前端依赖
-cd frontend && npm install && cd ..
+cd frontend_old && npm install && cd ..
 ```
 
 ### 开发
@@ -524,7 +524,7 @@ wails build -platform linux/amd64
 
 ```bash
 # 清理并重新安装依赖
-cd frontend
+cd frontend_old
 rm -rf node_modules
 npm install
 cd ..

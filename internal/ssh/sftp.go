@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/sftp"
 )
 
-// FileInfo represents file metadata for frontend
+// FileInfo represents file metadata for frontend_old
 type FileInfo struct {
 	Name       string    `json:"name"`
 	Path       string    `json:"path"`
@@ -24,7 +24,7 @@ type FileInfo struct {
 	LinkTarget string    `json:"link_target,omitempty"`
 }
 
-// TransferProgress represents transfer progress for frontend
+// TransferProgress represents transfer progress for frontend_old
 type TransferProgress struct {
 	TransferID string  `json:"transfer_id"`
 	SessionID  string  `json:"session_id"`

@@ -68,6 +68,11 @@ func (a *App) GetConnections() []config.ConnectionConfig {
 	return conns
 }
 
+// GetConnection retrieves a single connection by ID
+func (a *App) GetConnection(id string) (config.ConnectionConfig, error) {
+	return a.connectionService.GetConnection(id)
+}
+
 // AddConnection adds a new SSH connection
 func (a *App) AddConnection(conn config.ConnectionConfig) error {
 	return a.connectionService.AddConnection(conn)
