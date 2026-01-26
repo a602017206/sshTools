@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  
+  import { activeSessionIdStore, connectionsStore } from '../stores.js';
+
   let cpuData = [];
   let memoryData = [];
   let currentStats = {
@@ -9,9 +10,12 @@
     disk: 78,
     network: { in: 125.5, out: 89.3 }
   };
-  
-  let activeSessionId = null;
+
   let dataInterval = null;
+
+  // Get current session object
+  $: currentSession = $activeSessionIdStore ? $connectionsStore.get($activeSessionIdStore) : null;
+  $: isSessionConnected = currentSession?.connected || false;
 
   function getStatusColor(value) {
     if (value < 50) return '#10b981'; // green
@@ -21,13 +25,13 @@
 
   // 获取监控数据
   async function fetchMonitoringData() {
-    if (!activeSessionId) return;
-    
+    if (!$activeSessionIdStore || !isSessionConnected) return;
+
     const { GetMonitoringData } = window.wailsBindings || {};
     if (typeof GetMonitoringData !== 'function') return;
 
     try {
-      const data = await GetMonitoringData(activeSessionId);
+      const data = await GetMonitoringData($activeSessionIdStore);
       if (data) {
         currentStats = {
           cpu: data.cpu || 45,
@@ -41,22 +45,16 @@
     }
   }
 
+  // React to active session changes - only fetch when session is connected
+  $: if ($activeSessionIdStore && isSessionConnected) {
+    fetchMonitoringData();
+  }
+
   onMount(() => {
-    // 监听活动会话变化
-    const handleSessionChange = (event) => {
-      activeSessionId = event.detail;
-      if (activeSessionId) {
-        fetchMonitoringData();
-      }
-    };
-
-    window.addEventListener('active-session-changed', handleSessionChange);
-
     // 开始定时更新数据
     dataInterval = setInterval(fetchMonitoringData, 2000);
 
     return () => {
-      window.removeEventListener('active-session-changed', handleSessionChange);
       clearInterval(dataInterval);
     };
   });
@@ -73,7 +71,7 @@
   <div class="p-3 border-b border-gray-200 dark:border-gray-700">
     <h3 class="text-sm font-semibold text-gray-900 dark:text-white">服务器监控</h3>
     <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-      {activeSessionId ? '实时数据获取中...' : '请先连接到服务器'}
+      {isSessionConnected ? '实时数据获取中...' : '请先连接到服务器'}
     </div>
   </div>
 
@@ -162,7 +160,7 @@
             <span class="text-xs text-gray-700 dark:text-gray-300 font-medium">入站</span>
           </div>
           <span class="text-xs font-mono font-bold text-gray-900 dark:text-white">
-            {currentStats.network.in.toFixed(1)} MB/s
+            {currentStats.network?.in?.toFixed(1) || '0.0'} MB/s
           </span>
         </div>
         <div class="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg p-2">
@@ -171,7 +169,7 @@
             <span class="text-xs text-gray-700 dark:text-gray-300 font-medium">出站</span>
           </div>
           <span class="text-xs font-mono font-bold text-gray-900 dark:text-white">
-            {currentStats.network.out.toFixed(1)} MB/s
+            {currentStats.network?.out?.toFixed(1) || '0.0'} MB/s
           </span>
         </div>
       </div>

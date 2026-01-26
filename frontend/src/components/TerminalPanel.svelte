@@ -143,6 +143,8 @@
         size.rows
       );
 
+      // 连接成功，更新会话状态
+      newSession.connected = true;
       connectionsStore.update(conns => {
         conns.set(sessionId, newSession);
         return conns;
