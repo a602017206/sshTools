@@ -1,618 +1,465 @@
 <script>
-  import Terminal from './components/Terminal.svelte';
-  import TabBar from './components/TabBar.svelte';
-  import ConnectionManagerSimple from './components/ConnectionManagerSimple.svelte';
-  import MonitorPanel from './components/MonitorPanel.svelte';
+  import { onMount } from 'svelte';
+  import AssetList from './components/AssetList.svelte';
+  import TerminalPanel from './components/TerminalPanel.svelte';
   import FileManager from './components/FileManager.svelte';
+  import ServerMonitor from './components/ServerMonitor.svelte';
   import DevToolsPanel from './components/DevToolsPanel.svelte';
-  import { onMount, onDestroy, tick } from 'svelte';
-  import { ConnectSSH, SendSSHData, ResizeSSH, CloseSSH } from '../wailsjs/go/main/App.js';
-  import { EventsOn } from '../wailsjs/runtime/runtime.js';
-  import { showConfirm } from './utils/dialog.js';
-  import { themeStore } from './stores/theme.js';
-  import { fileManagerStore } from './stores/fileManager.js';
-  import { devToolsStore } from './stores/devtools.js';
+  import AddAssetDialog from './components/AddAssetDialog.svelte';
+  import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight } from './stores.js';
 
-  let sessions = new Map(); // sessionId -> session metadata
-  let activeSessionId = null;
-  let tabOrder = []; // Array of sessionIds (maintains tab order)
-  let terminalRefs = {}; // sessionId -> Terminal component ref
-  let sessionUnsubscribers = new Map(); // sessionId -> event unsubscribe function
-
-  // Sidebar dragging state
-  let sidebarWidth = 300;
-  let isDragging = false;
+  let isDevToolsOpen = false;
+  let isAddDialogOpen = false;
   let isSidebarCollapsed = false;
-  let startX = 0;
-  let startWidth = 0;
+  let editingAsset = null;
+  let terminalPanelRef;
 
-  // Subscribe to theme store
-  themeStore.subscribe(state => {
-    if (!isDragging) {
-      sidebarWidth = state.sidebarWidth;
-    }
-  });
+  $: connectionsArray = $connectionsStore ? Array.from($connectionsStore.values()) : [];
+  $: themeClass = $themeStore === 'dark' ? 'dark' : '';
 
-  function toggleSidebar() {
-    isSidebarCollapsed = !isSidebarCollapsed;
-  }
+  // 从 store 获取面板尺寸
+  $: sidebarWidth = $uiStore.sidebarWidth;
+  $: rightPanelWidth = $uiStore.rightPanelWidth;
+  $: fileManagerHeight = $uiStore.fileManagerHeight;
+
+  // Resize state
+  let isResizingSidebar = false;
+  let isResizingRightPanel = false;
+  let isResizingFileManager = false;
 
   function toggleTheme() {
-    const newTheme = $themeStore.theme === 'light' ? 'dark' : 'light';
-    themeStore.setTheme(newTheme);
+    themeStore.update(t => t === 'light' ? 'dark' : 'light');
   }
 
   function toggleDevTools() {
-    devToolsStore.toggle();
+    if (isAddDialogOpen) return;
+    isDevToolsOpen = !isDevToolsOpen;
   }
 
-  // Reactive declarations
-  $: activeSession = sessions.get(activeSessionId);
-  $: tabsList = Array.from(sessions.values()).map(session => ({
-    id: session.sessionId,
-    name: session.tabName || session.connection.name,
-    displayName: session.tabName || `${session.connection.user}@${session.connection.host}`,
-    connectionName: session.connection.name,
-    userAtHost: `${session.connection.user}@${session.connection.host}:${session.connection.port}`,
-    isActive: session.sessionId === activeSessionId
-  }));
+  function toggleSidebar() {
+    if (isAddDialogOpen) return;
+    isSidebarCollapsed = !isSidebarCollapsed;
+  }
 
-  async function handleConnect(connection, authValue, passphrase = '') {
-    // Generate unique session ID
-    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // Sidebar resize handlers
+  function startSidebarResize(e) {
+    e.preventDefault();
+    if (isSidebarCollapsed || isAddDialogOpen) return;
+    isResizingSidebar = true;
+    document.addEventListener('mousemove', handleSidebarResize);
+    document.addEventListener('mouseup', stopSidebarResize);
+  }
 
-    console.log('Connecting to:', connection);
+  function handleSidebarResize(e) {
+    if (!isResizingSidebar) return;
+    const newWidth = Math.max(200, Math.min(500, e.clientX));
+    setSidebarWidth(newWidth);
+  }
 
-    // Create session metadata
-    const newSession = {
-      sessionId,
-      connection,
-      authValue,
-      passphrase,
-      tabName: '', // Empty = use connection.name
-      connected: false,
-      createdAt: Date.now(),
-      lastActivity: Date.now()
-    };
+  function stopSidebarResize() {
+    isResizingSidebar = false;
+    document.removeEventListener('mousemove', handleSidebarResize);
+    document.removeEventListener('mouseup', stopSidebarResize);
+  }
 
-    // Add to sessions and tab order
-    sessions.set(sessionId, newSession);
-    sessions = new Map(sessions);
-    tabOrder.push(sessionId);
-    tabOrder = tabOrder; // Trigger reactivity
+  // Right panel resize handlers
+  function startRightPanelResize(e) {
+    e.preventDefault();
+    if (isAddDialogOpen) return;
+    isResizingRightPanel = true;
+    document.addEventListener('mousemove', handleRightPanelResize);
+    document.addEventListener('mouseup', stopRightPanelResize);
+  }
 
-    // Set as active
-    activeSessionId = sessionId;
+  function handleRightPanelResize(e) {
+    if (!isResizingRightPanel) return;
+    const containerWidth = window.innerWidth;
+    const newWidth = Math.max(300, Math.min(600, containerWidth - e.clientX));
+    setRightPanelWidth(newWidth);
+  }
 
-    // Wait for Terminal to mount, then get size
-    await tick();
-    const size = terminalRefs[sessionId]?.getSize() || { cols: 80, rows: 24 };
+  function stopRightPanelResize() {
+    isResizingRightPanel = false;
+    document.removeEventListener('mousemove', handleRightPanelResize);
+    document.removeEventListener('mouseup', stopRightPanelResize);
+  }
 
-    // Subscribe to output events
-    const eventName = `ssh:output:${sessionId}`;
-    const unsubscribe = EventsOn(eventName, (data) => {
-      const terminal = terminalRefs[sessionId];
-      if (terminal) {
-        terminal.write(data);
-      }
-    });
-    sessionUnsubscribers.set(sessionId, unsubscribe);
+  // File manager resize handlers
+  function startFileManagerResize(e) {
+    e.preventDefault();
+    if (isAddDialogOpen) return;
+    isResizingFileManager = true;
+    const rightPanel = document.querySelector('[data-right-panel]');
+    if (rightPanel) {
+      const rect = rightPanel.getBoundingClientRect();
+      fileManagerInitialY = e.clientY;
+      fileManagerInitialHeight = fileManagerHeight;
+      rightPanelHeight = rect.height;
+    }
+    document.addEventListener('mousemove', handleFileManagerResize);
+    document.addEventListener('mouseup', stopFileManagerResize);
+  }
 
-    // Show connecting message
-    const terminal = terminalRefs[sessionId];
-    if (terminal) {
-      const authType = connection.auth_type === 'key' ? 'SSH key' : 'password';
-      terminal.writeln(`正在连接 ${connection.user}@${connection.host}:${connection.port} (${authType})...`);
-      terminal.writeln('');
+  let fileManagerInitialY = 0;
+  let fileManagerInitialHeight = 50;
+  let rightPanelHeight = 0;
+
+  function handleFileManagerResize(e) {
+    if (!isResizingFileManager) return;
+    const deltaY = e.clientY - fileManagerInitialY;
+    const deltaPercent = (deltaY / rightPanelHeight) * 100;
+    const newHeightPercent = Math.max(20, Math.min(80, fileManagerInitialHeight + deltaPercent));
+    setFileManagerHeight(newHeightPercent);
+  }
+
+  function stopFileManagerResize() {
+    isResizingFileManager = false;
+    document.removeEventListener('mousemove', handleFileManagerResize);
+    document.removeEventListener('mouseup', stopFileManagerResize);
+  }
+
+  // 连接处理 - 转发给 TerminalPanel
+  function handleConnect(asset) {
+    if (terminalPanelRef && typeof terminalPanelRef.handleConnect === 'function') {
+      terminalPanelRef.handleConnect(asset);
+    } else {
+      console.error('TerminalPanel not available');
+      alert('终端面板未初始化');
+    }
+  }
+
+  async function handleAddAsset(connectionData) {
+    if (!window.wailsBindings) {
+      console.error('Wails bindings not loaded');
+      return;
     }
 
     try {
-      // Connect to SSH
-      await ConnectSSH(
-        sessionId,
-        connection.host,
-        connection.port,
-        connection.user,
-        connection.auth_type || 'password',
-        authValue,
-        passphrase,
-        size.cols,
-        size.rows
-      );
+      await window.wailsBindings.AddConnection(connectionData);
 
-      // Mark as connected
-      newSession.connected = true;
-      sessions.set(sessionId, newSession);
-      sessions = new Map(sessions);
+      const asset = {
+        id: connectionData.id,
+        name: connectionData.name,
+        host: connectionData.host,
+        port: connectionData.port,
+        username: connectionData.user,
+        group: connectionData.tags?.[0] || '默认分组',
+        status: 'online',
+        type: connectionData.type || 'ssh',
+        auth_type: connectionData.auth_type,
+        key_path: connectionData.key_path,
+        tags: connectionData.tags || []
+      };
 
-      console.log('SSH connection established:', sessionId);
-
+      assetsStore.update(assets => [...assets, asset]);
     } catch (error) {
-      console.error('Failed to connect:', error);
-      if (terminal) {
-        terminal.writeln(`\r\n连接失败: ${error}`);
-      }
-
-      // Clean up failed session
-      await closeSession(sessionId);
+      console.error('Failed to add asset:', error);
+      throw error;
     }
   }
 
-  async function closeSession(sessionId) {
-    // Unsubscribe from events
-    const unsubscribe = sessionUnsubscribers.get(sessionId);
-    if (unsubscribe) {
-      unsubscribe();
-      sessionUnsubscribers.delete(sessionId);
+  function handleEditAsset(asset) {
+    editingAsset = asset;
+    isAddDialogOpen = true;
+  }
+
+  async function handleUpdateAsset(connectionData) {
+    if (!window.wailsBindings) {
+      console.error('Wails bindings not loaded');
+      return;
     }
 
-    // Dispose terminal (component's onDestroy handles cleanup)
-    delete terminalRefs[sessionId];
-
-    // Close backend session
     try {
-      await CloseSSH(sessionId);
-    } catch (error) {
-      console.error('Failed to close session:', error);
-    }
-
-    // Remove from state
-    sessions.delete(sessionId);
-    sessions = new Map(sessions);
-    tabOrder = tabOrder.filter(id => id !== sessionId);
-
-    // Switch to another tab or show welcome
-    if (activeSessionId === sessionId) {
-      if (tabOrder.length > 0) {
-        // Activate first remaining tab
-        activeSessionId = tabOrder[0];
-
-        // Focus terminal after switch
-        setTimeout(() => {
-          const terminal = terminalRefs[activeSessionId];
-          if (terminal) {
-            terminal.focus();
+      // Update connection is already called in the dialog
+      // Just update the local store
+      assetsStore.update(assets => {
+        return assets.map(asset => {
+          if (asset.id === connectionData.id) {
+            return {
+              ...asset,
+              id: connectionData.id,
+              name: connectionData.name,
+              host: connectionData.host,
+              port: connectionData.port,
+              username: connectionData.user,
+              group: connectionData.tags?.[0] || '默认分组',
+              type: connectionData.type || 'ssh',
+              auth_type: connectionData.auth_type,
+              key_path: connectionData.key_path,
+              tags: connectionData.tags || []
+            };
           }
-        }, 50);
-      } else {
-        activeSessionId = null;
-      }
+          return asset;
+        });
+      });
+    } catch (error) {
+      console.error('Failed to update asset:', error);
+      throw error;
     }
   }
 
-  function handleTabChange(sessionId) {
-    if (!sessions.has(sessionId)) return;
-
-    activeSessionId = sessionId;
-
-    // Focus terminal after render
-    setTimeout(() => {
-      const terminal = terminalRefs[sessionId];
-      if (terminal) {
-        terminal.focus();
-
-        // Sync terminal size with backend
-        const size = terminal.getSize();
-        ResizeSSH(sessionId, size.cols, size.rows).catch(console.error);
-      }
-    }, 50);
-  }
-
-  async function handleTabClose(sessionId) {
-    const session = sessions.get(sessionId);
-    if (!session) return;
-
-    // Confirm if session is connected
-    if (session.connected) {
-      const confirmed = await showConfirm('确定关闭此 SSH 会话吗？');
-      if (!confirmed) return;
-    }
-
-    await closeSession(sessionId);
-  }
-
-  function handleTabRename(sessionId, newName) {
-    const session = sessions.get(sessionId);
-    if (!session) return;
-
-    session.tabName = newName.trim();
-    sessions.set(sessionId, session);
-    sessions = sessions; // Trigger reactivity
-  }
-
-  function handleNewTab() {
-    // User can select a connection from sidebar to create new tab
-    console.log('New tab clicked - select a connection from sidebar');
-  }
-
-  async function handleTerminalData(sessionId, data) {
-    if (!sessions.has(sessionId)) {
+  async function loadAssetsFromBackend() {
+    if (!window.wailsBindings) {
+      console.warn('Wails bindings not loaded yet');
       return;
     }
 
     try {
-      await SendSSHData(sessionId, data);
-    } catch (error) {
-      console.error('Failed to send data:', error);
-    }
-  }
+      const connections = await window.wailsBindings.GetConnections();
+      console.log('Loaded connections from backend:', connections);
 
-  async function handleTerminalResize(sessionId, cols, rows) {
-    if (!sessions.has(sessionId)) {
-      return;
-    }
+      const assets = connections.map(conn => ({
+        id: conn.id,
+        name: conn.name,
+        host: conn.host,
+        port: conn.port,
+        username: conn.user,
+        group: conn.tags?.[0] || '默认分组',
+        status: 'online',
+        type: 'ssh',
+        auth_type: conn.auth_type,
+        key_path: conn.key_path,
+        tags: conn.tags || []
+      }));
 
-    try {
-      await ResizeSSH(sessionId, cols, rows);
+      assetsStore.set(assets);
     } catch (error) {
-      console.error('Failed to resize terminal:', error);
+      console.error('Failed to load connections:', error);
     }
   }
 
   onMount(async () => {
-    // Initialize theme from settings
-    await themeStore.init();
-    // Initialize file manager from settings
-    await fileManagerStore.init();
-  });
-
-  onDestroy(() => {
-    // Unsubscribe from all events
-    sessionUnsubscribers.forEach((unsubscribe) => {
-      unsubscribe();
-    });
-
-    // Close all sessions
-    const sessionIds = Array.from(sessions.keys());
-    sessionIds.forEach((sessionId) => {
-      CloseSSH(sessionId).catch(console.error);
-    });
-  });
-
-  // Sidebar dragging handlers
-  function handleDragStart(event) {
-    isDragging = true;
-    startX = event.clientX;
-    startWidth = sidebarWidth;
-
-    document.addEventListener('mousemove', handleDragMove);
-    document.addEventListener('mouseup', handleDragEnd);
-
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
-  }
-
-  function handleDragMove(event) {
-    if (!isDragging) return;
-
-    const delta = event.clientX - startX;
-    const newWidth = Math.max(200, Math.min(600, startWidth + delta));
-    sidebarWidth = newWidth;
-  }
-
-  async function handleDragEnd() {
-    if (!isDragging) return;
-
-    isDragging = false;
-
-    document.removeEventListener('mousemove', handleDragMove);
-    document.removeEventListener('mouseup', handleDragEnd);
-
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      themeStore.set('dark');
+    }
 
     try {
-      await themeStore.setSidebarWidth(sidebarWidth);
+      const wails = await import('../wailsjs/go/main/App.js');
+      window.wailsBindings = wails;
+      window.dispatchEvent(new CustomEvent('wails-bindings-loaded', {
+        detail: Object.keys(wails.default || wails).join(', ')
+      }));
+
+      await loadAssetsFromBackend();
     } catch (error) {
-      console.error('Failed to save sidebar width:', error);
+      console.warn('Wails bindings not available yet:', error.message);
     }
-  }
+
+    // 确保容器适配窗口大小
+    const ensureFullHeight = () => {
+      const appElement = document.getElementById('app');
+      if (appElement) {
+        appElement.style.height = '100vh';
+        appElement.style.width = '100vw';
+      }
+    };
+
+    ensureFullHeight();
+    window.addEventListener('resize', ensureFullHeight);
+
+    return () => {
+      window.removeEventListener('resize', ensureFullHeight);
+    };
+  });
 </script>
 
-<main>
-  <div class="app-container">
-    <aside
-      class="sidebar"
-      class:collapsed={isSidebarCollapsed}
-      class:dragging={isDragging}
-      style="width: {isSidebarCollapsed ? 0 : sidebarWidth}px; min-width: {isSidebarCollapsed ? 0 : sidebarWidth}px;"
-    >
-      <div class="sidebar-content" style="width: {sidebarWidth}px">
-        <ConnectionManagerSimple onConnect={handleConnect} on:collapse={toggleSidebar} />
+<div class="h-screen w-full flex flex-col {themeClass} {$themeStore === 'dark' ? 'bg-gray-900 text-gray-100' : 'bg-gray-50 text-gray-900'}">
+  <!-- 顶部标题栏 -->
+  <header class="h-14 flex-shrink-0 {$themeStore === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b flex items-center px-6 shadow-sm" style="pointer-events: {isAddDialogOpen ? 'none' : 'auto'};">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center font-bold text-sm text-white shadow-md">
+        SSH
       </div>
-    </aside>
-
-    {#if !isSidebarCollapsed}
-      <div
-        class="sidebar-resizer"
-        class:dragging={isDragging}
-        on:mousedown={handleDragStart}
-      ></div>
-    {/if}
-
-    <div class="main-content">
-      <!-- Tab bar (only show if sessions exist) -->
-      <div class="tab-bar-container">
-        {#if isSidebarCollapsed}
-          <button class="expand-btn" on:click={toggleSidebar} title="展开侧边栏">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path fill-rule="evenodd" clip-rule="evenodd" d="M2 2.5H14V3.5H2V2.5ZM2 7.5H14V8.5H2V7.5ZM2 12.5H14V13.5H2V12.5ZM11 2.5V13.5H12V2.5H11Z"/>
-            </svg>
-          </button>
-        {/if}
-        {#if sessions.size > 0}
-          <TabBar
-            tabs={tabsList}
-            activeTabId={activeSessionId}
-            onTabChange={handleTabChange}
-            onTabClose={handleTabClose}
-            onTabRename={handleTabRename}
-            onNewTab={handleNewTab}
-          />
-        {/if}
-        <div class="header-spacer"></div>
-        <button
-          class="devtools-toggle-btn"
-          class:active={$devToolsStore.isOpen}
-          on:click={toggleDevTools}
-          title="开发工具集"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
-            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319z"/>
-          </svg>
-        </button>
-        <button class="theme-toggle-btn" on:click={toggleTheme} title="切换主题">
-          {#if $themeStore.theme === 'light'}
-            <!-- Sun icon for light mode -->
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-1.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zm5.657-8.157a.75.75 0 0 1 0 1.061l-1.061 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zm-9.193 9.193a.75.75 0 0 1 0 1.06l-1.06 1.061a.75.75 0 1 1-1.061-1.06l1.06-1.061a.75.75 0 0 1 1.061 0zM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0zM.75 8a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 .75 8zm12.25 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM13.657 13.657a.75.75 0 0 1 0 1.061l-1.061 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zm-9.193-9.193a.75.75 0 0 1 0-1.06l-1.06-1.061a.75.75 0 1 1-1.061 1.06l1.06 1.061a.75.75 0 0 1 1.061 0z"/>
-            </svg>
-          {:else}
-            <!-- Moon icon for dark mode -->
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278zM4.858 1.311A7.269 7.269 0 0 0 1.025 7.71c0 4.02 3.279 7.276 7.319 7.276a7.316 7.316 0 0 0 5.205-2.162c-.337.042-.68.063-1.029.063-4.61 0-8.343-3.714-8.343-8.29 0-1.167.242-2.278.681-3.286z"/>
-            </svg>
-          {/if}
-        </button>
-      </div>
-      
-      {#if sessions.size === 0 && isSidebarCollapsed}
-        <button class="expand-btn floating" on:click={toggleSidebar} title="展开侧边栏">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path fill-rule="evenodd" clip-rule="evenodd" d="M2 2.5H14V3.5H2V2.5ZM2 7.5H14V8.5H2V7.5ZM2 12.5H14V13.5H2V12.5ZM11 2.5V13.5H12V2.5H11Z"/>
-          </svg>
-        </button>
-      {/if}
-
-      <!-- Terminal area with multiple instances -->
-      <div class="terminal-area">
-        {#if sessions.size > 0}
-          {#each tabOrder as sessionId (sessionId)}
-            <div
-              class="terminal-wrapper"
-              class:active={sessionId === activeSessionId}
-              class:inactive={sessionId !== activeSessionId}
-            >
-              <Terminal
-                bind:this={terminalRefs[sessionId]}
-                sessionId={sessionId}
-                onData={handleTerminalData}
-                onResize={handleTerminalResize}
-              />
-            </div>
-          {/each}
-        {:else}
-          <div class="welcome">
-            <h1>SSH Tools</h1>
-            <p>选择一个连接开始使用</p>
-          </div>
-        {/if}
+      <div>
+        <div class="font-semibold text-sm {$themeStore === 'dark' ? 'text-white' : 'text-gray-900'}">跨平台 SSH 连接工具</div>
+        <div class="text-xs {$themeStore === 'dark' ? 'text-gray-400' : 'text-gray-500'}">Cross-Platform SSH Manager</div>
       </div>
     </div>
+    
+    <div class="ml-auto">
+      <button
+        on:click={toggleDevTools}
+        disabled={isAddDialogOpen}
+        class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31 .826 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31 -2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-1.066 2.573c-.94-1.543.826-3.31 -2.37a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31 .826-2.37a1.724 1.724 0 00-1.065-2.572-1.065c-.426 1.756-2.924 0 3.35a1.724 1.724 0 001.066-2.573c.996.608 2.296.07 2.572-1.065z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+        </svg>
+        <span class="text-sm">开发工具</span>
+      </button>
+    </div>
+  </header>
 
-    <!-- File Manager Panel -->
-    {#if activeSessionId}
-      <FileManager activeSessionId={activeSessionId} />
+  <!-- 主内容区域 -->
+  <div class="flex-1 flex overflow-hidden min-h-0">
+    <!-- 左侧：资产列表 -->
+    <div
+      class="flex-shrink-0 transition-all duration-200 {$themeStore === 'dark' ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'} border-r overflow-hidden"
+      class:collapsed={isSidebarCollapsed}
+      style="width: {isSidebarCollapsed ? '0' : sidebarWidth}px; min-width: {isSidebarCollapsed ? '0' : sidebarWidth}px;"
+    >
+      <AssetList
+        onConnect={handleConnect}
+        onAddClick={() => {
+          editingAsset = null;
+          isAddDialogOpen = true;
+        }}
+        onDelete={async (asset) => {
+          if (!window.wailsBindings) {
+            assetsStore.update(assets => assets.filter(a => a.id !== asset.id));
+            return;
+          }
+
+          if (!confirm(`确定要删除连接 "${asset.name}" 吗？`)) {
+            return;
+          }
+
+          try {
+            await window.wailsBindings.RemoveConnection(asset.id);
+            assetsStore.update(assets => assets.filter(a => a.id !== asset.id));
+          } catch (error) {
+            console.error('Failed to delete asset:', error);
+            alert('删除连接失败: ' + error);
+          }
+        }}
+        onEdit={handleEditAsset}
+      />
+    </div>
+
+    <!-- 侧边栏调整手柄 -->
+    {#if !isSidebarCollapsed}
+    <div
+      class="resize-handle-horizontal flex-shrink-0 relative"
+      style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
+      on:mousedown={startSidebarResize}
+    >
+      <div class="h-full w-full rounded"></div>
+    </div>
     {/if}
 
-    <!-- Monitor Panel -->
-    {#if activeSessionId}
-      <MonitorPanel activeSessionId={activeSessionId} />
-    {/if}
+    <!-- 中间：终端面板 -->
+    <div class="flex-1 min-w-0 min-h-0 flex flex-col {$themeStore === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}">
+      <TerminalPanel bind:this={terminalPanelRef} />
+    </div>
 
-    <!-- DevTools Panel -->
-    <DevToolsPanel />
+    <!-- 右侧面板调整手柄 -->
+    <div
+      class="resize-handle-horizontal flex-shrink-0 relative"
+      style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
+      on:mousedown={startRightPanelResize}
+    >
+      <div class="h-full w-full rounded"></div>
+    </div>
+
+    <!-- 右侧：文件管理和服务器监控 -->
+    <div
+      data-right-panel="true"
+      class="flex-shrink-0 flex flex-col overflow-hidden {$themeStore === 'dark' ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'} border-l shadow-sm"
+      style="width: {rightPanelWidth}px; min-width: 300px; max-width: 600px;"
+    >
+      <!-- 文件管理 -->
+      <div class="flex-1 overflow-hidden" style="height: {fileManagerHeight}%">
+        <FileManager />
+      </div>
+
+      <!-- 文件管理/监控调整手柄 -->
+      <div
+        class="resize-handle-vertical flex-shrink-0 relative"
+        style="cursor: {isAddDialogOpen ? 'default' : 'row-resize'}; width: 100%; padding: 2px 0; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
+        on:mousedown={startFileManagerResize}
+      >
+        <div class="w-full h-full rounded"></div>
+      </div>
+
+      <!-- 服务器监控 -->
+      <div class="flex-1 overflow-hidden" style="height: {100 - fileManagerHeight}%">
+        <ServerMonitor />
+      </div>
+    </div>
   </div>
-</main>
+
+  <!-- 对话框 -->
+  <AddAssetDialog
+    bind:isOpen={isAddDialogOpen}
+    bind:editingAsset={editingAsset}
+    onAdd={handleAddAsset}
+    onUpdate={handleUpdateAsset}
+  />
+
+  <DevToolsPanel bind:isOpen={isDevToolsOpen} />
+</div>
 
 <style>
   :global(body) {
     margin: 0;
     padding: 0;
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
-  }
-
-  main {
-    width: 100vw;
+    overflow: hidden;
     height: 100vh;
-    overflow: hidden;
   }
 
-  .app-container {
-    display: flex;
+  :global(html) {
     height: 100%;
-    background-color: var(--bg-primary);
   }
 
-  /* Sidebar */
-  .sidebar {
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border-primary);
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    flex-shrink: 0;
-    transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 10;
+  #app {
+    height: 100vh;
+    width: 100vw;
   }
 
-  .sidebar.dragging {
-    transition: none;
-    pointer-events: none; /* Prevent events during drag */
-  }
-
-  .sidebar.collapsed {
-    border-right: 1px solid var(--border-primary); /* Keep border even when collapsed */
-  }
-
-  .sidebar-content {
+  .resize-handle-horizontal {
+    width: auto;
     height: 100%;
-    width: 100%;
-    overflow: hidden;
-  }
-
-  /* Resizer */
-  .sidebar-resizer {
-    width: 12px; /* Touch target size */
-    margin-left: -6px; /* Center over border */
+    transition: background-color 0.2s ease;
+    z-index: 100;
+    background-color: transparent;
     position: relative;
-    z-index: 20;
-    cursor: col-resize;
-    flex-shrink: 0;
   }
 
-  .sidebar-resizer::after {
-    content: '';
-    position: absolute;
-    left: 6px;
-    top: 0;
-    bottom: 0;
+  .resize-handle-horizontal > div {
     width: 1px;
-    background: transparent;
-    transition: background 0.2s;
-  }
-
-  .sidebar-resizer:hover::after,
-  .sidebar-resizer.dragging::after {
-    background: var(--accent-primary);
-    width: 2px;
-  }
-
-  /* Main Content Area */
-  .main-content {
-    flex: 1;
-    min-width: 0; /* Important for flex child to shrink */
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background-color: var(--bg-primary);
-    position: relative;
-  }
-
-  /* Header / Tab Bar Area */
-  .tab-bar-container {
-    height: 38px;
-    background: var(--bg-secondary); /* Same as sidebar for unified header look */
-    border-bottom: 1px solid var(--border-primary);
-    display: flex;
-    align-items: center;
-    padding: 0 8px;
-    flex-shrink: 0;
-  }
-
-  .header-spacer {
-    flex: 1;
-    -webkit-app-region: drag; /* Allow dragging window from empty header space */
     height: 100%;
-  }
-
-  /* Buttons */
-  .expand-btn,
-  .devtools-toggle-btn,
-  .theme-toggle-btn {
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-    flex-shrink: 0;
-  }
-
-  .expand-btn:hover,
-  .devtools-toggle-btn:hover,
-  .theme-toggle-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .devtools-toggle-btn.active {
-    color: var(--accent-primary);
-    background: var(--bg-active);
-  }
-
-  .expand-btn.floating {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    z-index: 50;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-primary);
-    box-shadow: var(--shadow-sm);
-  }
-
-  /* Terminal Area */
-  .terminal-area {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-    background-color: var(--bg-primary);
-  }
-
-  .terminal-wrapper {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    padding: 0; /* Terminals usually need full bleeding edge */
+    background-color: transparent;
+    border-radius: 0;
+    transition: background-color 0.2s ease, width 0.2s ease;
     opacity: 0;
-    pointer-events: none;
   }
 
-  .terminal-wrapper.active {
+  .resize-handle-horizontal:hover > div {
+    background-color: #e5e7eb;
+    width: 2px;
     opacity: 1;
-    pointer-events: auto;
-    z-index: 1;
   }
 
-  /* Welcome Screen */
-  .welcome {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -60%);
-    text-align: center;
-    color: var(--text-secondary);
+  :global(.dark) .resize-handle-horizontal:hover > div {
+    background-color: #374151;
   }
 
-  .welcome h1 {
-    font-size: 24px;
-    font-weight: 500;
-    color: var(--text-primary);
-    margin-bottom: 12px;
-    letter-spacing: -0.5px;
+  .resize-handle-vertical {
+    height: auto;
+    width: 100%;
+    transition: background-color 0.2s ease;
+    z-index: 100;
+    background-color: transparent;
+    position: relative;
   }
 
-  .welcome p {
-    font-size: 14px;
-    opacity: 0.8;
+  .resize-handle-vertical > div {
+    height: 1px;
+    width: 100%;
+    background-color: transparent;
+    border-radius: 0;
+    transition: background-color 0.2s ease, height 0.2s ease;
+    opacity: 0;
+  }
+
+  .resize-handle-vertical:hover > div {
+    background-color: #e5e7eb;
+    height: 2px;
+    opacity: 1;
+  }
+
+  :global(.dark) .resize-handle-vertical:hover > div {
+    background-color: #374151;
   }
 </style>

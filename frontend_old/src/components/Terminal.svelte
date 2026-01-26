@@ -4,8 +4,7 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import '@xterm/xterm/css/xterm.css';
-  import { themeStore } from '../stores.js';
-  import { get } from 'svelte/store';
+  import { themeStore } from '../stores/theme.js';
 
   export let sessionId = null;
   export let onData = null;
@@ -14,8 +13,7 @@
   let terminalElement;
   let terminal;
   let fitAddon;
-  // 从 themeStore 获取初始主题值
-  let currentTheme = get(themeStore);
+  let currentTheme = 'dark';
 
   // 深色主题配置
   const darkTheme = {
@@ -37,8 +35,8 @@
     brightBlue: '#3b8eea',
     brightMagenta: '#d670d6',
     brightCyan: '#29b8db',
-    selectionBackground: 'rgba(2, 136, 209, 0.3)',
-    selectionForeground: undefined,
+    selectionBackground: 'rgba(2, 136, 209, 0.3)', // #0288D1 with opacity
+    selectionForeground: undefined, // Keep original text color
     selectionInactiveBackground: 'rgba(2, 136, 209, 0.15)',
   };
 
@@ -63,20 +61,22 @@
     brightMagenta: '#bc05bc',
     brightCyan: '#0598bc',
     brightWhite: '#a5a5a5',
-    selectionBackground: 'rgba(225, 245, 254, 0.8)',
-    selectionForeground: undefined,
+    selectionBackground: 'rgba(225, 245, 254, 0.8)', // #E1F5FE
+    selectionForeground: undefined, // Keep original text color
     selectionInactiveBackground: 'rgba(225, 245, 254, 0.5)',
   };
 
   // 订阅主题变化
   const unsubscribe = themeStore.subscribe(state => {
-    currentTheme = state;
+    currentTheme = state.theme;
     if (terminal) {
+      // 动态更新终端主题
       terminal.options.theme = currentTheme === 'light' ? lightTheme : darkTheme;
     }
   });
 
   onMount(() => {
+    // Create terminal instance with dynamic theme
     terminal = new Terminal({
       cursorBlink: true,
       fontSize: 14,
@@ -87,37 +87,45 @@
       convertEol: true
     });
 
+    // Add addons
     fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new WebLinksAddon());
 
+    // Open terminal in DOM
     terminal.open(terminalElement);
 
+    // Fit terminal to container
     fitAddon.fit();
 
+    // Handle user input
     terminal.onData((data) => {
       if (onData && sessionId) {
         onData(sessionId, data);
       }
     });
 
+    // Handle terminal resize
     terminal.onResize(({ cols, rows }) => {
       if (onResize && sessionId) {
         onResize(sessionId, cols, rows);
       }
     });
 
+    // Handle window resize
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
     });
     resizeObserver.observe(terminalElement);
 
+    // Return cleanup function
     return () => {
       resizeObserver.disconnect();
     };
   });
 
   onDestroy(() => {
+    // 清理订阅
     if (unsubscribe) {
       unsubscribe();
     }
@@ -125,31 +133,32 @@
       terminal.dispose();
     }
   });
-  
+
+  // Expose methods for parent component
   export function write(data) {
     if (terminal) {
       terminal.write(data);
     }
   }
-  
+
   export function writeln(data) {
     if (terminal) {
       terminal.writeln(data);
     }
   }
-  
+
   export function clear() {
     if (terminal) {
       terminal.clear();
     }
   }
-  
+
   export function focus() {
     if (terminal) {
       terminal.focus();
     }
   }
-  
+
   export function getSize() {
     if (terminal) {
       return {
@@ -161,21 +170,19 @@
   }
 </script>
 
-<div class="terminal-container" bind:this={terminalElement}>
-  <!-- xterm 终端将在这里渲染 -->
-</div>
+<div class="terminal-container" bind:this={terminalElement}></div>
 
 <style>
   .terminal-container {
     width: 100%;
     height: 100%;
     background-color: var(--bg-primary);
-    transition: background-color 0.2s ease;
   }
 
   :global(.xterm) {
     height: 100%;
     padding: 10px;
+    box-sizing: border-box;
   }
 
   :global(.xterm-selection-layer .selection-bar) {
@@ -188,7 +195,8 @@
     pointer-events: none;
     z-index: 10;
   }
-
+  
+  /* Custom selection style override to add border effect */
   :global(.xterm .xterm-selection) {
     border: 1px dashed #0288D1 !important;
     box-sizing: border-box;
