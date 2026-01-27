@@ -10,7 +10,7 @@ export default defineConfig({
     origin: 'http://localhost:5174'
   },
   build: {
-    outDir: '../build/frontend',
+    outDir: 'build',
     emptyOutDir: true,
     rollupOptions: {
       output: {
