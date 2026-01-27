@@ -56,13 +56,6 @@ jobs:
         run: |
           wails build -platform ${{ matrix.os }}/${{ matrix.arch }} -clean
 
-      - name: Package Windows
-        if: matrix.os == 'windows'
-        shell: bash
-        run: |
-          cd build/bin
-          zip -r AHaSSHTools-windows-amd64.zip AHaSSHTools.exe
-
       - name: Package macOS
         if: matrix.os == 'darwin'
         shell: bash
@@ -83,6 +76,7 @@ jobs:
         with:
           name: AHaSSHTools-${{ matrix.os }}-${{ matrix.arch }}
           path: |
+            build/bin/*.exe
             build/bin/*.zip
           retention-days: 7
 
@@ -111,7 +105,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            artifacts/AHaSSHTools-windows-amd64/*.zip
+            artifacts/AHaSSHTools-windows-amd64/*.exe
             artifacts/AHaSSHTools-darwin-arm64/*.zip
             artifacts/AHaSSHTools-darwin-amd64/*.zip
           body: |
@@ -120,8 +114,8 @@ jobs:
             ### 下载说明
 
             **Windows**:
-            - 下载 `AHaSSHTools-windows-amd64.zip`
-            - 解压后直接运行 `AHaSSHTools.exe`
+            - 下载 `AHaSSHTools.exe`
+            - 直接运行即可
 
             **macOS (Apple Silicon / M1/M2/M3)**:
             - 下载 `AHaSSHTools-macos-arm64.zip`
