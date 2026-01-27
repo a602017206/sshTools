@@ -28,6 +28,39 @@
   // Get current session object
   $: currentSession = $activeSessionIdStore ? $connectionsStore.get($activeSessionIdStore) : null;
   $: isSessionConnected = currentSession?.connected || false;
+
+  // Sort files: directories first, then alphabetical by name
+  function sortFiles(fileList) {
+    if (!fileList || fileList.length === 0) return [];
+    return [...fileList].sort((a, b) => {
+      // Directories first
+      if (a.is_dir && !b.is_dir) return -1;
+      if (!a.is_dir && b.is_dir) return 1;
+      // Then sort by name (case-insensitive alphabetical)
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
+  }
+
+  // Display files with parent directory entry
+  $: displayFiles = (() => {
+    const sortedFileList = sortFiles(files);
+
+    if (currentPath === '/') {
+      return sortedFileList;
+    }
+
+    const parentPath = currentPath.split('/').filter(Boolean).slice(0, -1).join('/') || '/';
+
+    return [
+      {
+        name: '..',
+        path: parentPath,
+        is_dir: true,
+        is_parent: true,
+      },
+      ...sortedFileList
+    ];
+  })();
   
   async function loadDirectory(path) {
     if (!$activeSessionIdStore || !isSessionConnected) return;
@@ -224,8 +257,8 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
           </svg>
         </button>
-        <span class="text-gray-400 dark:text-gray-500">/</span>
         {#if isEditingPath}
+          <span class="text-gray-400 dark:text-gray-500">/</span>
           <input
             type="text"
             bind:value={editPathValue}
@@ -243,10 +276,14 @@
         {:else}
           <span
             on:click={handleStartEditPath}
-            class="text-purple-600 dark:text-purple-400 font-medium cursor-text hover:bg-purple-100 dark:hover:bg-purple-900/30 px-2 py-1 rounded transition-colors"
+            class="flex-1 text-purple-600 dark:text-purple-400 font-medium cursor-text hover:bg-purple-100 dark:hover:bg-purple-900/30 px-2 py-1 rounded transition-colors"
             title="点击编辑路径"
           >
-            {currentPath.split('/').filter(Boolean).join(' / ')}
+            {#if currentPath === '/'}
+              /
+            {:else}
+              {currentPath.split('/').filter(Boolean).join(' / ')}
+            {/if}
           </span>
         {/if}
       </div>
@@ -321,7 +358,7 @@
           重试
         </button>
       </div>
-    {:else if files.length === 0}
+    {:else if displayFiles.length === 0}
       <div class="flex flex-col items-center justify-center h-40 text-gray-500 dark:text-gray-400 gap-2">
         <svg class="w-8 h-8 opacity-50" fill="currentColor" viewBox="0 0 24 24">
           <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -329,13 +366,21 @@
         <span>目录为空</span>
       </div>
     {:else}
-      {#each files as file, index (file.path)}
+      {#each displayFiles as file, index (file.path)}
         <div
-          class="group flex items-center gap-2 px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer transition-colors mx-2 my-0.5 rounded-lg"
+          class="group flex items-center gap-2 px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer transition-colors mx-2 my-0.5 rounded-lg {file.is_parent ? 'text-gray-500 dark:text-gray-400 italic' : ''}"
           on:click={() => file.is_dir && navigateTo(file.path)}
           on:dblclick={() => { if (!file.is_dir) handleDownload(file); }}
         >
-          {#if file.is_dir}
+          {#if file.is_parent}
+            <svg class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-gray-600 dark:text-gray-300">{file.name}</div>
+              <div class="text-gray-400 dark:text-gray-500 text-[10px]">返回上一层</div>
+            </div>
+          {:else if file.is_dir}
             {#if expandedDirs.has(file.path)}
               <svg class="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -348,23 +393,24 @@
             <svg class="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
               <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-gray-900 dark:text-white font-medium truncate">{file.name}</div>
+            </div>
           {:else}
             <div class="w-3"></div>
             <svg class="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-          {/if}
-          <div class="flex-1 min-w-0">
-            <div class="text-gray-900 dark:text-white font-medium truncate">{file.name}</div>
-            {#if !file.is_dir}
+            <div class="flex-1 min-w-0">
+              <div class="text-gray-900 dark:text-white font-medium truncate">{file.name}</div>
               <div class="text-gray-500 dark:text-gray-400 flex items-center gap-2">
                 <span>{formatFileSize(file.size)}</span>
                 <span>•</span>
                 <span>{file.modified}</span>
               </div>
-            {/if}
-          </div>
-          <span class="text-gray-400 dark:text-gray-500 font-mono text-[10px]">{file.mode}</span>
+            </div>
+            <span class="text-gray-400 dark:text-gray-500 font-mono text-[10px]">{file.mode}</span>
+          {/if}
         </div>
       {/each}
     {/if}
