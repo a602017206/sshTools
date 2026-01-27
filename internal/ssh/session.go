@@ -60,7 +60,7 @@ func (c *Client) NewSession() (*Session, error) {
 // RequestPTY requests a pseudo-terminal
 func (s *Session) RequestPTY(term string, height, width int) error {
 	modes := ssh.TerminalModes{
-		ssh.ECHO:          1,
+		ssh.ECHO:          1, // 启用本地回显，让用户看到输入
 		ssh.TTY_OP_ISPEED: 14400,
 		ssh.TTY_OP_OSPEED: 14400,
 	}

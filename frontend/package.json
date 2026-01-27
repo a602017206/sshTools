@@ -14,7 +14,8 @@
     "@xterm/xterm": "^5.5.0",
     "chart.js": "^4.4.0",
     "clsx": "^2.1.0",
-    "svelte": "^4.2.0"
+    "svelte": "^4.2.0",
+    "zmodem.js": "^0.1.10"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.0.0",
