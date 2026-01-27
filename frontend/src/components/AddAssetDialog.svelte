@@ -13,6 +13,8 @@
   let savingConnection = false;
   let showPassword = false;
   let showPassphrase = false;
+  let editingAssetLoaded = false; // Flag to prevent reloading data
+  let wasOpen = false; // Track previous open state
 
   let formData = {
     id: '',
@@ -191,14 +193,17 @@
     showPassphrase = false;
   }
 
-  $: if (!isOpen) {
+  $: if (wasOpen && !isOpen) {
+    // Dialog was just closed, reset the form
     resetForm();
   }
+  $: wasOpen = isOpen;
 
-  $: if (isOpen && !editingAsset) {
-    // If opened without editingAsset, ensure form is reset
-    resetForm();
-    formData.port = getDefaultPort();
+  $: if (isOpen && !editingAsset && !formData.id) {
+    // New connection: only set port if form is empty
+    if (!formData.port) {
+      formData.port = getDefaultPort();
+    }
   }
 
   function getDefaultPort() {
@@ -232,7 +237,7 @@
 
   // Load connection data when editing
   async function loadConnectionData() {
-    if (!editingAsset || !isOpen) return;
+    if (!editingAsset || !isOpen || editingAssetLoaded) return;
 
     try {
       const conn = await window.wailsBindings.GetConnection(editingAsset.id);
@@ -253,6 +258,7 @@
         };
         assetType = conn.type || 'ssh';
         authType = conn.auth_type || 'password';
+        editingAssetLoaded = true; // Mark as loaded
 
         // Load password if saved
         try {
@@ -273,6 +279,17 @@
 
   $: if (isOpen && editingAsset) {
     loadConnectionData();
+  }
+
+  // Reset the loaded flag when editingAsset changes or dialog closes
+  $: if (editingAsset && formData.id !== editingAsset.id) {
+    // editingAsset has changed to a different one, reload data
+    editingAssetLoaded = false;
+  }
+
+  $: if (!wasOpen && isOpen && editingAsset) {
+    // Dialog just opened with editingAsset, ensure we load data
+    editingAssetLoaded = false;
   }
 </script>
 
