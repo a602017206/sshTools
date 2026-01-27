@@ -12,6 +12,8 @@ export function ChangeDirectory(arg1:string,arg2:string):Promise<void>;
 
 export function CloseSSH(arg1:string):Promise<void>;
 
+export function ConnectLocalShell(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
+
 export function ConnectSSH(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:number,arg9:number):Promise<void>;
 
 export function CreateDirectory(arg1:string,arg2:string):Promise<void>;
@@ -60,6 +62,8 @@ export function RemoveConnection(arg1:string):Promise<void>;
 
 export function RenameFile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function ResizeLocalShell(arg1:string,arg2:number,arg3:number):Promise<void>;
+
 export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function SavePassword(arg1:string,arg2:string):Promise<void>;
@@ -69,6 +73,8 @@ export function SelectDownloadDirectory():Promise<string>;
 export function SelectSSHKeyFile():Promise<string>;
 
 export function SelectUploadFiles():Promise<Array<string>>;
+
+export function SendLocalShellData(arg1:string,arg2:string):Promise<void>;
 
 export function SendSSHData(arg1:string,arg2:string):Promise<void>;
 

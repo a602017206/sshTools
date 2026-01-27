@@ -14,11 +14,21 @@ type SessionManager struct {
 	sftpClients map[string]*SFTPClient
 }
 
+// SessionType represents the type of session (SSH or local)
+type SessionType string
+
+const (
+	SessionTypeSSH   SessionType = "ssh"
+	SessionTypeLocal SessionType = "local"
+)
+
 // ManagedSession represents a managed SSH session
 type ManagedSession struct {
 	ID       string
 	Client   *Client
 	Session  *Session
+	Local    *LocalSession
+	Type     SessionType
 	Running  bool
 	stopChan chan struct{}
 }
@@ -155,21 +165,24 @@ func (sm *SessionManager) CloseSession(sessionID string) error {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	// Stop output reader
 	close(managed.stopChan)
 
-	// Close SFTP client if exists
 	if sftpClient, exists := sm.sftpClients[sessionID]; exists {
 		sftpClient.Close()
 		delete(sm.sftpClients, sessionID)
 	}
 
-	// Close session and client
-	if managed.Session != nil {
-		managed.Session.Close()
-	}
-	if managed.Client != nil {
-		managed.Client.Close()
+	if managed.Type == SessionTypeLocal {
+		if managed.Local != nil {
+			managed.Local.Close()
+		}
+	} else {
+		if managed.Session != nil {
+			managed.Session.Close()
+		}
+		if managed.Client != nil {
+			managed.Client.Close()
+		}
 	}
 
 	delete(sm.sessions, sessionID)
@@ -260,4 +273,127 @@ func (sm *SessionManager) CloseSFTPClient(sessionID string) error {
 	delete(sm.sftpClients, sessionID)
 
 	return err
+}
+
+// CreateLocalSession creates a new local shell session
+func (sm *SessionManager) CreateLocalSession(sessionID string, shellType string) (*ManagedSession, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if _, exists := sm.sessions[sessionID]; exists {
+		return nil, fmt.Errorf("session already exists: %s", sessionID)
+	}
+
+	localSession, err := NewLocalSession(shellType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create local session: %w", err)
+	}
+
+	managed := &ManagedSession{
+		ID:       sessionID,
+		Client:   nil,
+		Session:  nil,
+		Local:    localSession,
+		Type:     SessionTypeLocal,
+		Running:  false,
+		stopChan: make(chan struct{}),
+	}
+
+	sm.sessions[sessionID] = managed
+	return managed, nil
+}
+
+// StartLocalShell starts a local shell session
+func (sm *SessionManager) StartLocalShell(sessionID string, cols, rows int, onOutput func([]byte)) error {
+	sm.mu.Lock()
+	managed, exists := sm.sessions[sessionID]
+	if !exists {
+		sm.mu.Unlock()
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+	sm.mu.Unlock()
+
+	if err := managed.Local.Resize(cols, rows); err != nil {
+		return fmt.Errorf("failed to resize PTY: %w", err)
+	}
+
+	managed.Running = true
+
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			select {
+			case <-managed.stopChan:
+				return
+			default:
+				n, err := managed.Local.Read(buf)
+				if err != nil {
+					if err != io.EOF {
+						fmt.Printf("Read error: %v\n", err)
+					}
+					return
+				}
+				if n > 0 && onOutput != nil {
+					onOutput(buf[:n])
+				}
+			}
+		}
+	}()
+
+	return nil
+}
+
+// WriteToLocalSession writes data to a local session
+func (sm *SessionManager) WriteToLocalSession(sessionID string, data []byte) error {
+	sm.mu.RLock()
+	managed, exists := sm.sessions[sessionID]
+	sm.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	if managed.Type != SessionTypeLocal {
+		return fmt.Errorf("session is not a local session: %s", sessionID)
+	}
+
+	_, err := managed.Local.Write(data)
+	return err
+}
+
+// ResizeLocalSession resizes local terminal
+func (sm *SessionManager) ResizeLocalSession(sessionID string, cols, rows int) error {
+	sm.mu.RLock()
+	managed, exists := sm.sessions[sessionID]
+	sm.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	if managed.Type != SessionTypeLocal {
+		return fmt.Errorf("session is not a local session: %s", sessionID)
+	}
+
+	return managed.Local.Resize(cols, rows)
+}
+
+// CloseLocalSession closes a local session
+func (sm *SessionManager) CloseLocalSession(sessionID string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	managed, exists := sm.sessions[sessionID]
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	close(managed.stopChan)
+
+	if managed.Local != nil {
+		managed.Local.Close()
+	}
+
+	delete(sm.sessions, sessionID)
+	return nil
 }

@@ -13,6 +13,10 @@
   let showCloseConfirm = false;
   let sessionToClose = null;
 
+  // Shell selection dialog state (Windows only)
+  let showShellSelect = false;
+  let selectedShell = 'powershell';
+
   $: sessionsList = $connectionsStore ? Array.from($connectionsStore.values()) : [];
 
   // 当会话列表更新时，更新全局 terminalRefs
@@ -301,17 +305,157 @@
     }
   }
 
+  async function handleNewLocalTerminal() {
+    if (!window.wailsBindings) {
+      console.error('Wails bindings not loaded');
+      alert('Wails 绑定未加载，请使用 wails dev 运行');
+      return;
+    }
+
+    const { ConnectLocalShell, SendSSHData, ResizeSSH } = window.wailsBindings;
+
+    // Detect platform and show shell selection for Windows
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes('win')) {
+      showShellSelect = true;
+      return;
+    }
+
+    // For macOS/Linux, use default shell (no dialog)
+    await openLocalTerminal('');
+  }
+
+  async function openLocalTerminal(shellType) {
+    const { ConnectLocalShell } = window.wailsBindings;
+
+    // Generate unique session ID
+    const sessionId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create local session metadata
+    const newSession = {
+      sessionId,
+      connection: {
+        name: 'Local Shell',
+        host: 'localhost',
+        port: 0,
+        username: ''
+      },
+      connected: false,
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      tabName: 'Local',
+      type: 'local'
+    };
+
+    connectionsStore.update(conns => {
+      conns.set(sessionId, newSession);
+      return conns;
+    });
+
+    // Set as active session
+    activeSessionIdStore.set(sessionId);
+
+    // Get terminal size
+    await tick();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    let size = terminalRefs[sessionId]?.getSize();
+    if (!size) {
+      size = { cols: 80, rows: 24 };
+      console.warn('Terminal not ready, using default size:', size);
+    }
+
+    // Subscribe to local output events
+    console.log('Subscribing to local events for session:', sessionId);
+    subscribeToLocalOutput(sessionId);
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Verify terminal is ready
+    if (!terminalRefs[sessionId]) {
+      console.error('Terminal component not ready after delay');
+      return;
+    }
+
+    // Display connection message
+    const terminal = terminalRefs[sessionId];
+    if (!terminal) {
+      console.error('Failed to get terminal reference for session:', sessionId);
+      return;
+    }
+
+    console.log('Terminal ready, starting local shell...');
+    terminal.writeln(`正在启动本地终端${shellType ? ` (${shellType})` : ''}...`);
+    terminal.writeln('');
+
+    try {
+      // Call Wails ConnectLocalShell API
+      await ConnectLocalShell(sessionId, shellType, size.cols, size.rows);
+
+      // Connection successful, update session state
+      newSession.connected = true;
+      connectionsStore.update(conns => {
+        conns.set(sessionId, newSession);
+        return conns;
+      });
+
+      // Focus terminal
+      setTimeout(() => {
+        terminal.focus();
+      }, 100);
+    } catch (error) {
+      console.error('Failed to start local shell:', error);
+
+      // Display error message
+      if (terminal) {
+        terminal.writeln(`\r\n启动本地终端失败: ${error.message || error}`);
+      }
+
+      // Clean up failed session
+      await closeSession(sessionId);
+    }
+  }
+
+  function handleShellSelectConfirm() {
+    showShellSelect = false;
+    openLocalTerminal(selectedShell);
+  }
+
+  function handleShellSelectCancel() {
+    showShellSelect = false;
+  }
+
+  // Subscribe to local output events
+  function subscribeToLocalOutput(sessionId) {
+    const eventName = `local:output:${sessionId}`;
+    const unsubscribe = EventsOn(eventName, (data) => {
+      const terminal = terminalRefs[sessionId];
+      if (terminal) {
+        terminal.write(data);
+      }
+    });
+    sessionUnsubscribers.set(sessionId, unsubscribe);
+  }
+
   // 处理终端数据
   function handleTerminalData(sessionId, data) {
     if (!$connectionsStore.has(sessionId)) {
       return;
     }
 
-    const { SendSSHData } = window.wailsBindings || {};
-    if (typeof SendSSHData === 'function') {
-      SendSSHData(sessionId, data).catch(error => {
-        console.error('Failed to send data:', error);
-      });
+    const session = $connectionsStore.get(sessionId);
+    const { SendSSHData, SendLocalShellData } = window.wailsBindings || {};
+
+    if (session && session.type === 'local') {
+      if (typeof SendLocalShellData === 'function') {
+        SendLocalShellData(sessionId, data).catch(error => {
+          console.error('Failed to send local shell data:', error);
+        });
+      }
+    } else {
+      if (typeof SendSSHData === 'function') {
+        SendSSHData(sessionId, data).catch(error => {
+          console.error('Failed to send SSH data:', error);
+        });
+      }
     }
   }
 
@@ -321,11 +465,21 @@
       return;
     }
 
-    const { ResizeSSH } = window.wailsBindings || {};
-    if (typeof ResizeSSH === 'function') {
-      ResizeSSH(sessionId, cols, rows).catch(error => {
-        console.error('Failed to resize terminal:', error);
-      });
+    const session = $connectionsStore.get(sessionId);
+    const { ResizeSSH, ResizeLocalShell } = window.wailsBindings || {};
+
+    if (session && session.type === 'local') {
+      if (typeof ResizeLocalShell === 'function') {
+        ResizeLocalShell(sessionId, cols, rows).catch(error => {
+          console.error('Failed to resize local terminal:', error);
+        });
+      }
+    } else {
+      if (typeof ResizeSSH === 'function') {
+        ResizeSSH(sessionId, cols, rows).catch(error => {
+          console.error('Failed to resize SSH terminal:', error);
+        });
+      }
     }
   }
 
@@ -419,6 +573,16 @@
         </div>
       {/each}
     {/if}
+
+    <button
+      on:click={handleNewLocalTerminal}
+      class="flex items-center gap-2 px-4 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors min-w-[50px]"
+      title="打开本地终端"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+      </svg>
+    </button>
   </div>
 
   <!-- 终端内容 -->
@@ -433,7 +597,11 @@
           <!-- 工具栏 -->
           <div class="flex items-center justify-between px-4 py-2.5 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
             <div class="text-sm text-gray-600 dark:text-gray-400 font-mono">
-              {session.connection.username}@{session.connection.host}:{session.connection.port}
+              {#if session.type === 'local'}
+                本地终端{session.connection.name !== 'Local Shell' ? ` (${session.connection.name})` : ''}
+              {:else}
+                {session.connection.username}@{session.connection.host}:{session.connection.port}
+              {/if}
             </div>
             <div class="flex items-center gap-1">
               <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title="复制">
@@ -486,6 +654,60 @@
   onConfirm={handleConfirmClose}
   onCancel={handleCancelClose}
 />
+
+{#if showShellSelect}
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
+      <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">选择 Shell</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">选择要打开的本地终端类型</p>
+      </div>
+
+      <div class="px-6 py-4 space-y-3">
+        <label class="flex items-center space-x-3 cursor-pointer">
+          <input
+            type="radio"
+            bind:group={selectedShell}
+            value="powershell"
+            class="w-4 h-4 text-purple-600"
+          />
+          <div>
+            <div class="font-medium text-gray-900 dark:text-white">PowerShell</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400">推荐：更强大的命令行体验</div>
+          </div>
+        </label>
+
+        <label class="flex items-center space-x-3 cursor-pointer">
+          <input
+            type="radio"
+            bind:group={selectedShell}
+            value="cmd"
+            class="w-4 h-4 text-purple-600"
+          />
+          <div>
+            <div class="font-medium text-gray-900 dark:text-white">CMD</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400">传统命令提示符</div>
+          </div>
+        </label>
+      </div>
+
+      <div class="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+        <button
+          on:click={handleShellSelectCancel}
+          class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+        >
+          取消
+        </button>
+        <button
+          on:click={handleShellSelectConfirm}
+          class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium"
+        >
+          确定
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .terminal-content-area {

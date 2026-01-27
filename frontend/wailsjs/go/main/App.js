@@ -18,6 +18,10 @@ export function CloseSSH(arg1) {
   return window['go']['main']['App']['CloseSSH'](arg1);
 }
 
+export function ConnectLocalShell(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ConnectLocalShell'](arg1, arg2, arg3, arg4);
+}
+
 export function ConnectSSH(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
   return window['go']['main']['App']['ConnectSSH'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }
@@ -114,6 +118,10 @@ export function RenameFile(arg1, arg2, arg3) {
   return window['go']['main']['App']['RenameFile'](arg1, arg2, arg3);
 }
 
+export function ResizeLocalShell(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResizeLocalShell'](arg1, arg2, arg3);
+}
+
 export function ResizeSSH(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSH'](arg1, arg2, arg3);
 }
@@ -132,6 +140,10 @@ export function SelectSSHKeyFile() {
 
 export function SelectUploadFiles() {
   return window['go']['main']['App']['SelectUploadFiles']();
+}
+
+export function SendLocalShellData(arg1, arg2) {
+  return window['go']['main']['App']['SendLocalShellData'](arg1, arg2);
 }
 
 export function SendSSHData(arg1, arg2) {

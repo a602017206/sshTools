@@ -133,6 +133,28 @@ func (a *App) CloseSSH(sessionID string) error {
 	return nil
 }
 
+// ConnectLocalShell creates and starts a local shell session
+func (a *App) ConnectLocalShell(sessionID string, shellType string, cols, rows int) error {
+	err := a.sessionService.ConnectLocalShell(sessionID, shellType, cols, rows, func(data []byte) {
+		runtime.EventsEmit(a.ctx, "local:output:"+sessionID, string(data))
+	})
+
+	if err == nil {
+		fmt.Printf("Local shell session started: %s\n", sessionID)
+	}
+	return err
+}
+
+// SendLocalShellData sends data to a local shell session
+func (a *App) SendLocalShellData(sessionID string, data string) error {
+	return a.sessionService.SendLocalData(sessionID, data)
+}
+
+// ResizeLocalShell resizes a local shell session
+func (a *App) ResizeLocalShell(sessionID string, cols, rows int) error {
+	return a.sessionService.ResizeLocalTerminal(sessionID, cols, rows)
+}
+
 // ListSSHSessions returns all active session IDs
 func (a *App) ListSSHSessions() []string {
 	return a.sessionService.ListSessions()

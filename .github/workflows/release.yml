@@ -109,6 +109,11 @@ jobs:
             artifacts/AHaSSHTools-darwin-arm64/*.zip
             artifacts/AHaSSHTools-darwin-amd64/*.zip
           body: |
+            
+            # 更新说明：
+            - 2026年01月27日17:06:20 优化文件管理器排序和导航功能
+            - 2026年01月27日18:35:34 添加本地终端连接功能
+            
             ## AHaSSHTools ${{ github.ref_name }}
 
             ### 下载说明

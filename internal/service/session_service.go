@@ -61,6 +61,16 @@ func (s *SessionService) SendData(sessionID string, data string) error {
 	return s.sessionManager.WriteToSession(sessionID, []byte(data))
 }
 
+// SendLocalData sends data to a local shell session
+func (s *SessionService) SendLocalData(sessionID string, data string) error {
+	return s.sessionManager.WriteToLocalSession(sessionID, []byte(data))
+}
+
+// ResizeLocalTerminal resizes terminal for a local shell session
+func (s *SessionService) ResizeLocalTerminal(sessionID string, cols, rows int) error {
+	return s.sessionManager.ResizeLocalSession(sessionID, cols, rows)
+}
+
 // ResizeTerminal resizes the terminal for an SSH session
 func (s *SessionService) ResizeTerminal(sessionID string, cols, rows int) error {
 	return s.sessionManager.ResizeSession(sessionID, cols, rows)
@@ -79,4 +89,20 @@ func (s *SessionService) ListSessions() []string {
 // GetSFTPClient gets or creates an SFTP client for a session
 func (s *SessionService) GetSFTPClient(sessionID string) (*ssh.SFTPClient, error) {
 	return s.sessionManager.GetOrCreateSFTPClient(sessionID)
+}
+
+// ConnectLocalShell creates and starts a local shell session
+func (s *SessionService) ConnectLocalShell(sessionID string, shellType string, cols, rows int, outputCallback OutputCallback) error {
+	_, err := s.sessionManager.CreateLocalSession(sessionID, shellType)
+	if err != nil {
+		return fmt.Errorf("failed to create local session: %w", err)
+	}
+
+	err = s.sessionManager.StartLocalShell(sessionID, cols, rows, outputCallback)
+	if err != nil {
+		s.sessionManager.CloseSession(sessionID)
+		return fmt.Errorf("failed to start local shell: %w", err)
+	}
+
+	return nil
 }

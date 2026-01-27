@@ -29,6 +29,8 @@
   // Get current session object
   $: currentSession = $activeSessionIdStore ? $connectionsStore.get($activeSessionIdStore) : null;
   $: isSessionConnected = currentSession?.connected || false;
+  $: isLocalSession = currentSession?.type === 'local';
+  $: canUseMonitor = isSessionConnected && !isLocalSession;
 
   function getStatusColor(value) {
     if (value < 50) return '#10b981'; // green
@@ -100,7 +102,7 @@
 
   // 获取监控数据
   async function fetchMonitoringData() {
-    if (!$activeSessionIdStore || !isSessionConnected) return;
+    if (!$activeSessionIdStore || !isSessionConnected || isLocalSession) return;
 
     const { GetMonitoringData } = window.wailsBindings || {};
     if (typeof GetMonitoringData !== 'function') return;
@@ -123,8 +125,8 @@
     }
   }
 
-  // React to active session changes - only fetch when session is connected
-  $: if ($activeSessionIdStore && isSessionConnected) {
+  // React to active session changes - only fetch when session is connected and can use monitor
+  $: if ($activeSessionIdStore && canUseMonitor) {
     fetchMonitoringData();
   }
 
@@ -146,12 +148,32 @@
 
 <div class="h-full flex flex-col bg-white dark:bg-gray-800 overflow-y-auto scrollbar-thin">
   <!-- 头部 -->
-  <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+   <div class="p-3 border-b border-gray-200 dark:border-gray-700">
     <h3 class="text-sm font-semibold text-gray-900 dark:text-white">服务器监控</h3>
     <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-      {isSessionConnected ? '实时数据获取中...' : '请先连接到服务器'}
+      {#if isLocalSession}
+        本地终端不支持服务器监控
+      {:else if isSessionConnected}
+        实时数据获取中...
+      {:else}
+        请先连接到服务器
+      {/if}
     </div>
   </div>
+
+  {#if isLocalSession}
+    <div class="p-3 space-y-3">
+      <div class="flex flex-col items-center justify-center h-40 text-gray-500 dark:text-gray-400 gap-2">
+        <svg class="w-8 h-8 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2 2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span class="text-center px-4">本地终端不支持服务器监控</span>
+        <div class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+           服务器监控功能仅适用于 SSH 远程连接
+        </div>
+       </div>
+    </div>
+  {/if}
 
   <div class="p-3 space-y-3">
     <!-- CPU 使用率 -->

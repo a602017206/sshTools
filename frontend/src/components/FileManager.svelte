@@ -28,6 +28,8 @@
   // Get current session object
   $: currentSession = $activeSessionIdStore ? $connectionsStore.get($activeSessionIdStore) : null;
   $: isSessionConnected = currentSession?.connected || false;
+  $: isLocalSession = currentSession?.type === 'local';
+  $: canUseFileManager = isSessionConnected && !isLocalSession;
 
   // Sort files: directories first, then alphabetical by name
   function sortFiles(fileList) {
@@ -64,6 +66,10 @@
   
   async function loadDirectory(path) {
     if (!$activeSessionIdStore || !isSessionConnected) return;
+
+    if (isLocalSession) {
+      return;
+    }
 
     isLoading = true;
     error = null;
@@ -108,7 +114,7 @@
   }
 
   async function handleUpload() {
-    if (!$activeSessionIdStore || !isSessionConnected) return;
+    if (!$activeSessionIdStore || !isSessionConnected || isLocalSession) return;
 
     try {
       const localPaths = await SelectUploadFiles();
@@ -126,7 +132,7 @@
   }
 
   async function handleDownload(file) {
-    if (!$activeSessionIdStore || !isSessionConnected || file.is_dir) return;
+    if (!$activeSessionIdStore || !isSessionConnected || isLocalSession || file.is_dir) return;
 
     try {
       const localDir = await SelectDownloadDirectory();
@@ -196,8 +202,8 @@
     }
   }
 
-  // React to active session changes - only load when session is connected
-  $: if ($activeSessionIdStore && isSessionConnected) {
+  // React to active session changes - only load when session is connected and can use file manager
+  $: if ($activeSessionIdStore && canUseFileManager) {
     loadDirectory(currentPath);
   }
 
@@ -214,35 +220,37 @@
   <!-- 头部工具栏 -->
   <div class="p-3 border-b border-gray-200 dark:border-gray-700">
     <div class="flex items-center justify-between mb-2">
-      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">文件管理</h3>
-      <div class="flex items-center gap-1">
-        <button 
-          on:click={handleRefresh}
-          class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" 
-          title="刷新"
-        >
-          <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-        </button>
-        <button 
-          on:click={handleUpload}
-          class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" 
-          title="上传"
-        >
-          <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-          </svg>
-        </button>
-        <button 
-          class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" 
-          title="下载"
-        >
-          <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0L8 8m4-4V4" />
-          </svg>
-        </button>
-      </div>
+       <h3 class="text-sm font-semibold text-gray-900 dark:text-white">文件管理</h3>
+       <div class="flex items-center gap-1">
+         <button
+           on:click={handleRefresh}
+           disabled={isLocalSession}
+           class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+           title="刷新"
+         >
+           <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+           </svg>
+         </button>
+         <button
+           on:click={handleUpload}
+           disabled={isLocalSession}
+           class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+           title="上传"
+         >
+           <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4 8l-4-4m0 0L8 8m4-4v12" />
+           </svg>
+         </button>
+         <button
+           class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+           title="下载"
+         >
+           <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4 4l-4-4m0 0L8 8m4-4v12" />
+           </svg>
+         </button>
+       </div>
     </div>
 
     <!-- 路径导航 -->
@@ -358,14 +366,24 @@
           重试
         </button>
       </div>
-    {:else if displayFiles.length === 0}
-      <div class="flex flex-col items-center justify-center h-40 text-gray-500 dark:text-gray-400 gap-2">
-        <svg class="w-8 h-8 opacity-50" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-        </svg>
-        <span>目录为空</span>
-      </div>
-    {:else}
+     {:else if displayFiles.length === 0}
+       <div class="flex flex-col items-center justify-center h-40 text-gray-500 dark:text-gray-400 gap-2">
+         <svg class="w-8 h-8 opacity-50" fill="currentColor" viewBox="0 0 24 24">
+           <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+         </svg>
+         <span>目录为空</span>
+       </div>
+     {:else if isLocalSession}
+       <div class="flex flex-col items-center justify-center h-40 text-gray-500 dark:text-gray-400 gap-2">
+         <svg class="w-8 h-8 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+         </svg>
+         <span class="text-center px-4">本地终端不支持文件管理</span>
+         <div class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+           文件管理仅适用于 SSH 远程连接
+         </div>
+       </div>
+     {:else}
       {#each displayFiles as file, index (file.path)}
         <div
           class="group flex items-center gap-2 px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer transition-colors mx-2 my-0.5 rounded-lg {file.is_parent ? 'text-gray-500 dark:text-gray-400 italic' : ''}"
