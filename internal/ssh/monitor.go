@@ -2,10 +2,15 @@ package ssh
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+func roundTo2Decimals(value float64) float64 {
+	return float64(int(value*100+0.5)) / 100
+}
 
 // SystemInfo contains basic system information
 type SystemInfo struct {
@@ -177,24 +182,37 @@ func (mc *MonitorCollector) collectCPUMetrics(sessionID string, timeout time.Dur
 	// Get overall CPU usage from top
 	stdout, _, err := mc.sessionManager.ExecuteCommand(sessionID, `top -bn1 | grep "Cpu(s)"`, timeout)
 	if err == nil {
-		// Parse: "Cpu(s): 10.0%us, 2.0%sy, 0.0%ni, 85.0%id, 1.0%wa, ..."
-		fields := strings.Fields(stdout)
-		for _, field := range fields {
-			if strings.HasSuffix(field, "us,") || strings.HasSuffix(field, "us") {
-				val := strings.TrimSuffix(strings.TrimSuffix(field, "us"), ",")
-				metrics.User, _ = strconv.ParseFloat(val, 64)
-			} else if strings.HasSuffix(field, "sy,") || strings.HasSuffix(field, "sy") {
-				val := strings.TrimSuffix(strings.TrimSuffix(field, "sy"), ",")
-				metrics.System, _ = strconv.ParseFloat(val, 64)
-			} else if strings.HasSuffix(field, "id,") || strings.HasSuffix(field, "id") {
-				val := strings.TrimSuffix(strings.TrimSuffix(field, "id"), ",")
-				metrics.Idle, _ = strconv.ParseFloat(val, 64)
-			} else if strings.HasSuffix(field, "wa,") || strings.HasSuffix(field, "wa") {
-				val := strings.TrimSuffix(strings.TrimSuffix(field, "wa"), ",")
-				metrics.IOWait, _ = strconv.ParseFloat(val, 64)
+		// Parse: "%Cpu(s):  0.8 us,  0.8 sy,  0.0 ni, 98.5 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st"
+		// Use regex to extract each metric value reliably
+		re := regexp.MustCompile(`(\d+(?:\.\d+)?)\s+(\w+),?`)
+		matches := re.FindAllStringSubmatch(stdout, -1)
+
+		for _, match := range matches {
+			if len(match) >= 3 {
+				value, _ := strconv.ParseFloat(match[1], 64)
+				key := match[2]
+
+				switch key {
+				case "us":
+					metrics.User = value
+				case "sy":
+					metrics.System = value
+				case "id":
+					metrics.Idle = value
+				case "wa":
+					metrics.IOWait = value
+				}
 			}
 		}
+
 		metrics.Overall = 100.0 - metrics.Idle
+
+		// Round all CPU metrics to 2 decimal places
+		metrics.User = roundTo2Decimals(metrics.User)
+		metrics.System = roundTo2Decimals(metrics.System)
+		metrics.IOWait = roundTo2Decimals(metrics.IOWait)
+		metrics.Idle = roundTo2Decimals(metrics.Idle)
+		metrics.Overall = roundTo2Decimals(metrics.Overall)
 	}
 
 	// Load average

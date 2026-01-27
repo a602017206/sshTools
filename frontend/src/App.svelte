@@ -268,11 +268,11 @@
   <header class="h-14 flex-shrink-0 {$themeStore === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b flex items-center px-6 shadow-sm" style="pointer-events: {isAddDialogOpen ? 'none' : 'auto'};">
     <div class="flex items-center gap-3">
       <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center font-bold text-sm text-white shadow-md">
-        SSH
+        哈
       </div>
       <div>
-        <div class="font-semibold text-sm {$themeStore === 'dark' ? 'text-white' : 'text-gray-900'}">跨平台 SSH 连接工具</div>
-        <div class="text-xs {$themeStore === 'dark' ? 'text-gray-400' : 'text-gray-500'}">Cross-Platform SSH Manager</div>
+        <div class="font-semibold text-sm {$themeStore === 'dark' ? 'text-white' : 'text-gray-900'}">啊哈 SSH 连接工具</div>
+        <div class="text-xs {$themeStore === 'dark' ? 'text-gray-400' : 'text-gray-500'}">AHa SSH Manager</div>
       </div>
     </div>
     

@@ -364,7 +364,7 @@
               </div>
             {/if}
           </div>
-          <span class="text-gray-400 dark:text-gray-500 font-mono text-[10px]">{file.permissions}</span>
+          <span class="text-gray-400 dark:text-gray-500 font-mono text-[10px]">{file.mode}</span>
         </div>
       {/each}
     {/if}
