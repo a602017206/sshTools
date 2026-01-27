@@ -24,7 +24,7 @@ jobs:
           # macOS Intel
           - os: darwin
             arch: amd64
-            runner: macos-13
+            runner: macos-15
 
     steps:
       - name: Checkout code
