@@ -1,0 +1,159 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+          # macOS Apple Silicon
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+          # macOS Intel
+          - os: darwin
+            arch: amd64
+            runner: macos-13
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Wails CLI
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Install frontend dependencies
+        shell: bash
+        run: |
+          cd frontend && npm install
+
+      - name: Build ${{ matrix.os }} ${{ matrix.arch }}
+        shell: bash
+        run: |
+          wails build -platform ${{ matrix.os }}/${{ matrix.arch }} -clean
+
+      - name: Package Windows
+        if: matrix.os == 'windows'
+        shell: bash
+        run: |
+          cd build/bin
+          zip -r AHaSSHTools-windows-amd64.zip AHaSSHTools.exe
+
+      - name: Package macOS
+        if: matrix.os == 'darwin'
+        shell: bash
+        run: |
+          cd build/bin
+
+          # Remove quarantine attributes
+          xattr -cr AHaSSHTools.app
+
+          # Ad-hoc sign the app
+          codesign --force --deep --sign - AHaSSHTools.app || echo "codesign failed, continuing..."
+
+          # Create zip archive
+          zip -r AHaSSHTools-macos-${{ matrix.arch }}.zip AHaSSHTools.app
+
+      - name: Upload artifact - ${{ matrix.os }} ${{ matrix.arch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: AHaSSHTools-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            build/bin/*.zip
+          retention-days: 7
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/AHaSSHTools-windows-amd64/*.zip
+            artifacts/AHaSSHTools-darwin-arm64/*.zip
+            artifacts/AHaSSHTools-darwin-amd64/*.zip
+          body: |
+            ## AHaSSHTools ${{ github.ref_name }}
+
+            ### 下载说明
+
+            **Windows**:
+            - 下载 `AHaSSHTools-windows-amd64.zip`
+            - 解压后直接运行 `AHaSSHTools.exe`
+
+            **macOS (Apple Silicon / M1/M2/M3)**:
+            - 下载 `AHaSSHTools-macos-arm64.zip`
+            - 解压后运行以下命令移除隔离属性：
+              ```bash
+              xattr -cr AHaSSHTools.app
+              open AHaSSHTools.app
+              ```
+
+            **macOS (Intel)**:
+            - 下载 `AHaSSHTools-macos-amd64.zip`
+            - 解压后运行以下命令移除隔离属性：
+              ```bash
+              xattr -cr AHaSSHTools.app
+              open AHaSSHTools.app
+              ```
+
+            ### 验证签名
+
+            macOS 用户可以通过以下命令验证应用签名：
+            ```bash
+            codesign -dv AHaSSHTools.app
+            ```
+
+            ### 完整功能
+
+            ✅ SSH 终端管理
+            ✅ 多标签页支持
+            ✅ SFTP 文件传输
+            ✅ 系统性能监控
+            ✅ 开发工具集
+
+            更多信息请访问 [项目主页](https://github.com/${{ github.repository }})
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
