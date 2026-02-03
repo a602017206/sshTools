@@ -111,8 +111,9 @@ jobs:
           body: |
             
             # 更新说明：
-            - 2026年01月27日17:06:20 优化文件管理器排序和导航功能
-            - 2026年01月27日18:35:34 添加本地终端连接功能
+            - 2026年02月03日19:59:04 修复上传下载文件图标
+            - 2026年02月03日19:59:22 实现监控cpu、内存折线图
+            - 2026年02月03日19:59:45 添加主题切换按钮
             
             ## AHaSSHTools ${{ github.ref_name }}
 
@@ -137,22 +138,7 @@ jobs:
               xattr -cr AHaSSHTools.app
               open AHaSSHTools.app
               ```
-
-            ### 验证签名
-
-            macOS 用户可以通过以下命令验证应用签名：
-            ```bash
-            codesign -dv AHaSSHTools.app
-            ```
-
-            ### 完整功能
-
-            ✅ SSH 终端管理
-            ✅ 多标签页支持
-            ✅ SFTP 文件传输
-            ✅ 系统性能监控
-            ✅ 开发工具集
-
+            
             更多信息请访问 [项目主页](https://github.com/${{ github.repository }})
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

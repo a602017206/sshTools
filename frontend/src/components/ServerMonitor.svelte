@@ -188,12 +188,73 @@
           <span class="text-xs font-semibold text-gray-900 dark:text-white">CPU</span>
         </div>
         <span class="text-xs font-bold px-2 py-1 rounded-lg bg-white dark:bg-gray-800" style="color: {getStatusColor(currentStats.cpu)}">
-          {currentStats.cpu}%
+          {currentStats.cpu.toFixed(1)}%
         </span>
       </div>
-      <div class="h-[80px] bg-white dark:bg-gray-800 rounded-lg flex items-center justify-center text-xs text-gray-400">
-        CPU 图表待实现
+      <!-- CPU Chart -->
+      <div class="h-[80px] bg-white dark:bg-gray-800 rounded-lg overflow-hidden relative">
+        {#if cpuData.length > 1}
+          <svg class="w-full h-full" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="cpuGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:rgb(139, 92, 246);stop-opacity:0.3" />
+                <stop offset="100%" style="stop-color:rgb(139, 92, 246);stop-opacity:0.05" />
+              </linearGradient>
+            </defs>
+            <!-- Grid lines -->
+            <line x1="0" y1="25%" x2="100%" y2="25%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
+            <line x1="0" y1="50%" x2="100%" y2="50%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
+            <line x1="0" y1="75%" x2="100%" y2="75%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
+            <!-- Area fill -->
+            <path
+              d="{cpuData.map((v, i) => {
+                const x = (i / (cpuData.length - 1)) * 100;
+                const y = 100 - v;
+                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+              }).join(' ')} L 100 100 L 0 100 Z"
+              fill="url(#cpuGradient)"
+              transform="scale(1, 0.8) translate(0, 10)"
+            />
+            <!-- Line -->
+            <path
+              d="{cpuData.map((v, i) => {
+                const x = (i / (cpuData.length - 1)) * 100;
+                const y = 100 - v;
+                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+              }).join(' ')}"
+              fill="none"
+              stroke="rgb(139, 92, 246)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              transform="scale(1, 0.8) translate(0, 10)"
+            />
+          </svg>
+          <!-- Y-axis labels -->
+          <div class="absolute left-1 top-1 text-[8px] text-gray-400 dark:text-gray-500">100%</div>
+          <div class="absolute left-1 bottom-1 text-[8px] text-gray-400 dark:text-gray-500">0%</div>
+        {:else}
+          <div class="w-full h-full flex items-center justify-center text-xs text-gray-400">
+            等待数据...
+          </div>
+        {/if}
       </div>
+      <!-- Per-core CPU usage -->
+      {#if cpuPerCore.length > 0}
+        <div class="mt-2 flex flex-wrap gap-1">
+          {#each cpuPerCore as core, i}
+            <div class="flex flex-col items-center">
+              <div class="w-6 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  class="h-full rounded-full transition-all duration-300"
+                  style="width: {core}%; background-color: {getStatusColor(core)};"
+                />
+              </div>
+              <span class="text-[8px] text-gray-500 dark:text-gray-400 mt-0.5">C{i + 1}</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     <!-- 内存使用率 -->
@@ -211,8 +272,53 @@
           {currentStats.memory.toFixed(2)}%
         </span>
       </div>
-      <div class="h-[80px] bg-white dark:bg-gray-800 rounded-lg flex items-center justify-center text-xs text-gray-400">
-        内存图表待实现
+      <!-- Memory Chart -->
+      <div class="h-[80px] bg-white dark:bg-gray-800 rounded-lg overflow-hidden relative">
+        {#if memoryData.length > 1}
+          <svg class="w-full h-full" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="memoryGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:rgb(16, 185, 129);stop-opacity:0.3" />
+                <stop offset="100%" style="stop-color:rgb(16, 185, 129);stop-opacity:0.05" />
+              </linearGradient>
+            </defs>
+            <!-- Grid lines -->
+            <line x1="0" y1="25%" x2="100%" y2="25%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
+            <line x1="0" y1="50%" x2="100%" y2="50%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
+            <line x1="0" y1="75%" x2="100%" y2="75%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
+            <!-- Area fill -->
+            <path
+              d="{memoryData.map((v, i) => {
+                const x = (i / (memoryData.length - 1)) * 100;
+                const y = 100 - v;
+                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+              }).join(' ')} L 100 100 L 0 100 Z"
+              fill="url(#memoryGradient)"
+              transform="scale(1, 0.8) translate(0, 10)"
+            />
+            <!-- Line -->
+            <path
+              d="{memoryData.map((v, i) => {
+                const x = (i / (memoryData.length - 1)) * 100;
+                const y = 100 - v;
+                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+              }).join(' ')}"
+              fill="none"
+              stroke="rgb(16, 185, 129)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              transform="scale(1, 0.8) translate(0, 10)"
+            />
+          </svg>
+          <!-- Y-axis labels -->
+          <div class="absolute left-1 top-1 text-[8px] text-gray-400 dark:text-gray-500">100%</div>
+          <div class="absolute left-1 bottom-1 text-[8px] text-gray-400 dark:text-gray-500">0%</div>
+        {:else}
+          <div class="w-full h-full flex items-center justify-center text-xs text-gray-400">
+            等待数据...
+          </div>
+        {/if}
       </div>
     </div>
 

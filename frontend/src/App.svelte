@@ -6,7 +6,7 @@
   import ServerMonitor from './components/ServerMonitor.svelte';
   import DevToolsPanel from './components/DevToolsPanel.svelte';
   import AddAssetDialog from './components/AddAssetDialog.svelte';
-  import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight } from './stores.js';
+  import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme } from './stores.js';
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
@@ -28,7 +28,8 @@
   let isResizingFileManager = false;
 
   function toggleTheme() {
-    themeStore.update(t => t === 'light' ? 'dark' : 'light');
+    const newTheme = $themeStore === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
   }
 
   function toggleDevTools() {
@@ -229,8 +230,14 @@
   }
 
   onMount(async () => {
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      themeStore.set('dark');
+    const savedTheme = localStorage.getItem('ssh-tools-theme');
+    if (!savedTheme) {
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (prefersDark) {
+        setTheme('dark');
+      }
+    } else {
+      setTheme(savedTheme);
     }
 
     try {
@@ -276,7 +283,24 @@
       </div>
     </div>
     
-    <div class="ml-auto">
+    <div class="ml-auto flex items-center gap-3">
+      <button
+        on:click={toggleTheme}
+        disabled={isAddDialogOpen}
+        class="flex items-center justify-center w-9 h-9 rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-yellow-400' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
+        title={$themeStore === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
+      >
+        {#if $themeStore === 'dark'}
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+          </svg>
+        {:else}
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+          </svg>
+        {/if}
+      </button>
+
       <button
         on:click={toggleDevTools}
         disabled={isAddDialogOpen}

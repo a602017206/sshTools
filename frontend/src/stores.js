@@ -20,16 +20,48 @@ export const connectionsStore = writable(new Map());
 export const activeSessionIdStore = writable(null);
 
 // ==================== Theme Store ====================
-// 主题状态
 
-export const themeStore = writable('light'); // 'light' | 'dark'
+const THEME_STORAGE_KEY = 'ssh-tools-theme';
+
+function loadSavedTheme() {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveTheme(theme) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+  }
+}
+
+const savedTheme = loadSavedTheme();
+const initialTheme = savedTheme || 'light';
+
+export const themeStore = writable(initialTheme);
 
 export function setTheme(theme) {
   themeStore.set(theme);
-  // 应用主题到 DOM
+  saveTheme(theme);
   if (typeof document !== 'undefined') {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }
+}
+
+export function toggleTheme() {
+  themeStore.update(current => {
+    const newTheme = current === 'light' ? 'dark' : 'light';
+    saveTheme(newTheme);
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('dark', newTheme === 'dark');
+    }
+    return newTheme;
+  });
 }
 
 // ==================== UI Store ====================
