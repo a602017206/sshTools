@@ -19,6 +19,16 @@
   let zsentry = null;
   let zsession = null;
   let skip_zmodem = false;
+  let zmodemProgress = null;
+  let zmodemActiveOffer = null;
+  let zmodemActive = false;
+
+  // ZMODEM 下载状态（响应式）
+  let zmodemDownloadOffer = null;
+  let zmodemDownloadAction = 'pending'; // 'pending' | 'accepting' | 'skipping' | 'completed'
+  let zmodemDownloadError = null;
+  let zmodemDownloadSavedPath = null;
+  let zmodemTransferModal = null;
   // 从 themeStore 获取初始主题值
   let currentTheme = get(themeStore);
 
@@ -108,33 +118,54 @@
       // 初始化 ZMODEM Sentry
       zsentry = new Zmodem.Sentry({
         to_terminal: (octets) => {
-          // ZMODEM 数据不写入终端
-          // ZMODEM 会通过后端返回（ssh:output 事件）来显示
-          // 直接写入会导致重复
-          console.log('ZMODEM to_terminal received (not writing):', octets.length, 'bytes');
+          // 非 ZMODEM 数据写入终端
+          if (terminal) {
+            terminal.write(new Uint8Array(octets));
+          }
         },
         sender: (octets) => {
           // 发送 ZMODEM 数据到 SSH 会话
-          if (onData && sessionId) {
-            // 将字节数组转换为字符串
-            let str = '';
-            for (let i = 0; i < octets.length; i++) {
-              str += String.fromCharCode(octets[i]);
+          if (sessionId) {
+            if (onZModemTransfer) {
+              onZModemTransfer(sessionId, new Uint8Array(octets));
+              return;
             }
-            onData(sessionId, str);
+            if (onData) {
+              // 将字节数组转换为字符串
+              let str = '';
+              for (let i = 0; i < octets.length; i++) {
+                str += String.fromCharCode(octets[i]);
+              }
+              onData(sessionId, str);
+            }
           }
         },
         on_detect: (detection) => {
           console.log('ZMODEM detected:', detection.type);
+          console.log('Detection object:', detection);
 
           // 确认 ZMODEM 会话
           zsession = detection.confirm();
 
+          console.log('ZMODEM confirmed, type:', zsession.type, 'has zsession:', !!zsession);
+
+          if (!zsession) {
+            console.error('ERROR: zsession is null after confirm()');
+            return;
+          }
+
+          zmodemActive = true;
+          if (terminal) {
+            terminal.options.disableStdin = true;
+          }
+
           if (zsession.type === "receive") {
             // rz: 服务器发送文件到客户端（下载）
+            console.log('Calling handleZModemReceive for download');
             handleZModemReceive(zsession);
           } else {
             // sz: 服务器请求客户端发送文件（上传）
+            console.log('Calling handleZModemSend for upload');
             handleZModemSend(zsession);
           }
         },
@@ -181,39 +212,6 @@
     }
   });
 
-  // 处理文件下载（rz - 服务器发送文件）
-  function handleZModemReceive(session) {
-    // 开始 ZMODEM 传输
-    skip_zmodem = true;
-
-    session.on("offer", (xfer) => {
-      const details = xfer.get_details();
-
-      // 询问用户是否下载
-      const shouldDownload = confirm(
-        `服务器发送文件\n\n文件名: ${details.name}\n大小: ${details.size || '未知'} 字节\n\n是否接收此文件?`
-      );
-
-      if (shouldDownload) {
-        xfer.accept().then(() => {
-          // 文件接收完成，现在保存文件
-          const payload = xfer.get_payload();
-          saveFileToDisk(payload, details.name);
-        });
-      } else {
-        xfer.skip();
-      }
-    });
-
-    session.on("session_end", () => {
-      console.log('ZMODEM 接收会话结束');
-      zsession = null;
-      setTimeout(() => {
-        skip_zmodem = false;
-      }, 100); // 延迟重置，确保所有数据都处理完
-    });
-  }
-
   // 保存文件到本地
   function saveFileToDisk(payload, filename) {
     try {
@@ -235,10 +233,171 @@
     }
   }
 
+  function encodeBinaryString(octets) {
+    let binary = '';
+    for (let i = 0; i < octets.length; i++) {
+      binary += String.fromCharCode(octets[i]);
+    }
+    return binary;
+  }
+
+  async function collectPayloads(payloads) {
+    const chunks = [];
+    let totalLength = 0;
+
+    for await (const chunk of payloads) {
+      chunks.push(chunk);
+      totalLength += chunk.length;
+    }
+
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    return combined;
+  }
+
+  async function saveZmodemPayloads(payloads, filename) {
+    const octets = await collectPayloads(payloads);
+    const { SaveBinaryFile } = window.wailsBindings || {};
+
+    if (typeof SaveBinaryFile === 'function') {
+      const encoded = btoa(encodeBinaryString(octets));
+      return await SaveBinaryFile(filename, encoded);
+    }
+
+    saveFileToDisk(octets, filename);
+    return null;
+  }
+
+  // 显示 ZMODEM 进度条
+  function showZmodemProgress(totalFiles) {
+    if (zmodemTransferModal) return;
+
+    zmodemTransferModal = document.createElement('div');
+    zmodemTransferModal.className = 'zmodem-progress-modal';
+    zmodemTransferModal.innerHTML = `
+      <div class="zmodem-progress-content">
+        <div class="zmodem-progress-header">
+          <span>ZMODEM 文件传输</span>
+        </div>
+        <div class="zmodem-progress-body">
+          <div class="zmodem-progress-item">
+            <span id="zmodem-file-name">准备传输...</span>
+            <div class="zmodem-progress-bar-container">
+              <div class="zmodem-progress-bar" id="zmodem-progress-bar"></div>
+            </div>
+            <span id="zmodem-progress-text">0%</span>
+          </div>
+          <div class="zmodem-progress-details">
+            <span id="zmodem-files-progress">1 / ${totalFiles}</span>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(zmodemTransferModal);
+  }
+
+  // 更新 ZMODEM 进度
+  function updateZmodemProgress(fileIndex, totalFiles, fileName, sent, total) {
+    if (!zmodemTransferModal) return;
+
+    const progress = Math.min(100, Math.round((sent / total) * 100));
+
+    document.getElementById('zmodem-file-name').textContent = `正在上传: ${fileName}`;
+    document.getElementById('zmodem-progress-bar').style.width = `${progress}%`;
+    document.getElementById('zmodem-progress-text').textContent = `${progress}%`;
+    document.getElementById('zmodem-files-progress').textContent = `${fileIndex + 1} / ${totalFiles}`;
+  }
+
+  // 隐藏 ZMODEM 进度条
+  function hideZmodemProgress() {
+    if (zmodemTransferModal) {
+      document.body.removeChild(zmodemTransferModal);
+      zmodemTransferModal = null;
+    }
+  }
+
+  function handleZModemReceive(session) {
+    zmodemDownloadOffer = null;
+    zmodemActiveOffer = null;
+    zmodemDownloadAction = 'pending';
+    zmodemDownloadError = null;
+    zmodemDownloadSavedPath = null;
+
+    session.on('offer', (offer) => {
+      const details = offer.get_details();
+      zmodemActiveOffer = offer;
+      zmodemDownloadOffer = details;
+      zmodemDownloadAction = 'pending';
+      zmodemDownloadError = null;
+      zmodemDownloadSavedPath = null;
+    });
+
+    session.on('session_end', () => {
+      zmodemActiveOffer = null;
+      zsession = null;
+      zmodemActive = false;
+      if (terminal) {
+        terminal.options.disableStdin = false;
+      }
+
+      if (zmodemDownloadAction === 'accepting') {
+        zmodemDownloadAction = 'completed';
+        setTimeout(() => {
+          zmodemDownloadOffer = null;
+          zmodemDownloadAction = 'pending';
+          zmodemDownloadSavedPath = null;
+        }, 1500);
+      } else {
+        zmodemDownloadOffer = null;
+        zmodemDownloadAction = 'pending';
+        zmodemDownloadSavedPath = null;
+      }
+    });
+
+    session.start();
+  }
+
+  async function acceptZmodemDownload() {
+    if (!zmodemActiveOffer) {
+      return;
+    }
+
+    zmodemDownloadAction = 'accepting';
+    zmodemDownloadError = null;
+
+    try {
+      await zmodemActiveOffer.accept();
+      const payloads = zmodemActiveOffer.get_payloads();
+      const filename = zmodemActiveOffer.get_details().name;
+      zmodemDownloadSavedPath = await saveZmodemPayloads(payloads, filename);
+      zmodemActiveOffer = null;
+      zmodemDownloadAction = 'completed';
+    } catch (error) {
+      console.error('接收文件失败:', error);
+      zmodemDownloadError = error.message || String(error);
+      zmodemDownloadAction = 'pending';
+    }
+  }
+
+  function skipZmodemDownload() {
+    if (zmodemActiveOffer) {
+      zmodemActiveOffer.skip();
+    }
+    zmodemActiveOffer = null;
+    zmodemDownloadOffer = null;
+    zmodemDownloadAction = 'pending';
+    zmodemDownloadError = null;
+    zmodemDownloadSavedPath = null;
+  }
+
   // 处理文件上传（sz - 客户端发送文件）
   async function handleZModemSend(session) {
-    // 开始 ZMODEM 传输
-    skip_zmodem = true;
+    console.log('handleZModemSend called, session:', session);
 
     // 创建文件选择器
     const input = document.createElement('input');
@@ -248,46 +407,79 @@
     return new Promise((resolve) => {
       input.onchange = async (e) => {
         const files = Array.from(e.target.files);
+        console.log('Files selected:', files.length, files.map(f => f.name));
 
         if (files.length === 0) {
+          console.log('No files selected, closing session');
           session.close();
+          skip_zmodem = false;
           resolve();
           return;
         }
 
         try {
-          // 发送文件
-          for (const file of files) {
+          // 显示进度条
+          showZmodemProgress(files.length);
+
+          // 发送所有文件
+          console.log('Starting to send files...');
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
             const fileDetails = {
               name: file.name,
               size: file.size,
               mtime: new Date(file.lastModified),
             };
 
-            await sendFile(session, file, fileDetails);
+            console.log(`Sending file ${i + 1}/${files.length}:`, file.name, file.size);
+            await sendFile(session, file, fileDetails, i, files.length);
           }
 
-          // 关闭会话
+          // 所有文件传输完成，关闭会话
+          console.log('All files sent, closing session');
           await session.close();
 
-          // 重置 ZMODEM 标志
+          // 延迟重置 ZMODEM 标志
           setTimeout(() => {
             skip_zmodem = false;
-          }, 100);
+            hideZmodemProgress();
+            zmodemActive = false;
+            if (terminal) {
+              terminal.options.disableStdin = false;
+            }
+            resolve(); // Promise resolve
+          }, 500);
         } catch (error) {
           console.error('发送文件失败:', error);
+          console.error('Error details:', error.stack);
           session.close();
           skip_zmodem = false;
+          hideZmodemProgress();
+          zmodemActive = false;
+          if (terminal) {
+            terminal.options.disableStdin = false;
+          }
+          resolve(); // 即使出错也 resolve
         }
-        resolve();
       };
 
       input.click();
     });
   }
 
+  // 格式化文件大小
+
+  // 格式化文件大小
+  function formatFileSize(bytes) {
+    if (!bytes) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
   // 发送单个文件
-  async function sendFile(session, file, details) {
+  async function sendFile(session, file, details, fileIndex, totalFiles) {
     return new Promise((resolve, reject) => {
       session.send_offer(details).then((xfer) => {
         if (!xfer) {
@@ -302,6 +494,7 @@
         reader.onload = (e) => {
           const buffer = e.target.result;
           let offset = 0;
+          let totalSent = 0;
 
           // 分块发送文件
           function sendChunk() {
@@ -309,6 +502,11 @@
               const chunk = new Uint8Array(buffer, offset, Math.min(chunkSize, buffer.byteLength - offset));
               xfer.send(chunk);
               offset += chunkSize;
+              totalSent += chunk.byteLength;
+
+              // 更新进度
+              updateZmodemProgress(fileIndex, totalFiles, file.name, totalSent, file.size);
+
               // 继续发送下一块
               setTimeout(sendChunk, 0);
             } else {
@@ -332,15 +530,38 @@
   export function write(data) {
     if (!terminal) return;
 
-    // 如果是字节数组（来自后端），直接写入
-    if (typeof data !== 'string') {
-      terminal.write(data);
-      return;
+    // 转换为字节数组
+    let octets;
+    if (typeof data === 'string') {
+      octets = new Uint8Array(data.split('').map(c => c.charCodeAt(0)));
+    } else if (data instanceof Uint8Array) {
+      octets = data;
+    } else {
+      octets = new Uint8Array(data);
     }
 
-    // 用户输入的文本数据，发送到后端
-    // 不要进行任何 ZMODEM 处理，因为这是用户输入，不是 ZMODEM 协议数据
-    terminal.write(data); // 本地回显
+    // 将数据喂给 ZMODEM Sentry
+    // Sentry 会检测 ZMODEM 序列并调用 on_detect
+    if (zsentry && !skip_zmodem) {
+      try {
+        zsentry.consume(octets);
+        // to_terminal 回调会处理非 ZMODEM 数据的显示
+        // 不要重复写入终端
+        return;
+      } catch (error) {
+        console.warn('ZMODEM consume failed:', error);
+        zsession = null;
+        zmodemActiveOffer = null;
+        zmodemActive = false;
+        skip_zmodem = false;
+        if (terminal) {
+          terminal.options.disableStdin = false;
+        }
+      }
+    }
+
+    // 如果跳过 ZMODEM 或 Sentry 未初始化，直接写入终端
+    terminal.write(octets);
   }
 
   export function writeln(data) {
@@ -376,6 +597,72 @@
   <!-- xterm 终端将在这里渲染 -->
 </div>
 
+<!-- ZMODEM 下载对话框（非阻塞） -->
+{#if zmodemDownloadOffer}
+  <div class="zmodem-download-modal">
+    <div class="zmodem-download-content">
+      <div class="zmodem-download-header">
+        <span class="zmodem-download-title">📥 ZMODEM 文件下载</span>
+      </div>
+
+      <div class="zmodem-download-body">
+        <div class="zmodem-download-info">
+          <div class="zmodem-download-file">
+            <span class="zmodem-download-icon">📄</span>
+            <div class="zmodem-download-details">
+              <span class="zmodem-download-name">{zmodemDownloadOffer.name}</span>
+              <span class="zmodem-download-size">{formatFileSize(zmodemDownloadOffer.size)} 字节</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="zmodem-download-actions">
+          {#if zmodemDownloadError}
+            <div class="zmodem-error-message">
+              ❌ {zmodemDownloadError}
+            </div>
+          {/if}
+
+          {#if zmodemDownloadAction === 'pending'}
+            <p class="zmodem-download-prompt">服务器正在发送文件，是否接收？</p>
+            <div class="zmodem-download-buttons">
+              <button
+                class="zmodem-download-btn zmodem-btn-reject"
+                on:click={skipZmodemDownload}
+              >
+                拒绝
+              </button>
+              <button
+                class="zmodem-download-btn zmodem-btn-accept"
+                on:click={acceptZmodemDownload}
+              >
+                接收文件
+              </button>
+            </div>
+          {/if}
+
+          {#if zmodemDownloadAction === 'accepting'}
+            <div class="zmodem-downloading">
+              <span class="zmodem-spinner"></span>
+              <span>正在接收文件...</span>
+            </div>
+          {/if}
+
+          {#if zmodemDownloadAction === 'completed'}
+            <div class="zmodem-completed">
+              <span class="zmodem-success-icon">✓</span>
+              <span>
+                文件接收完成，已保存到：{zmodemDownloadSavedPath || zmodemDownloadOffer.name}
+              </span>
+            </div>
+          {/if}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+
 <style>
   .terminal-container {
     width: 100%;
@@ -403,5 +690,249 @@
   :global(.xterm .xterm-selection) {
     border: 1px dashed #0288D1 !important;
     box-sizing: border-box;
+  }
+
+  /* ZMODEM Progress Modal Styles */
+  :global(.zmodem-progress-modal) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  }
+
+  :global(.zmodem-progress-content) {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    padding: 24px;
+    min-width: 400px;
+    max-width: 500px;
+  }
+
+  :global(.zmodem-progress-header) {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 20px;
+  }
+
+  :global(.zmodem-progress-body) {
+    margin-bottom: 20px;
+  }
+
+  :global(.zmodem-progress-item) {
+    margin-bottom: 16px;
+  }
+
+  :global(#zmodem-file-name) {
+    font-size: 14px;
+    color: #4a5568;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  :global(.zmodem-progress-bar-container) {
+    background: #f3f4f6;
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+  }
+
+  :global(.zmodem-progress-bar) {
+    height: 100%;
+    background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%);
+    transition: width 0.3s ease;
+    border-radius: 4px;
+  }
+
+  :global(#zmodem-progress-text) {
+    font-size: 12px;
+    color: #6b7280;
+    float: right;
+  }
+
+  :global(.zmodem-progress-details) {
+    display: flex;
+    justify-content: flex-end;
+    font-size: 13px;
+    color: #6b7280;
+  }
+
+  /* ZMODEM 下载对话框样式 */
+  :global(.zmodem-download-modal) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  }
+
+  :global(.zmodem-download-content) {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    padding: 24px;
+    min-width: 400px;
+    max-width: 500px;
+  }
+
+  :global(.zmodem-download-header) {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  :global(.zmodem-download-title) {
+    color: #4a5568;
+  }
+
+  :global(.zmodem-download-body) {
+    margin-bottom: 24px;
+  }
+
+  :global(.zmodem-download-info) {
+    background: #f3f4f6;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+
+  :global(.zmodem-download-file) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  :global(.zmodem-download-icon) {
+    font-size: 32px;
+  }
+
+  :global(.zmodem-download-details) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  :global(.zmodem-download-name) {
+    font-weight: 600;
+    color: #1a1a1a;
+    font-size: 14px;
+  }
+
+  :global(.zmodem-download-size) {
+    color: #6b7280;
+    font-size: 13px;
+  }
+
+  :global(.zmodem-download-actions) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  :global(.zmodem-download-prompt) {
+    color: #4a5568;
+    font-size: 14px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+
+  :global(.zmodem-download-buttons) {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  :global(.zmodem-download-btn) {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  :global(.zmodem-download-btn:hover) {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  :global(.zmodem-btn-accept) {
+    background: #4f46e5;
+    color: white;
+  }
+
+  :global(.zmodem-btn-accept:hover) {
+    background: #43a047;
+  }
+
+  :global(.zmodem-btn-reject) {
+    background: #dc2626;
+    color: white;
+  }
+
+  :global(.zmodem-btn-reject:hover) {
+    background: #b91c1c;
+  }
+
+  :global(.zmodem-downloading) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #4a5568;
+    font-size: 14px;
+  }
+
+  :global(.zmodem-spinner) {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #4f46e5;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: zmodem-spin 0.8s linear infinite;
+  }
+
+  @keyframes zmodem-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  :global(.zmodem-completed) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #22c55e;
+    font-size: 14px;
+  }
+
+  :global(.zmodem-success-icon) {
+    font-size: 24px;
+  }
+
+  :global(.zmodem-error-message) {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 12px 16px;
+    color: #dc2626;
+    font-size: 13px;
+    text-align: center;
   }
 </style>

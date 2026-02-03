@@ -61,9 +61,19 @@ func (s *SessionService) SendData(sessionID string, data string) error {
 	return s.sessionManager.WriteToSession(sessionID, []byte(data))
 }
 
+// SendDataBytes sends raw bytes to an SSH session
+func (s *SessionService) SendDataBytes(sessionID string, data []byte) error {
+	return s.sessionManager.WriteToSession(sessionID, data)
+}
+
 // SendLocalData sends data to a local shell session
 func (s *SessionService) SendLocalData(sessionID string, data string) error {
 	return s.sessionManager.WriteToLocalSession(sessionID, []byte(data))
+}
+
+// SendLocalDataBytes sends raw bytes to a local shell session
+func (s *SessionService) SendLocalDataBytes(sessionID string, data []byte) error {
+	return s.sessionManager.WriteToLocalSession(sessionID, data)
 }
 
 // ResizeLocalTerminal resizes terminal for a local shell session

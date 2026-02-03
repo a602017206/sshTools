@@ -66,6 +66,8 @@ export function ResizeLocalShell(arg1:string,arg2:number,arg3:number):Promise<vo
 
 export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
 
+export function SaveBinaryFile(arg1:string,arg2:string):Promise<string>;
+
 export function SavePassword(arg1:string,arg2:string):Promise<void>;
 
 export function SelectDownloadDirectory():Promise<string>;
@@ -76,7 +78,11 @@ export function SelectUploadFiles():Promise<Array<string>>;
 
 export function SendLocalShellData(arg1:string,arg2:string):Promise<void>;
 
+export function SendLocalShellDataBinary(arg1:string,arg2:string):Promise<void>;
+
 export function SendSSHData(arg1:string,arg2:string):Promise<void>;
+
+export function SendSSHDataBinary(arg1:string,arg2:string):Promise<void>;
 
 export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
 

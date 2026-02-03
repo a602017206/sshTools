@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
   import {
     ListFiles,
@@ -10,7 +10,9 @@
   } from '../../wailsjs/go/main/App.js';
   import { activeSessionIdStore, connectionsStore } from '../stores.js';
 
-  let currentPath = '/';
+  // Per-session path storage
+  let sessionPaths = new Map();
+
   let expandedDirs = new Set([]);
   let files = [];
   let isLoading = false;
@@ -30,6 +32,27 @@
   $: isSessionConnected = currentSession?.connected || false;
   $: isLocalSession = currentSession?.type === 'local';
   $: canUseFileManager = isSessionConnected && !isLocalSession;
+
+  // Get current path for the active session
+  $: currentPath = getSessionPath($activeSessionIdStore);
+
+  // Get path for a session, default to '/'
+  function getSessionPath(sessionId) {
+    if (!sessionId) return '/';
+    return sessionPaths.get(sessionId) || '/';
+  }
+
+  // Set path for a session
+  function setSessionPath(sessionId, path) {
+    if (!sessionId) return;
+    sessionPaths.set(sessionId, path);
+  }
+
+  // Remove path for a session (cleanup)
+  function removeSessionPath(sessionId) {
+    if (!sessionId) return;
+    sessionPaths.delete(sessionId);
+  }
 
   // Sort files: directories first, then alphabetical by name
   function sortFiles(fileList) {
@@ -77,7 +100,7 @@
     try {
       const fileList = await ListFiles($activeSessionIdStore, path);
       files = fileList || [];
-      currentPath = path;
+      setSessionPath($activeSessionIdStore, path);
     } catch (err) {
       console.error('Failed to load directory:', err);
       error = err.message || '加载目录失败';
@@ -207,6 +230,17 @@
     loadDirectory(currentPath);
   }
 
+  // Cleanup session paths when connections are removed
+  $: if ($connectionsStore) {
+    const activeSessionIds = new Set($connectionsStore.keys());
+    // Remove paths for deleted sessions
+    for (const sessionId of sessionPaths.keys()) {
+      if (!activeSessionIds.has(sessionId)) {
+        sessionPaths.delete(sessionId);
+      }
+    }
+  }
+
   onMount(() => {
     // No need for event listeners - we use reactive store subscription
   });
@@ -232,24 +266,24 @@
              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
            </svg>
          </button>
-         <button
-           on:click={handleUpload}
-           disabled={isLocalSession}
-           class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-           title="上传"
-         >
-           <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4 8l-4-4m0 0L8 8m4-4v12" />
-           </svg>
-         </button>
-         <button
-           class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-           title="下载"
-         >
-           <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4 4l-4-4m0 0L8 8m4-4v12" />
-           </svg>
-         </button>
+          <button
+            on:click={handleUpload}
+            disabled={isLocalSession}
+            class="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="上传到服务器"
+          >
+            <svg class="w-4 h-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+          </button>
+          <button
+            class="p-1.5 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="下载到本地"
+          >
+            <svg class="w-4 h-4 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </button>
        </div>
     </div>
 

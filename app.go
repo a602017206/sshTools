@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
 
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/service"
@@ -103,8 +105,10 @@ func (a *App) TestConnection(host string, port int, user, authType, authValue, p
 func (a *App) ConnectSSH(sessionID, host string, port int, user, authType, authValue, passphrase string, cols, rows int) error {
 	// Use service with Wails-specific output callback
 	err := a.sessionService.ConnectSSH(sessionID, host, port, user, authType, authValue, passphrase, cols, rows, func(data []byte) {
-		// Emit output to frontend
-		runtime.EventsEmit(a.ctx, "ssh:output:"+sessionID, string(data))
+		// Emit output to frontend as base64 to preserve binary data for ZMODEM
+		// ZMODEM protocol requires raw binary data, not UTF-8 encoded strings
+		encoded := base64.StdEncoding.EncodeToString(data)
+		runtime.EventsEmit(a.ctx, "ssh:output:"+sessionID, encoded)
 	})
 
 	if err == nil {
@@ -116,6 +120,15 @@ func (a *App) ConnectSSH(sessionID, host string, port int, user, authType, authV
 // SendSSHData sends data to an SSH session
 func (a *App) SendSSHData(sessionID string, data string) error {
 	return a.sessionService.SendData(sessionID, data)
+}
+
+// SendSSHDataBinary sends base64-encoded binary data to an SSH session
+func (a *App) SendSSHDataBinary(sessionID string, data string) error {
+	decoded, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return err
+	}
+	return a.sessionService.SendDataBytes(sessionID, decoded)
 }
 
 // ResizeSSH resizes the terminal for an SSH session
@@ -136,7 +149,9 @@ func (a *App) CloseSSH(sessionID string) error {
 // ConnectLocalShell creates and starts a local shell session
 func (a *App) ConnectLocalShell(sessionID string, shellType string, cols, rows int) error {
 	err := a.sessionService.ConnectLocalShell(sessionID, shellType, cols, rows, func(data []byte) {
-		runtime.EventsEmit(a.ctx, "local:output:"+sessionID, string(data))
+		// Encode binary data as base64 to preserve ZMODEM protocol bytes
+		encoded := base64.StdEncoding.EncodeToString(data)
+		runtime.EventsEmit(a.ctx, "local:output:"+sessionID, encoded)
 	})
 
 	if err == nil {
@@ -148,6 +163,40 @@ func (a *App) ConnectLocalShell(sessionID string, shellType string, cols, rows i
 // SendLocalShellData sends data to a local shell session
 func (a *App) SendLocalShellData(sessionID string, data string) error {
 	return a.sessionService.SendLocalData(sessionID, data)
+}
+
+// SendLocalShellDataBinary sends base64-encoded binary data to a local shell session
+func (a *App) SendLocalShellDataBinary(sessionID string, data string) error {
+	decoded, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return err
+	}
+	return a.sessionService.SendLocalDataBytes(sessionID, decoded)
+}
+
+// SaveBinaryFile saves base64-encoded file contents to disk
+func (a *App) SaveBinaryFile(filename string, data string) (string, error) {
+	decoded, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return "", err
+	}
+
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "保存文件",
+		DefaultFilename: filename,
+	})
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", nil
+	}
+
+	if err := os.WriteFile(path, decoded, 0o644); err != nil {
+		return "", err
+	}
+
+	return path, nil
 }
 
 // ResizeLocalShell resizes a local shell session

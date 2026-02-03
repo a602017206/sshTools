@@ -426,10 +426,17 @@
   // Subscribe to local output events
   function subscribeToLocalOutput(sessionId) {
     const eventName = `local:output:${sessionId}`;
-    const unsubscribe = EventsOn(eventName, (data) => {
+    const unsubscribe = EventsOn(eventName, (encodedData) => {
       const terminal = terminalRefs[sessionId];
       if (terminal) {
-        terminal.write(data);
+        // 解码 base64 数据以获取原始二进制字节
+        // ZMODEM 协议需要原始二进制数据
+        const decodedData = atob(encodedData);
+        const octets = new Uint8Array(decodedData.length);
+        for (let i = 0; i < decodedData.length; i++) {
+          octets[i] = decodedData.charCodeAt(i);
+        }
+        terminal.write(octets);
       }
     });
     sessionUnsubscribers.set(sessionId, unsubscribe);
@@ -453,6 +460,58 @@
     } else {
       if (typeof SendSSHData === 'function') {
         SendSSHData(sessionId, data).catch(error => {
+          console.error('Failed to send SSH data:', error);
+        });
+      }
+    }
+  }
+
+  function encodeBinaryString(octets) {
+    let binary = '';
+    for (let i = 0; i < octets.length; i++) {
+      binary += String.fromCharCode(octets[i]);
+    }
+    return binary;
+  }
+
+  function encodeBase64(octets) {
+    return btoa(encodeBinaryString(octets));
+  }
+
+  function handleZModemTransfer(sessionId, octets) {
+    if (!$connectionsStore.has(sessionId)) {
+      return;
+    }
+
+    const session = $connectionsStore.get(sessionId);
+    const {
+      SendSSHData,
+      SendSSHDataBinary,
+      SendLocalShellData,
+      SendLocalShellDataBinary
+    } = window.wailsBindings || {};
+
+    if (session && session.type === 'local') {
+      if (typeof SendLocalShellDataBinary === 'function') {
+        const encoded = encodeBase64(octets);
+        SendLocalShellDataBinary(sessionId, encoded).catch(error => {
+          console.error('Failed to send local shell binary data:', error);
+        });
+      } else if (typeof SendLocalShellData === 'function') {
+        const binary = encodeBinaryString(octets);
+        SendLocalShellData(sessionId, binary).catch(error => {
+          console.error('Failed to send local shell data:', error);
+        });
+      }
+    } else {
+      if (typeof SendSSHDataBinary === 'function') {
+        const encoded = encodeBase64(octets);
+        SendSSHDataBinary(sessionId, encoded).catch(error => {
+          console.error('Failed to send SSH binary data:', error);
+        });
+      } else if (typeof SendSSHData === 'function') {
+        const binary = encodeBinaryString(octets);
+        SendSSHData(sessionId, binary).catch(error => {
           console.error('Failed to send SSH data:', error);
         });
       }
@@ -487,10 +546,17 @@
   export function subscribeToOutput(sessionId) {
     // Wails 事件系统
     const eventName = `ssh:output:${sessionId}`;
-    const unsubscribe = EventsOn(eventName, (data) => {
+    const unsubscribe = EventsOn(eventName, (encodedData) => {
       const terminal = terminalRefs[sessionId];
       if (terminal) {
-        terminal.write(data);
+        // 解码 base64 数据以获取原始二进制字节
+        // ZMODEM 协议需要原始二进制数据
+        const decodedData = atob(encodedData);
+        const octets = new Uint8Array(decodedData.length);
+        for (let i = 0; i < decodedData.length; i++) {
+          octets[i] = decodedData.charCodeAt(i);
+        }
+        terminal.write(octets);
       }
     });
     sessionUnsubscribers.set(sessionId, unsubscribe);
@@ -605,18 +671,30 @@
             </div>
             <div class="flex items-center gap-1">
               <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title="复制">
-                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 01-2 2z" />
+                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title="粘贴">
+                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
               <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title="最小化">
-                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
+                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line x1="8" y1="12" x2="16" y2="12" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
               <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title="最大化">
-                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-6 0a2 2 0 00-2 2v4a2 2 0 002 2m0 0v4a2 2 0 002 2v-4a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 01-2 2z" />
+                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M21 8h-3a2 2 0 0 1-2-2V3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M3 16h3a2 2 0 0 1 2 2v3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M16 21v-3a2 2 0 0 1 2-2h3" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
             </div>
@@ -629,6 +707,7 @@
               sessionId={session.sessionId}
               onData={handleTerminalData}
               onResize={handleTerminalResize}
+              onZModemTransfer={handleZModemTransfer}
             />
           </div>
         </div>

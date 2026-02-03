@@ -126,6 +126,10 @@ export function ResizeSSH(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSH'](arg1, arg2, arg3);
 }
 
+export function SaveBinaryFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveBinaryFile'](arg1, arg2);
+}
+
 export function SavePassword(arg1, arg2) {
   return window['go']['main']['App']['SavePassword'](arg1, arg2);
 }
@@ -146,8 +150,16 @@ export function SendLocalShellData(arg1, arg2) {
   return window['go']['main']['App']['SendLocalShellData'](arg1, arg2);
 }
 
+export function SendLocalShellDataBinary(arg1, arg2) {
+  return window['go']['main']['App']['SendLocalShellDataBinary'](arg1, arg2);
+}
+
 export function SendSSHData(arg1, arg2) {
   return window['go']['main']['App']['SendSSHData'](arg1, arg2);
+}
+
+export function SendSSHDataBinary(arg1, arg2) {
+  return window['go']['main']['App']['SendSSHDataBinary'](arg1, arg2);
 }
 
 export function ShowErrorDialog(arg1, arg2) {
