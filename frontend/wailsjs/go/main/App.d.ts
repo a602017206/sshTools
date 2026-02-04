@@ -6,6 +6,8 @@ import {service} from '../models';
 
 export function AddConnection(arg1:config.ConnectionConfig):Promise<void>;
 
+export function CalculateHash(arg1:string,arg2:string):Promise<string>;
+
 export function CancelTransfer(arg1:string):Promise<void>;
 
 export function ChangeDirectory(arg1:string,arg2:string):Promise<void>;
@@ -18,6 +20,10 @@ export function ConnectSSH(arg1:string,arg2:string,arg3:number,arg4:string,arg5:
 
 export function CreateDirectory(arg1:string,arg2:string):Promise<void>;
 
+export function DateTimeToTimestamp(arg1:string,arg2:string):Promise<number>;
+
+export function DecodeBase64(arg1:string):Promise<string>;
+
 export function DeleteFile(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteFiles(arg1:string,arg2:Array<string>):Promise<void>;
@@ -28,15 +34,21 @@ export function DownloadFile(arg1:string,arg2:string,arg3:string):Promise<string
 
 export function DownloadFiles(arg1:string,arg2:Array<string>,arg3:string):Promise<Array<string>>;
 
+export function EncodeBase64(arg1:string):Promise<string>;
+
 export function EscapeJSON(arg1:string):Promise<string>;
 
 export function FormatJSON(arg1:string):Promise<string>;
+
+export function GenerateUUIDv4():Promise<string>;
 
 export function GetConnection(arg1:string):Promise<config.ConnectionConfig>;
 
 export function GetConnections():Promise<Array<config.ConnectionConfig>>;
 
 export function GetCurrentPath(arg1:string):Promise<string>;
+
+export function GetCurrentTimestamp():Promise<number>;
 
 export function GetFileInfo(arg1:string,arg2:string):Promise<ssh.FileInfo>;
 
@@ -93,6 +105,8 @@ export function ShowMessageDialog(arg1:string,arg2:string):Promise<void>;
 export function ShowQuestionDialog(arg1:string,arg2:string):Promise<boolean>;
 
 export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
+
+export function TimestampToDateTime(arg1:number,arg2:string):Promise<string>;
 
 export function UpdateConnection(arg1:config.ConnectionConfig):Promise<void>;
 

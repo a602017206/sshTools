@@ -6,6 +6,10 @@ export function AddConnection(arg1) {
   return window['go']['main']['App']['AddConnection'](arg1);
 }
 
+export function CalculateHash(arg1, arg2) {
+  return window['go']['main']['App']['CalculateHash'](arg1, arg2);
+}
+
 export function CancelTransfer(arg1) {
   return window['go']['main']['App']['CancelTransfer'](arg1);
 }
@@ -30,6 +34,14 @@ export function CreateDirectory(arg1, arg2) {
   return window['go']['main']['App']['CreateDirectory'](arg1, arg2);
 }
 
+export function DateTimeToTimestamp(arg1, arg2) {
+  return window['go']['main']['App']['DateTimeToTimestamp'](arg1, arg2);
+}
+
+export function DecodeBase64(arg1) {
+  return window['go']['main']['App']['DecodeBase64'](arg1);
+}
+
 export function DeleteFile(arg1, arg2) {
   return window['go']['main']['App']['DeleteFile'](arg1, arg2);
 }
@@ -50,12 +62,20 @@ export function DownloadFiles(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadFiles'](arg1, arg2, arg3);
 }
 
+export function EncodeBase64(arg1) {
+  return window['go']['main']['App']['EncodeBase64'](arg1);
+}
+
 export function EscapeJSON(arg1) {
   return window['go']['main']['App']['EscapeJSON'](arg1);
 }
 
 export function FormatJSON(arg1) {
   return window['go']['main']['App']['FormatJSON'](arg1);
+}
+
+export function GenerateUUIDv4() {
+  return window['go']['main']['App']['GenerateUUIDv4']();
 }
 
 export function GetConnection(arg1) {
@@ -68,6 +88,10 @@ export function GetConnections() {
 
 export function GetCurrentPath(arg1) {
   return window['go']['main']['App']['GetCurrentPath'](arg1);
+}
+
+export function GetCurrentTimestamp() {
+  return window['go']['main']['App']['GetCurrentTimestamp']();
 }
 
 export function GetFileInfo(arg1, arg2) {
@@ -180,6 +204,10 @@ export function ShowQuestionDialog(arg1, arg2) {
 
 export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function TimestampToDateTime(arg1, arg2) {
+  return window['go']['main']['App']['TimestampToDateTime'](arg1, arg2);
 }
 
 export function UpdateConnection(arg1) {

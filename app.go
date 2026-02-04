@@ -437,6 +437,41 @@ func (a *App) EscapeJSON(input string) (string, error) {
 	return a.devToolsService.EscapeJSON(input)
 }
 
+// EncodeBase64 将字符串编码为 Base64
+func (a *App) EncodeBase64(input string) (string, error) {
+	return a.devToolsService.EncodeBase64(input)
+}
+
+// DecodeBase64 将 Base64 字符串解码
+func (a *App) DecodeBase64(input string) (string, error) {
+	return a.devToolsService.DecodeBase64(input)
+}
+
+// CalculateHash 计算字符串的哈希值
+func (a *App) CalculateHash(input, algorithm string) (string, error) {
+	return a.devToolsService.CalculateHash(input, algorithm)
+}
+
+// TimestampToDateTime 将 Unix 时间戳转换为日期时间字符串
+func (a *App) TimestampToDateTime(timestamp int64, format string) (string, error) {
+	return a.devToolsService.TimestampToDateTime(timestamp, format)
+}
+
+// DateTimeToTimestamp 将日期时间字符串转换为 Unix 时间戳
+func (a *App) DateTimeToTimestamp(datetime, format string) (int64, error) {
+	return a.devToolsService.DateTimeToTimestamp(datetime, format)
+}
+
+// GetCurrentTimestamp 获取当前 Unix 时间戳
+func (a *App) GetCurrentTimestamp() int64 {
+	return a.devToolsService.GetCurrentTimestamp()
+}
+
+// GenerateUUIDv4 生成 UUID v4
+func (a *App) GenerateUUIDv4() (string, error) {
+	return a.devToolsService.GenerateUUIDv4()
+}
+
 // ShowAboutDialog 显示关于对话框
 func (a *App) ShowAboutDialog() {
 	runtime.EventsEmit(a.ctx, "app:show-about")

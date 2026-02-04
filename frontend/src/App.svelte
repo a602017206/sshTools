@@ -442,7 +442,7 @@
       style="width: {isRightPanelCollapsed ? '0' : rightPanelWidth}px; min-width: {isRightPanelCollapsed ? '0' : '300px'}; max-width: 600px;"
     >
       <!-- 文件管理 -->
-      <div class="flex-1 overflow-hidden" style="height: {fileManagerHeight}%">
+      <div class="overflow-hidden" style="height: {fileManagerHeight}%; min-height: 0;">
         <FileManager />
       </div>
 
@@ -458,7 +458,7 @@
       </div>
 
       <!-- 服务器监控 -->
-      <div class="flex-1 overflow-hidden" style="height: {100 - fileManagerHeight}%">
+      <div class="overflow-hidden" style="height: {100 - fileManagerHeight}%; min-height: 0;">
         <ServerMonitor />
       </div>
     </div>
@@ -486,7 +486,7 @@
     onUpdate={handleUpdateAsset}
   />
 
-  <DevToolsPanel bind:isOpen={isDevToolsOpen} />
+  <DevToolsPanel bind:isOpen={isDevToolsOpen} {themeStore} />
 
   <AboutDialog
     bind:isOpen={isAboutDialogOpen}

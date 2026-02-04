@@ -1,9 +1,17 @@
 package service
 
 import (
+	"crypto/md5"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 // DevToolsService 提供开发工具相关服务
@@ -170,4 +178,113 @@ func formatJSONError(err error) string {
 	default:
 		return fmt.Sprintf("格式错误: %s", errMsg)
 	}
+}
+
+// ============================================================================
+// Base64 编解码
+// ============================================================================
+
+// EncodeBase64 将字符串编码为 Base64
+func (s *DevToolsService) EncodeBase64(input string) (string, error) {
+	if input == "" {
+		return "", fmt.Errorf("输入不能为空")
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte(input))
+	return encoded, nil
+}
+
+// DecodeBase64 将 Base64 字符串解码
+func (s *DevToolsService) DecodeBase64(input string) (string, error) {
+	if input == "" {
+		return "", fmt.Errorf("输入不能为空")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(input)
+	if err != nil {
+		return "", fmt.Errorf("Base64解码失败: %v", err)
+	}
+	return string(decoded), nil
+}
+
+// ============================================================================
+// Hash 计算
+// ============================================================================
+
+// CalculateHash 计算字符串的哈希值
+func (s *DevToolsService) CalculateHash(input, algorithm string) (string, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "", fmt.Errorf("输入不能为空")
+	}
+
+	var hash []byte
+
+	switch strings.ToLower(algorithm) {
+	case "md5":
+		h := md5.Sum([]byte(input))
+		hash = h[:]
+	case "sha256":
+		h := sha256.Sum256([]byte(input))
+		hash = h[:]
+	case "sha512":
+		h := sha512.Sum512([]byte(input))
+		hash = h[:]
+	default:
+		return "", fmt.Errorf("不支持的哈希算法: %s (支持: md5, sha256, sha512)", algorithm)
+	}
+
+	return hex.EncodeToString(hash), nil
+}
+
+// ============================================================================
+// 时间戳转换
+// ============================================================================
+
+// TimestampToDateTime 将 Unix 时间戳转换为日期时间字符串
+func (s *DevToolsService) TimestampToDateTime(timestamp int64, format string) (string, error) {
+	if timestamp <= 0 {
+		return "", fmt.Errorf("无效的时间戳: %d", timestamp)
+	}
+
+	if format == "" {
+		format = "2006-01-02 15:04:05"
+	}
+
+	t := time.Unix(timestamp, 0)
+	return t.Format(format), nil
+}
+
+// DateTimeToTimestamp 将日期时间字符串转换为 Unix 时间戳
+func (s *DevToolsService) DateTimeToTimestamp(datetime, format string) (int64, error) {
+	if datetime == "" {
+		return 0, fmt.Errorf("输入不能为空")
+	}
+
+	if format == "" {
+		format = "2006-01-02 15:04:05"
+	}
+
+	t, err := time.Parse(format, datetime)
+	if err != nil {
+		return 0, fmt.Errorf("日期时间解析失败: %v", err)
+	}
+
+	return t.Unix(), nil
+}
+
+// GetCurrentTimestamp 获取当前 Unix 时间戳
+func (s *DevToolsService) GetCurrentTimestamp() int64 {
+	return time.Now().Unix()
+}
+
+// ============================================================================
+// UUID 生成
+// ============================================================================
+
+// GenerateUUIDv4 生成 UUID v4
+func (s *DevToolsService) GenerateUUIDv4() (string, error) {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return "", fmt.Errorf("生成UUID失败: %v", err)
+	}
+	return id.String(), nil
 }
