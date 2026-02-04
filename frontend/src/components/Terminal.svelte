@@ -99,7 +99,9 @@
       theme: currentTheme === 'light' ? lightTheme : darkTheme,
       allowProposedApi: true,
       scrollback: 1000,
-      convertEol: false // 禁用自动换行转换，让后端控制换行
+      convertEol: false, // 禁用自动换行转换，让后端控制换行
+      rightClickSelectsWord: true, // 右键点击选择单词
+      macOptionClickForcesSelection: true, // macOS Option+Click 强制选择
     });
 
     fitAddon = new FitAddon();
@@ -109,6 +111,57 @@
     terminal.open(terminalElement);
 
     fitAddon.fit();
+
+    // 自定义键事件处理器
+    terminal.attachCustomKeyEventHandler((event) => {
+      // macOS: Cmd+C 复制选中内容
+      if (event.metaKey && event.key.toLowerCase() === 'c' && !event.shiftKey && !event.ctrlKey) {
+        if (terminal.hasSelection()) {
+          const selection = terminal.getSelection();
+          navigator.clipboard.writeText(selection).catch(err => {
+            console.error('Failed to copy:', err);
+          });
+          return false; // 阻止发送 ^C 到终端
+        }
+        return true; // 无选中时，让 xterm.js 发送中断信号
+      }
+      // Windows/Linux: Ctrl+C 复制选中内容
+      if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'c' && !event.shiftKey) {
+        if (terminal.hasSelection()) {
+          const selection = terminal.getSelection();
+          navigator.clipboard.writeText(selection).catch(err => {
+            console.error('Failed to copy:', err);
+          });
+          return false; // 阻止发送 ^C 到终端
+        }
+        return true; // 无选中时，让 xterm.js 发送中断信号
+      }
+      // macOS: Cmd+V 粘贴
+      if (event.metaKey && event.key.toLowerCase() === 'v' && !event.shiftKey && !event.ctrlKey) {
+        event.preventDefault();
+        navigator.clipboard.readText().then(text => {
+          if (text && onData && sessionId) {
+            onData(sessionId, text); // 通过 onData 发送到 SSH 会话
+          }
+        }).catch(err => {
+          console.error('Failed to read clipboard:', err);
+        });
+        return false; // 阻止默认行为
+      }
+      // Windows/Linux: Ctrl+V 粘贴
+      if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'v' && !event.shiftKey) {
+        event.preventDefault();
+        navigator.clipboard.readText().then(text => {
+          if (text && onData && sessionId) {
+            onData(sessionId, text); // 通过 onData 发送到 SSH 会话
+          }
+        }).catch(err => {
+          console.error('Failed to read clipboard:', err);
+        });
+        return false; // 阻止默认行为
+      }
+      return true; // 其他键交给 xterm.js 处理
+    });
 
     // 动态导入 zmodem.js
     try {

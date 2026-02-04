@@ -13,6 +13,7 @@
   let isAddDialogOpen = false;
   let isAboutDialogOpen = false;
   let isSidebarCollapsed = false;
+  let isRightPanelCollapsed = false;
   let editingAsset = null;
   let terminalPanelRef;
 
@@ -42,6 +43,11 @@
   function toggleSidebar() {
     if (isAddDialogOpen) return;
     isSidebarCollapsed = !isSidebarCollapsed;
+  }
+
+  function toggleRightPanel() {
+    if (isAddDialogOpen) return;
+    isRightPanelCollapsed = !isRightPanelCollapsed;
   }
 
   // Sidebar resize handlers
@@ -296,6 +302,7 @@
     </div>
     
     <div class="ml-auto flex items-center gap-3">
+      <!-- 主题切换按钮 -->
       <button
         on:click={toggleTheme}
         disabled={isAddDialogOpen}
@@ -327,7 +334,21 @@
   </header>
 
   <!-- 主内容区域 -->
-  <div class="flex-1 flex overflow-hidden min-h-0">
+  <div class="flex-1 flex overflow-hidden min-h-0 relative">
+    <!-- 左侧展开按钮（折叠时显示） -->
+    {#if isSidebarCollapsed}
+    <button
+      on:click={toggleSidebar}
+      disabled={isAddDialogOpen}
+      class="absolute left-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-12 rounded-r-lg transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 hover:opacity-100 {$themeStore === 'dark' ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700' : 'bg-white hover:bg-gray-100 text-gray-600 border border-gray-200'}"
+      title="展开资产列表"
+    >
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+      </svg>
+    </button>
+    {/if}
+
     <!-- 左侧：资产列表 -->
     <div
       class="flex-shrink-0 transition-all duration-200 {$themeStore === 'dark' ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'} border-r overflow-hidden"
@@ -365,13 +386,23 @@
     <!-- 侧边栏调整手柄 -->
     {#if !isSidebarCollapsed}
     <div
-      class="resize-handle-horizontal flex-shrink-0 relative"
+      class="resize-handle-horizontal flex-shrink-0 relative group"
       role="separator"
       aria-hidden="true"
       style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
       on:mousedown={startSidebarResize}
     >
       <div class="h-full w-full rounded"></div>
+      <button
+        on:click={toggleSidebar}
+        disabled={isAddDialogOpen}
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100 {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
+        title="折叠资产列表"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+        </svg>
+      </button>
     </div>
     {/if}
 
@@ -381,21 +412,34 @@
     </div>
 
     <!-- 右侧面板调整手柄 -->
+    {#if !isRightPanelCollapsed}
     <div
-      class="resize-handle-horizontal flex-shrink-0 relative"
+      class="resize-handle-horizontal flex-shrink-0 relative group"
       role="separator"
       aria-hidden="true"
       style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
       on:mousedown={startRightPanelResize}
     >
       <div class="h-full w-full rounded"></div>
+      <button
+        on:click={toggleRightPanel}
+        disabled={isAddDialogOpen}
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100 {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
+        title="折叠右侧面板"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+        </svg>
+      </button>
     </div>
+    {/if}
 
     <!-- 右侧：文件管理和服务器监控 -->
     <div
       data-right-panel="true"
       class="flex-shrink-0 flex flex-col overflow-hidden {$themeStore === 'dark' ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'} border-l shadow-sm"
-      style="width: {rightPanelWidth}px; min-width: 300px; max-width: 600px;"
+      class:collapsed={isRightPanelCollapsed}
+      style="width: {isRightPanelCollapsed ? '0' : rightPanelWidth}px; min-width: {isRightPanelCollapsed ? '0' : '300px'}; max-width: 600px;"
     >
       <!-- 文件管理 -->
       <div class="flex-1 overflow-hidden" style="height: {fileManagerHeight}%">
@@ -418,6 +462,20 @@
         <ServerMonitor />
       </div>
     </div>
+
+    <!-- 右侧展开按钮（折叠时显示） -->
+    {#if isRightPanelCollapsed}
+    <button
+      on:click={toggleRightPanel}
+      disabled={isAddDialogOpen}
+      class="absolute right-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-12 rounded-l-lg transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 hover:opacity-100 {$themeStore === 'dark' ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700' : 'bg-white hover:bg-gray-100 text-gray-600 border border-gray-200'}"
+      title="展开右侧面板"
+    >
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+      </svg>
+    </button>
+    {/if}
   </div>
 
   <!-- 对话框 -->
