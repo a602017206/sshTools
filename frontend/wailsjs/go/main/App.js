@@ -162,6 +162,10 @@ export function SendSSHDataBinary(arg1, arg2) {
   return window['go']['main']['App']['SendSSHDataBinary'](arg1, arg2);
 }
 
+export function ShowAboutDialog() {
+  return window['go']['main']['App']['ShowAboutDialog']();
+}
+
 export function ShowErrorDialog(arg1, arg2) {
   return window['go']['main']['App']['ShowErrorDialog'](arg1, arg2);
 }

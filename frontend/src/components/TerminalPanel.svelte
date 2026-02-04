@@ -608,8 +608,16 @@
               ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-b-2 border-b-purple-600'
               : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
           }"
+          role="button"
+          tabindex="0"
           on:click={() => handleTabChange(session.sessionId)}
           on:dblclick={() => startEditTab(session.sessionId)}
+          on:keydown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleTabChange(session.sessionId);
+            }
+          }}
         >
           <div class={`w-2 h-2 rounded-full flex-shrink-0 ${
             session.connected ? 'bg-green-500' : 'bg-gray-400 dark:bg-gray-600'

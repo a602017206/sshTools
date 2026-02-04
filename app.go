@@ -436,3 +436,8 @@ func (a *App) MinifyJSON(input string) (string, error) {
 func (a *App) EscapeJSON(input string) (string, error) {
 	return a.devToolsService.EscapeJSON(input)
 }
+
+// ShowAboutDialog 显示关于对话框
+func (a *App) ShowAboutDialog() {
+	runtime.EventsEmit(a.ctx, "app:show-about")
+}

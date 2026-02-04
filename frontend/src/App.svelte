@@ -6,10 +6,12 @@
   import ServerMonitor from './components/ServerMonitor.svelte';
   import DevToolsPanel from './components/DevToolsPanel.svelte';
   import AddAssetDialog from './components/AddAssetDialog.svelte';
+  import AboutDialog from './components/AboutDialog.svelte';
   import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme } from './stores.js';
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
+  let isAboutDialogOpen = false;
   let isSidebarCollapsed = false;
   let editingAsset = null;
   let terminalPanelRef;
@@ -229,6 +231,14 @@
     }
   }
 
+  function ensureFullHeight() {
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.style.height = '100vh';
+      appElement.style.width = '100vw';
+    }
+  }
+
   onMount(async () => {
     const savedTheme = localStorage.getItem('ssh-tools-theme');
     if (!savedTheme) {
@@ -240,6 +250,8 @@
       setTheme(savedTheme);
     }
 
+    let cleanupEvents = null;
+
     try {
       const wails = await import('../wailsjs/go/main/App.js');
       window.wailsBindings = wails;
@@ -248,24 +260,24 @@
       }));
 
       await loadAssetsFromBackend();
+
+      // Listen for about dialog event from backend
+      const runtime = await import('../wailsjs/runtime/runtime.js');
+      cleanupEvents = runtime.EventsOn('app:show-about', () => {
+        isAboutDialogOpen = true;
+      });
     } catch (error) {
       console.warn('Wails bindings not available yet:', error.message);
     }
-
-    // 确保容器适配窗口大小
-    const ensureFullHeight = () => {
-      const appElement = document.getElementById('app');
-      if (appElement) {
-        appElement.style.height = '100vh';
-        appElement.style.width = '100vw';
-      }
-    };
 
     ensureFullHeight();
     window.addEventListener('resize', ensureFullHeight);
 
     return () => {
       window.removeEventListener('resize', ensureFullHeight);
+      if (cleanupEvents) {
+        cleanupEvents();
+      }
     };
   });
 </script>
@@ -354,6 +366,8 @@
     {#if !isSidebarCollapsed}
     <div
       class="resize-handle-horizontal flex-shrink-0 relative"
+      role="separator"
+      aria-hidden="true"
       style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
       on:mousedown={startSidebarResize}
     >
@@ -369,6 +383,8 @@
     <!-- 右侧面板调整手柄 -->
     <div
       class="resize-handle-horizontal flex-shrink-0 relative"
+      role="separator"
+      aria-hidden="true"
       style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
       on:mousedown={startRightPanelResize}
     >
@@ -389,6 +405,8 @@
       <!-- 文件管理/监控调整手柄 -->
       <div
         class="resize-handle-vertical flex-shrink-0 relative"
+        role="separator"
+        aria-hidden="true"
         style="cursor: {isAddDialogOpen ? 'default' : 'row-resize'}; width: 100%; padding: 2px 0; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
         on:mousedown={startFileManagerResize}
       >
@@ -411,6 +429,12 @@
   />
 
   <DevToolsPanel bind:isOpen={isDevToolsOpen} />
+
+  <AboutDialog
+    bind:isOpen={isAboutDialogOpen}
+    onClose={() => isAboutDialogOpen = false}
+    themeStore={themeStore}
+  />
 </div>
 
 <style>
@@ -423,11 +447,6 @@
 
   :global(html) {
     height: 100%;
-  }
-
-  #app {
-    height: 100vh;
-    width: 100vw;
   }
 
   .resize-handle-horizontal {

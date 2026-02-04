@@ -84,6 +84,8 @@ export function SendSSHData(arg1:string,arg2:string):Promise<void>;
 
 export function SendSSHDataBinary(arg1:string,arg2:string):Promise<void>;
 
+export function ShowAboutDialog():Promise<void>;
+
 export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
 
 export function ShowMessageDialog(arg1:string,arg2:string):Promise<void>;
