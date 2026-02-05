@@ -21,12 +21,25 @@
     total: '0 GB'
   };
 
+  const defaultLoadInfo = {
+    '1min': 0,
+    '5min': 0,
+    '15min': 0
+  };
+
+  const defaultMemoryDetail = {
+    used: '0 GB',
+    total: '0 GB'
+  };
+
   let cpuData = [];
   let memoryData = [];
   let cpuPerCore = []; // Per-core CPU usage array
   let currentStats = { ...defaultStats };
   let systemInfo = { ...defaultSystemInfo };
   let diskInfo = { ...defaultDiskInfo };
+  let loadInfo = { ...defaultLoadInfo };
+  let memoryDetail = { ...defaultMemoryDetail };
 
   // Per-session monitoring history
   let sessionCpuData = new Map();
@@ -35,6 +48,8 @@
   let sessionStats = new Map();
   let sessionSystemInfo = new Map();
   let sessionDiskInfo = new Map();
+  let sessionLoadInfo = new Map();
+  let sessionMemoryDetail = new Map();
 
   let dataInterval = null;
   let previousSessionId = null;
@@ -53,6 +68,8 @@
       currentStats = { ...defaultStats };
       systemInfo = { ...defaultSystemInfo };
       diskInfo = { ...defaultDiskInfo };
+      loadInfo = { ...defaultLoadInfo };
+      memoryDetail = { ...defaultMemoryDetail };
       return;
     }
 
@@ -62,6 +79,8 @@
     currentStats = sessionStats.get(sessionId) || { ...defaultStats };
     systemInfo = sessionSystemInfo.get(sessionId) || { ...defaultSystemInfo };
     diskInfo = sessionDiskInfo.get(sessionId) || { ...defaultDiskInfo };
+    loadInfo = sessionLoadInfo.get(sessionId) || { ...defaultLoadInfo };
+    memoryDetail = sessionMemoryDetail.get(sessionId) || { ...defaultMemoryDetail };
   }
 
   function persistSessionSnapshot(sessionId) {
@@ -72,6 +91,8 @@
     sessionStats = new Map(sessionStats).set(sessionId, currentStats);
     sessionSystemInfo = new Map(sessionSystemInfo).set(sessionId, systemInfo);
     sessionDiskInfo = new Map(sessionDiskInfo).set(sessionId, diskInfo);
+    sessionLoadInfo = new Map(sessionLoadInfo).set(sessionId, loadInfo);
+    sessionMemoryDetail = new Map(sessionMemoryDetail).set(sessionId, memoryDetail);
   }
 
   $: if (previousSessionId !== $activeSessionIdStore) {
@@ -95,6 +116,22 @@
     const units = ['KB/s', 'MB/s', 'GB/s'];
     let unitIndex = -1;
     let value = bytesPerSecond;
+
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex++;
+    }
+
+    return `${value.toFixed(1)} ${units[unitIndex]}`;
+  }
+
+  // Convert bytes to appropriate unit (for memory/disk)
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let unitIndex = 0;
+    let value = bytes;
 
     while (value >= 1024 && unitIndex < units.length - 1) {
       value /= 1024;
@@ -145,11 +182,34 @@
       };
     }
 
+    // Update load info if available
+    let nextLoadInfo = null;
+    if (data.cpu?.load_average && Array.isArray(data.cpu.load_average) && data.cpu.load_average.length >= 3) {
+      nextLoadInfo = {
+        '1min': data.cpu.load_average[0] || 0,
+        '5min': data.cpu.load_average[1] || 0,
+        '15min': data.cpu.load_average[2] || 0
+      };
+    }
+
+    // Update memory detail if available
+    let nextMemoryDetail = null;
+    if (data.memory?.used !== undefined && data.memory?.total !== undefined) {
+      const usedBytes = data.memory.used;
+      const totalBytes = data.memory.total;
+      nextMemoryDetail = {
+        used: formatBytes(usedBytes),
+        total: formatBytes(totalBytes)
+      };
+    }
+
     return {
       stats,
       cpuPerCore: nextCpuPerCore,
       systemInfo: nextSystemInfo,
-      diskInfo: nextDiskInfo
+      diskInfo: nextDiskInfo,
+      loadInfo: nextLoadInfo,
+      memoryDetail: nextMemoryDetail
     };
   }
 
@@ -171,6 +231,8 @@
         const nextCpuPerCore = normalizedData.cpuPerCore || sessionCpuPerCore.get(sessionId) || [];
         const nextSystemInfo = normalizedData.systemInfo || sessionSystemInfo.get(sessionId) || { ...defaultSystemInfo };
         const nextDiskInfo = normalizedData.diskInfo || sessionDiskInfo.get(sessionId) || { ...defaultDiskInfo };
+        const nextLoadInfo = normalizedData.loadInfo || sessionLoadInfo.get(sessionId) || { ...defaultLoadInfo };
+        const nextMemoryDetail = normalizedData.memoryDetail || sessionMemoryDetail.get(sessionId) || { ...defaultMemoryDetail };
         const nextStats = normalizedData.stats;
 
         sessionCpuData = new Map(sessionCpuData).set(sessionId, nextCpuData);
@@ -179,6 +241,8 @@
         sessionStats = new Map(sessionStats).set(sessionId, nextStats);
         sessionSystemInfo = new Map(sessionSystemInfo).set(sessionId, nextSystemInfo);
         sessionDiskInfo = new Map(sessionDiskInfo).set(sessionId, nextDiskInfo);
+        sessionLoadInfo = new Map(sessionLoadInfo).set(sessionId, nextLoadInfo);
+        sessionMemoryDetail = new Map(sessionMemoryDetail).set(sessionId, nextMemoryDetail);
 
         if (sessionId === $activeSessionIdStore) {
           currentStats = nextStats;
@@ -187,6 +251,8 @@
           cpuPerCore = nextCpuPerCore;
           systemInfo = nextSystemInfo;
           diskInfo = nextDiskInfo;
+          loadInfo = nextLoadInfo;
+          memoryDetail = nextMemoryDetail;
         }
       }
     } catch (error) {
@@ -245,21 +311,37 @@
   {/if}
 
   <div class="p-3 space-y-3">
-    <!-- CPU 使用率 -->
-    <div class="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl p-3 shadow-sm border border-purple-100 dark:border-purple-800">
-      <div class="flex items-center justify-between mb-2">
-        <div class="flex items-center gap-2">
-          <div class="p-1.5 bg-purple-100 dark:bg-purple-900 rounded-lg">
-            <svg class="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002-2h2a2 2 0 002-2z" />
-            </svg>
-          </div>
-          <span class="text-xs font-semibold text-gray-900 dark:text-white">CPU</span>
-        </div>
-        <span class="text-xs font-bold px-2 py-1 rounded-lg bg-white dark:bg-gray-800" style="color: {getStatusColor(currentStats.cpu)}">
-          {currentStats.cpu.toFixed(1)}%
-        </span>
-      </div>
+     <!-- CPU 使用率 -->
+     <div class="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl p-3 shadow-sm border border-purple-100 dark:border-purple-800">
+       <div class="flex items-center justify-between mb-2">
+         <div class="flex items-center gap-2">
+           <div class="p-1.5 bg-purple-100 dark:bg-purple-900 rounded-lg">
+             <svg class="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002-2h2a2 2 0 002-2z" />
+             </svg>
+           </div>
+           <span class="text-xs font-semibold text-gray-900 dark:text-white">CPU</span>
+         </div>
+         <span class="text-xs font-bold px-2 py-1 rounded-lg bg-white dark:bg-gray-800" style="color: {getStatusColor(currentStats.cpu)}">
+           {currentStats.cpu.toFixed(1)}%
+         </span>
+       </div>
+       {#if loadInfo['1min'] > 0}
+         <div class="flex items-center gap-2 mb-2">
+           <span class="text-[9px] text-gray-600 dark:text-gray-400">负载:</span>
+           <div class="flex gap-2 text-[9px]">
+             <span class="px-1.5 py-0.5 bg-purple-50 dark:bg-purple-900/30 rounded font-mono" style="color: {getStatusColor(loadInfo['1min'] * 100)}">
+               {loadInfo['1min'].toFixed(2)}
+             </span>
+             <span class="px-1.5 py-0.5 bg-purple-50 dark:bg-purple-900/30 rounded font-mono" style="color: {getStatusColor(loadInfo['5min'] * 100)}">
+               {loadInfo['5min'].toFixed(2)}
+             </span>
+             <span class="px-1.5 py-0.5 bg-purple-50 dark:bg-purple-900/30 rounded font-mono" style="color: {getStatusColor(loadInfo['15min'] * 100)}">
+               {loadInfo['15min'].toFixed(2)}
+             </span>
+           </div>
+         </div>
+       {/if}
       <!-- CPU Chart -->
       <div class="h-[80px] bg-white dark:bg-gray-800 rounded-lg overflow-hidden relative">
         {#if cpuData.length > 1}
@@ -326,21 +408,26 @@
       {/if}
     </div>
 
-    <!-- 内存使用率 -->
-    <div class="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl p-3 shadow-sm border border-emerald-100 dark:border-emerald-800">
-      <div class="flex items-center justify-between mb-2">
-        <div class="flex items-center gap-2">
-          <div class="p-1.5 bg-emerald-100 dark:bg-emerald-900 rounded-lg">
-            <svg class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002-2h2a2 2 0 002-2z" />
-            </svg>
-          </div>
-          <span class="text-xs font-semibold text-gray-900 dark:text-white">内存</span>
-        </div>
-        <span class="text-xs font-bold px-2 py-1 rounded-lg bg-white dark:bg-gray-800" style="color: {getStatusColor(currentStats.memory)}">
-          {currentStats.memory.toFixed(2)}%
-        </span>
-      </div>
+     <!-- 内存使用率 -->
+     <div class="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl p-3 shadow-sm border border-emerald-100 dark:border-emerald-800">
+       <div class="flex items-center justify-between mb-2">
+         <div class="flex items-center gap-2">
+           <div class="p-1.5 bg-emerald-100 dark:bg-emerald-900 rounded-lg">
+             <svg class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002-2h2a2 2 0 002-2z" />
+             </svg>
+           </div>
+           <span class="text-xs font-semibold text-gray-900 dark:text-white">内存</span>
+         </div>
+         <div class="flex items-center gap-2">
+           <span class="text-[10px] text-gray-600 dark:text-gray-400">
+             {memoryDetail.used} / {memoryDetail.total}
+           </span>
+           <span class="text-xs font-bold px-2 py-1 rounded-lg bg-white dark:bg-gray-800" style="color: {getStatusColor(currentStats.memory)}">
+             {currentStats.memory.toFixed(2)}%
+           </span>
+         </div>
+       </div>
       <!-- Memory Chart -->
       <div class="h-[80px] bg-white dark:bg-gray-800 rounded-lg overflow-hidden relative">
         {#if memoryData.length > 1}
