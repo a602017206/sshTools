@@ -12,6 +12,7 @@
     RenameFile,
   } from '../../wailsjs/go/main/App.js';
   import { activeSessionIdStore, connectionsStore } from '../stores.js';
+  import { uploadStore, formatFileSize, formatSpeed, getTransferPercentage } from '../stores/uploadStore.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
 
@@ -26,10 +27,6 @@
 
   // Transfer progress unsubscribers
   let progressUnsubscribers = [];
-
-  // Upload transfer states
-  let uploadTransfers = [];
-  let isUploadCollapsed = false;
 
   // Context menu state
   let contextMenu = {
@@ -166,59 +163,14 @@
     expandedDirs = newExpanded;
   }
 
-  // Convert API response format to display format
-  function formatFileSize(size) {
-    if (!size) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let i = 0;
-    while (size >= 1024 && i < units.length - 1) {
-      size /= 1024;
-      i++;
-    }
-    return `${size.toFixed(1)} ${units[i]}`;
-  }
-
-  function formatSpeed(speed) {
-    if (!speed) return '0 B/s';
-    return `${formatFileSize(speed)}/s`;
-  }
-
-  function getTransferPercentage(transfer) {
-    if (!transfer) return 0;
-    if (transfer.totalBytes) {
-      return (transfer.bytesSent / transfer.totalBytes) * 100;
-    }
-    return transfer.percentage || 0;
-  }
-
-  function getOverallUploadPercentage() {
-    if (uploadTransfers.length === 0) return 0;
-    let totalBytes = 0;
-    let sentBytes = 0;
-    uploadTransfers.forEach((transfer) => {
-      const total = transfer.totalBytes || 0;
-      const sent = transfer.bytesSent || 0;
-      totalBytes += total;
-      sentBytes += sent;
-    });
-
-    if (totalBytes > 0) {
-      return (sentBytes / totalBytes) * 100;
-    }
-
-    const sumPercentage = uploadTransfers.reduce((sum, transfer) => sum + getTransferPercentage(transfer), 0);
-    return sumPercentage / uploadTransfers.length;
-  }
-
   async function handleRemoveTransfer(transfer) {
     if (!transfer) return;
 
     if (transfer.status === 'running') {
-      // Show confirmation dialog
       pendingCancelTransfer = transfer;
       showCancelUploadConfirm = true;
     } else {
-      removeUploadTransfer(transfer.id);
+      uploadStore.removeTransfer(transfer.id);
     }
   }
 
@@ -234,48 +186,12 @@
         console.error('Cancel transfer failed:', err);
       }
     }
-    removeUploadTransfer(transfer.id);
+    uploadStore.cancelTransfer(transfer.id);
   }
 
   function handleCancelCancelUpload() {
     showCancelUploadConfirm = false;
     pendingCancelTransfer = null;
-  }
-
-  function upsertUploadTransfer(progress, transferId) {
-    const id = transferId || progress.transfer_id || progress.transferId;
-    if (!id) return;
-
-    const filename = progress.filename || progress.fileName || 'unknown';
-    const bytesSent = progress.bytes_sent ?? progress.bytesSent ?? 0;
-    const totalBytes = progress.total_bytes ?? progress.totalBytes ?? 0;
-    const percentage = progress.percentage ?? 0;
-    const speed = progress.speed ?? 0;
-    const status = progress.status || 'running';
-    const errorMessage = progress.error || '';
-
-    const existingIndex = uploadTransfers.findIndex((item) => item.id === id);
-    const nextItem = {
-      id,
-      filename,
-      bytesSent,
-      totalBytes,
-      percentage,
-      speed,
-      status,
-      error: errorMessage,
-    };
-
-    if (existingIndex === -1) {
-      uploadTransfers = [nextItem, ...uploadTransfers];
-      return;
-    }
-
-    uploadTransfers = uploadTransfers.map((item) => (item.id === id ? nextItem : item));
-  }
-
-  function removeUploadTransfer(transferId) {
-    uploadTransfers = uploadTransfers.filter((item) => item.id !== transferId);
   }
 
   async function handleRefresh() {
@@ -438,16 +354,23 @@
     const eventName = `sftp:progress:${transferID}`;
     const unsubscriber = EventsOn(eventName, (progress) => {
       if (kind === 'upload') {
-        upsertUploadTransfer(progress, transferID);
-      }
+        const transfer = {
+          id: transferID,
+          filename: progress.filename || progress.fileName || 'unknown',
+          bytesSent: progress.bytes_sent ?? progress.bytesSent ?? 0,
+          totalBytes: progress.total_bytes ?? progress.totalBytes ?? 0,
+          percentage: progress.percentage ?? 0,
+          speed: progress.speed ?? 0,
+          status: progress.status || 'running',
+          error: progress.error || '',
+        };
 
-      // Auto-cleanup completed transfers after 3 seconds
-      if (progress.status === 'completed' || progress.status === 'failed') {
-        setTimeout(() => {
-          if (kind === 'upload') {
-            removeUploadTransfer(transferID);
-          }
-        }, 3000);
+        const existing = $uploadStore.transfers.find(t => t.id === transferID);
+        if (existing) {
+          uploadStore.updateTransfer(transferID, transfer);
+        } else {
+          uploadStore.addTransfer(transfer);
+        }
       }
     });
 
@@ -661,90 +584,6 @@
       </div>
     {/if}
   </div>
-
-  {#if uploadTransfers.length > 0}
-    <div class="mx-3 mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3">
-      <div class="flex items-center justify-between text-[11px] text-gray-600 dark:text-gray-400 mb-2">
-        <div class="flex items-center gap-2">
-          <button
-            on:click={() => (isUploadCollapsed = !isUploadCollapsed)}
-            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            title={isUploadCollapsed ? '展开' : '折叠'}
-          >
-            {#if isUploadCollapsed}
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14m7-7H5" />
-              </svg>
-            {:else}
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14" />
-              </svg>
-            {/if}
-          </button>
-          <span>上传进度</span>
-        </div>
-        <span>{uploadTransfers.length} 个任务</span>
-      </div>
-
-      {#if isUploadCollapsed}
-        <div class="flex items-center gap-2">
-          <div class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              class="h-full bg-blue-500 transition-all"
-              style={`width: ${Math.min(100, Math.max(0, getOverallUploadPercentage()))}%`}
-            ></div>
-          </div>
-          <span class="text-[10px] text-gray-500 dark:text-gray-400">
-            {Math.round(getOverallUploadPercentage())}%
-          </span>
-        </div>
-      {:else}
-        <div class="space-y-2 max-h-40 overflow-y-auto">
-          {#each uploadTransfers as transfer (transfer.id)}
-            <div class="rounded-md bg-white/80 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700 px-2.5 py-2">
-              <div class="flex items-center justify-between text-[11px] text-gray-700 dark:text-gray-300 mb-1">
-                <span class="truncate max-w-[180px]" title={transfer.filename}>{transfer.filename}</span>
-                <div class="flex items-center gap-2">
-                  {#if transfer.status === 'failed'}
-                    <span class="text-red-500">失败</span>
-                  {:else if transfer.status === 'completed'}
-                    <span class="text-green-500">完成</span>
-                  {:else}
-                    <span>{Math.round(getTransferPercentage(transfer))}%</span>
-                  {/if}
-                  <button
-                    on:click={() => handleRemoveTransfer(transfer)}
-                    class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
-                    title="删除任务"
-                  >
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <div class="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div
-                  class="h-full bg-blue-500 transition-all"
-                  style={`width: ${Math.min(100, Math.max(0, getTransferPercentage(transfer)))}%`}
-                ></div>
-              </div>
-              <div class="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                <span>{formatFileSize(transfer.bytesSent)} / {formatFileSize(transfer.totalBytes)}</span>
-                {#if transfer.status === 'running'}
-                  <span>{formatSpeed(transfer.speed)}</span>
-                {:else if transfer.status === 'failed'}
-                  <span class="text-red-500 truncate max-w-[140px]" title={transfer.error}>{transfer.error || '上传失败'}</span>
-                {:else}
-                  <span>完成</span>
-                {/if}
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
-  {/if}
 
   <!-- 文件列表 -->
   <div

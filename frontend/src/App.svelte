@@ -8,6 +8,9 @@
   import AddAssetDialog from './components/AddAssetDialog.svelte';
   import AboutDialog from './components/AboutDialog.svelte';
   import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme } from './stores.js';
+  import { uploadStore, activeTransfers, completedTransfers } from './stores/uploadStore.js';
+  import { formatFileSize, formatSpeed, getTransferPercentage } from './stores/uploadStore.js';
+  import { CancelTransfer } from '../wailsjs/go/main/App.js';
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
@@ -300,8 +303,25 @@
         <div class="text-xs {$themeStore === 'dark' ? 'text-gray-400' : 'text-gray-500'}">AHa SSH Manager</div>
       </div>
     </div>
-    
+
     <div class="ml-auto flex items-center gap-3">
+      <div class="relative">
+        <button
+          on:click={() => uploadStore.togglePanel()}
+          class="flex items-center justify-center w-9 h-9 rounded-lg transition-all shadow-sm {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-blue-400' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
+          title="上传任务"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+        </button>
+        {#if $activeTransfers.length > 0}
+          <span class="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 text-[10px] font-bold text-white bg-red-500 rounded-full">
+            {$activeTransfers.length}
+          </span>
+        {/if}
+      </div>
+
       <!-- 主题切换按钮 -->
       <button
         on:click={toggleTheme}
@@ -493,6 +513,150 @@
     onClose={() => isAboutDialogOpen = false}
     themeStore={themeStore}
   />
+
+  {#if $uploadStore.isPanelOpen}
+    <div
+      class="fixed top-14 right-0 z-50 w-96 max-h-[600px] {$themeStore === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'} border-l shadow-xl flex flex-col"
+      style="height: calc(100vh - 3.5rem);"
+    >
+      <div class="p-4 border-b {$themeStore === 'dark' ? 'border-gray-700' : 'border-gray-200'}">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-sm">上传任务</h3>
+          <button
+            on:click={() => uploadStore.setPanelOpen(false)}
+            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="flex gap-2">
+          <button
+            on:click={() => uploadStore.setActiveTab('active')}
+            class="flex-1 py-1.5 px-3 text-xs font-medium rounded-lg transition-colors {$uploadStore.activeTab === 'active'
+              ? $themeStore === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white'
+              : $themeStore === 'dark' ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}"
+          >
+             进行中 ({$activeTransfers.length})
+          </button>
+          <button
+            on:click={() => uploadStore.setActiveTab('history')}
+            class="flex-1 py-1.5 px-3 text-xs font-medium rounded-lg transition-colors {$uploadStore.activeTab === 'history'
+              ? $themeStore === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white'
+              : $themeStore === 'dark' ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}"
+          >
+             历史 ({$completedTransfers.length})
+          </button>
+        </div>
+      </div>
+
+       {#if $uploadStore.activeTab === 'active' && $activeTransfers.length === 0}
+        <div class="flex-1 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 gap-3">
+          <svg class="w-12 h-12 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          <span class="text-sm">暂无上传任务</span>
+        </div>
+       {:else if $uploadStore.activeTab === 'active'}
+         <div class="flex-1 overflow-y-auto p-4 space-y-3">
+           {#each $activeTransfers as transfer (transfer.id)}
+            <div class="rounded-lg {$themeStore === 'dark' ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'} border p-3">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium truncate" title={transfer.filename}>{transfer.filename}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {formatFileSize(transfer.bytesSent)} / {formatFileSize(transfer.totalBytes)}
+                    {#if transfer.speed}
+                      • {formatSpeed(transfer.speed)}
+                    {/if}
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 ml-3">
+                  <span class="text-xs font-medium text-blue-600 dark:text-blue-400">
+                    {Math.round(getTransferPercentage(transfer))}%
+                  </span>
+                  <button
+                    on:click={async () => {
+                      await CancelTransfer(transfer.id);
+                      uploadStore.cancelTransfer(transfer.id);
+                    }}
+                    class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
+                    title="取消上传"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="h-2 {$themeStore === 'dark' ? 'bg-gray-600' : 'bg-gray-200'} rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-blue-500 transition-all duration-300"
+                  style={`width: ${Math.min(100, Math.max(0, getTransferPercentage(transfer)))}%`}
+                ></div>
+              </div>
+            </div>
+          {/each}
+        </div>
+       {:else if $uploadStore.activeTab === 'history' && $completedTransfers.length === 0}
+        <div class="flex-1 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 gap-3">
+          <svg class="w-12 h-12 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span class="text-sm">暂无历史记录</span>
+        </div>
+       {:else if $uploadStore.activeTab === 'history'}
+         <div class="flex-1 flex flex-col">
+           <div class="p-3 border-b {$themeStore === 'dark' ? 'border-gray-700' : 'border-gray-200'}">
+             <button
+               on:click={() => uploadStore.clearCompleted()}
+               class="w-full py-2 px-3 text-xs font-medium rounded-lg transition-colors {$themeStore === 'dark' ? 'hover:bg-red-900/30 text-red-400' : 'hover:bg-red-50 text-red-600'}"
+             >
+               清空历史记录
+             </button>
+           </div>
+           <div class="flex-1 overflow-y-auto p-4 space-y-3">
+             {#each $completedTransfers as transfer (transfer.id)}
+              <div class="rounded-lg {$themeStore === 'dark' ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'} border p-3">
+                <div class="flex items-center justify-between">
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium truncate" title={transfer.filename}>{transfer.filename}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-2">
+                      {#if transfer.status === 'completed'}
+                        <span class="text-green-500">完成</span>
+                      {:else if transfer.status === 'failed'}
+                        <span class="text-red-500">失败</span>
+                      {:else if transfer.status === 'cancelled'}
+                        <span class="text-gray-500">已取消</span>
+                      {/if}
+                      <span>•</span>
+                      <span>{formatFileSize(transfer.totalBytes)}</span>
+                    </div>
+                    {#if transfer.status === 'failed' && transfer.error}
+                      <div class="text-xs text-red-500 dark:text-red-400 mt-1 truncate" title={transfer.error}>
+                        {transfer.error}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    on:click={() => uploadStore.removeTransfer(transfer.id)}
+                    class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 transition-colors ml-3"
+                    title="删除记录"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
