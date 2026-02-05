@@ -15,7 +15,7 @@
   const tools = [
     { id: 'json', name: 'JSON 格式化', icon: '📄', color: 'text-purple-500' },
     { id: 'base64', name: 'Base64 编解码', icon: '🔐', color: 'text-blue-500' },
-    { id: 'hash', name: 'Hash 计算', icon: '#️⃣', color: 'text-green-500' },
+    { id: 'hash', name: '加密解密', icon: '#️⃣', color: 'text-green-500' },
     { id: 'timestamp', name: '时间戳转换', icon: '🕐', color: 'text-amber-500' },
     { id: 'uuid', name: 'UUID 生成', icon: '🆔', color: 'text-indigo-500' },
   ];
@@ -54,25 +54,28 @@
 {#if isOpen}
   <div
     bind:this={dialogElement}
-    class="fixed inset-0 z-50 flex items-start justify-center pt-16"
+    class="fixed inset-0 z-50 flex items-start justify-center pt-14 md:pt-16"
     on:click={handleBackdropClick}
     on:keydown={handleKeyDown}
     role="dialog"
     aria-modal="true"
     tabindex="-1"
   >
-    <div class="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity" />
+    <div class="absolute inset-0 bg-gradient-to-br from-slate-900/40 via-slate-800/20 to-slate-700/10 dark:from-black/70 dark:via-black/55 dark:to-slate-900/40 backdrop-blur-md transition-opacity" />
 
-    <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl m-4 max-h-[85vh] overflow-hidden flex border border-gray-200 dark:border-gray-700">
-      <div class="w-72 bg-gradient-to-b from-gray-50 to-white dark:from-gray-800 dark:to-gray-900 border-r border-gray-200 dark:border-gray-700 p-4 flex flex-col">
+    <div class="relative w-full max-w-5xl bg-white/92 dark:bg-slate-900/85 rounded-2xl shadow-[0_20px_70px_-30px_rgba(15,23,42,0.8)] m-4 max-h-[85vh] overflow-hidden flex border border-slate-200/70 dark:border-slate-700/60 ring-1 ring-slate-200/60 dark:ring-slate-700/40">
+      <div class="w-72 bg-gradient-to-b from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-900/80 dark:to-slate-950 border-r border-slate-200/70 dark:border-slate-800/80 p-5 flex flex-col">
         <div class="flex items-center justify-between mb-6">
-          <h3 class="text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">开发工具</h3>
+          <div>
+            <h3 class="text-lg font-semibold tracking-tight bg-gradient-to-r from-slate-800 to-cyan-600 dark:from-slate-100 dark:to-cyan-300 bg-clip-text text-transparent">开发工具</h3>
+            <div class="text-[11px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mt-1">Toolkit</div>
+          </div>
           <button
             on:click={() => isOpen = false}
-            class="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all duration-200 group"
+            class="p-2 rounded-lg transition-all duration-200 group hover:bg-slate-200/70 dark:hover:bg-slate-800/70"
             title="关闭"
           >
-            <svg class="w-4 h-4 text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -82,15 +85,18 @@
           {#each tools as tool (tool.id)}
             <button
               on:click={() => selectTool(tool.id)}
-              class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group {
+              class="relative w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group border {
                 activeToolId === tool.id
-                  ? 'bg-white dark:bg-gray-800 shadow-lg border-2 border-purple-500 dark:border-purple-400 transform scale-[1.02]'
-                  : 'hover:bg-white dark:hover:bg-gray-800 border-2 border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+                  ? 'bg-white/90 dark:bg-slate-900/80 border-slate-200 dark:border-slate-700 shadow-sm'
+                  : 'bg-transparent border-transparent hover:bg-white/70 dark:hover:bg-slate-900/60 hover:border-slate-200/70 dark:hover:border-slate-700/70'
               }"
             >
-              <span class="text-2xl">{tool.icon}</span>
+              {#if activeToolId === tool.id}
+                <span class="absolute left-2 top-2 bottom-2 w-1 rounded-full bg-gradient-to-b from-cyan-400 via-sky-500 to-indigo-500" />
+              {/if}
+              <span class={`text-2xl ${tool.color}`}>{tool.icon}</span>
               <span class={`text-sm font-semibold transition-colors ${
-                activeToolId === tool.id ? 'text-purple-600 dark:text-purple-400' : 'text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white'
+                activeToolId === tool.id ? 'text-slate-800 dark:text-slate-100' : 'text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white'
               }`}>
                 {tool.name}
               </span>
@@ -98,46 +104,48 @@
           {/each}
         </div>
 
-        <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-          <div class="text-xs text-gray-500 dark:text-gray-400 text-center">
+        <div class="mt-4 pt-4 border-t border-slate-200/70 dark:border-slate-800/80">
+          <div class="text-[11px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 text-center">
             快捷键: 按 ESC 关闭
           </div>
         </div>
       </div>
 
-      <div class="flex-1 flex flex-col overflow-hidden">
-        {#if activeToolId}
-          <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30">
-            <h2 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <span class="text-2xl">{getActiveTool()?.icon}</span>
-              {getActiveTool()?.name}
-            </h2>
-          </div>
-
-          <div class="flex-1 overflow-y-auto p-6">
-            {#if activeToolId === 'json'}
-              <svelte:component this={JsonFormatter} {themeStore} />
-            {:else if activeToolId === 'base64'}
-              <svelte:component this={Base64Tool} {themeStore} />
-            {:else if activeToolId === 'hash'}
-              <svelte:component this={HashTool} {themeStore} />
-            {:else if activeToolId === 'timestamp'}
-              <svelte:component this={TimestampTool} {themeStore} />
-            {:else if activeToolId === 'uuid'}
-              <svelte:component this={UuidTool} {themeStore} />
-            {/if}
-          </div>
-        {:else}
-          <div class="flex-1 flex items-center justify-center p-12">
-            <div class="text-center">
-              <div class="text-6xl mb-4">🛠️</div>
-              <h3 class="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">选择一个工具</h3>
-              <p class="text-gray-500 dark:text-gray-400">从左侧选择一个开发工具开始使用</p>
+        <div class="flex-1 flex flex-col overflow-hidden">
+          {#if activeToolId}
+            <div class="px-6 py-4 border-b border-slate-200/70 dark:border-slate-800/80 bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-900/80 dark:to-slate-950">
+              <h2 class="text-xl font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <span class={`text-2xl ${getActiveTool()?.color}`}>{getActiveTool()?.icon}</span>
+                {getActiveTool()?.name}
+              </h2>
             </div>
-          </div>
-        {/if}
+
+            <div class="flex-1 overflow-y-auto p-6 bg-slate-50/60 dark:bg-slate-950/30">
+              <div class="rounded-2xl border border-slate-200/70 dark:border-slate-800/70 bg-white/80 dark:bg-slate-900/70 p-5 shadow-sm">
+                {#if activeToolId === 'json'}
+                  <svelte:component this={JsonFormatter} {themeStore} />
+                {:else if activeToolId === 'base64'}
+                  <svelte:component this={Base64Tool} {themeStore} />
+                {:else if activeToolId === 'hash'}
+                  <svelte:component this={HashTool} {themeStore} />
+                {:else if activeToolId === 'timestamp'}
+                  <svelte:component this={TimestampTool} {themeStore} />
+                {:else if activeToolId === 'uuid'}
+                  <svelte:component this={UuidTool} {themeStore} />
+                {/if}
+              </div>
+            </div>
+          {:else}
+            <div class="flex-1 flex items-center justify-center p-12 bg-slate-50/60 dark:bg-slate-950/30">
+              <div class="text-center max-w-sm">
+                <div class="text-6xl mb-4">🛠️</div>
+                <h3 class="text-xl font-semibold text-slate-700 dark:text-slate-200 mb-2">选择一个工具</h3>
+                <p class="text-sm text-slate-500 dark:text-slate-400">从左侧选择一个开发工具开始使用</p>
+              </div>
+            </div>
+          {/if}
+        </div>
       </div>
-    </div>
   </div>
 {/if}
 

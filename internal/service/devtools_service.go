@@ -1,6 +1,9 @@
 package service
 
 import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/md5"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -12,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tjfoc/gmsm/sm4"
 )
 
 // DevToolsService 提供开发工具相关服务
@@ -236,6 +240,218 @@ func (s *DevToolsService) CalculateHash(input, algorithm string) (string, error)
 }
 
 // ============================================================================
+// 加密/解密
+// ============================================================================
+
+// EncryptText 对文本进行加密，返回 Base64 密文
+func (s *DevToolsService) EncryptText(input, algorithm, keyHex, ivHex string) (string, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "", fmt.Errorf("输入不能为空")
+	}
+
+	key, err := decodeHexBytes(keyHex, "密钥")
+	if err != nil {
+		return "", err
+	}
+
+	iv, err := decodeHexBytes(ivHex, "IV/Nonce")
+	if err != nil {
+		return "", err
+	}
+
+	plaintext := []byte(input)
+
+	switch strings.ToLower(algorithm) {
+	case "aes-gcm":
+		if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
+			return "", err
+		}
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			return "", fmt.Errorf("AES初始化失败: %v", err)
+		}
+		gcm, err := cipher.NewGCM(block)
+		if err != nil {
+			return "", fmt.Errorf("AES-GCM初始化失败: %v", err)
+		}
+		if len(iv) != gcm.NonceSize() {
+			return "", fmt.Errorf("Nonce长度必须为 %d 字节", gcm.NonceSize())
+		}
+		ciphertext := gcm.Seal(nil, iv, plaintext, nil)
+		return base64.StdEncoding.EncodeToString(ciphertext), nil
+	case "aes-cbc":
+		if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
+			return "", err
+		}
+		if len(iv) != aes.BlockSize {
+			return "", fmt.Errorf("IV长度必须为 %d 字节", aes.BlockSize)
+		}
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			return "", fmt.Errorf("AES初始化失败: %v", err)
+		}
+		padded := pkcs7Pad(plaintext, aes.BlockSize)
+		ciphertext := make([]byte, len(padded))
+		mode := cipher.NewCBCEncrypter(block, iv)
+		mode.CryptBlocks(ciphertext, padded)
+		return base64.StdEncoding.EncodeToString(ciphertext), nil
+	case "sm4-cbc":
+		if err := validateKeyLength(key, []int{16}, "SM4密钥"); err != nil {
+			return "", err
+		}
+		if len(iv) != sm4.BlockSize {
+			return "", fmt.Errorf("IV长度必须为 %d 字节", sm4.BlockSize)
+		}
+		block, err := sm4.NewCipher(key)
+		if err != nil {
+			return "", fmt.Errorf("SM4初始化失败: %v", err)
+		}
+		padded := pkcs7Pad(plaintext, sm4.BlockSize)
+		ciphertext := make([]byte, len(padded))
+		mode := cipher.NewCBCEncrypter(block, iv)
+		mode.CryptBlocks(ciphertext, padded)
+		return base64.StdEncoding.EncodeToString(ciphertext), nil
+	default:
+		return "", fmt.Errorf("不支持的算法: %s", algorithm)
+	}
+}
+
+// DecryptText 对 Base64 密文进行解密
+func (s *DevToolsService) DecryptText(input, algorithm, keyHex, ivHex string) (string, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "", fmt.Errorf("输入不能为空")
+	}
+
+	key, err := decodeHexBytes(keyHex, "密钥")
+	if err != nil {
+		return "", err
+	}
+
+	iv, err := decodeHexBytes(ivHex, "IV/Nonce")
+	if err != nil {
+		return "", err
+	}
+
+	ciphertext, err := base64.StdEncoding.DecodeString(input)
+	if err != nil {
+		return "", fmt.Errorf("Base64解码失败: %v", err)
+	}
+
+	switch strings.ToLower(algorithm) {
+	case "aes-gcm":
+		if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
+			return "", err
+		}
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			return "", fmt.Errorf("AES初始化失败: %v", err)
+		}
+		gcm, err := cipher.NewGCM(block)
+		if err != nil {
+			return "", fmt.Errorf("AES-GCM初始化失败: %v", err)
+		}
+		if len(iv) != gcm.NonceSize() {
+			return "", fmt.Errorf("Nonce长度必须为 %d 字节", gcm.NonceSize())
+		}
+		plaintext, err := gcm.Open(nil, iv, ciphertext, nil)
+		if err != nil {
+			return "", fmt.Errorf("解密失败: %v", err)
+		}
+		return string(plaintext), nil
+	case "aes-cbc":
+		if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
+			return "", err
+		}
+		if len(iv) != aes.BlockSize {
+			return "", fmt.Errorf("IV长度必须为 %d 字节", aes.BlockSize)
+		}
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			return "", fmt.Errorf("AES初始化失败: %v", err)
+		}
+		if len(ciphertext)%aes.BlockSize != 0 {
+			return "", fmt.Errorf("密文长度不正确")
+		}
+		plaintext := make([]byte, len(ciphertext))
+		mode := cipher.NewCBCDecrypter(block, iv)
+		mode.CryptBlocks(plaintext, ciphertext)
+		unpadded, err := pkcs7Unpad(plaintext, aes.BlockSize)
+		if err != nil {
+			return "", err
+		}
+		return string(unpadded), nil
+	case "sm4-cbc":
+		if err := validateKeyLength(key, []int{16}, "SM4密钥"); err != nil {
+			return "", err
+		}
+		if len(iv) != sm4.BlockSize {
+			return "", fmt.Errorf("IV长度必须为 %d 字节", sm4.BlockSize)
+		}
+		block, err := sm4.NewCipher(key)
+		if err != nil {
+			return "", fmt.Errorf("SM4初始化失败: %v", err)
+		}
+		if len(ciphertext)%sm4.BlockSize != 0 {
+			return "", fmt.Errorf("密文长度不正确")
+		}
+		plaintext := make([]byte, len(ciphertext))
+		mode := cipher.NewCBCDecrypter(block, iv)
+		mode.CryptBlocks(plaintext, ciphertext)
+		unpadded, err := pkcs7Unpad(plaintext, sm4.BlockSize)
+		if err != nil {
+			return "", err
+		}
+		return string(unpadded), nil
+	default:
+		return "", fmt.Errorf("不支持的算法: %s", algorithm)
+	}
+}
+
+func decodeHexBytes(input, name string) ([]byte, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil, fmt.Errorf("%s不能为空", name)
+	}
+	data, err := hex.DecodeString(input)
+	if err != nil {
+		return nil, fmt.Errorf("%s必须为十六进制: %v", name, err)
+	}
+	return data, nil
+}
+
+func validateKeyLength(key []byte, sizes []int, name string) error {
+	for _, size := range sizes {
+		if len(key) == size {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s长度必须为 %v 字节", name, sizes)
+}
+
+func pkcs7Pad(data []byte, blockSize int) []byte {
+	padding := blockSize - (len(data) % blockSize)
+	return append(data, bytes.Repeat([]byte{byte(padding)}, padding)...)
+}
+
+func pkcs7Unpad(data []byte, blockSize int) ([]byte, error) {
+	if len(data) == 0 || len(data)%blockSize != 0 {
+		return nil, fmt.Errorf("填充不正确")
+	}
+	padding := int(data[len(data)-1])
+	if padding == 0 || padding > blockSize {
+		return nil, fmt.Errorf("填充不正确")
+	}
+	for i := 0; i < padding; i++ {
+		if data[len(data)-1-i] != byte(padding) {
+			return nil, fmt.Errorf("填充不正确")
+		}
+	}
+	return data[:len(data)-padding], nil
+}
+
+// ============================================================================
 // 时间戳转换
 // ============================================================================
 
@@ -250,6 +466,20 @@ func (s *DevToolsService) TimestampToDateTime(timestamp int64, format string) (s
 	}
 
 	t := time.Unix(timestamp, 0)
+	return t.Format(format), nil
+}
+
+// TimestampToDateTimeMs 将 Unix 毫秒时间戳转换为日期时间字符串
+func (s *DevToolsService) TimestampToDateTimeMs(timestampMs int64, format string) (string, error) {
+	if timestampMs <= 0 {
+		return "", fmt.Errorf("无效的毫秒时间戳: %d", timestampMs)
+	}
+
+	if format == "" {
+		format = "2006-01-02 15:04:05.000"
+	}
+
+	t := time.Unix(0, timestampMs*int64(time.Millisecond))
 	return t.Format(format), nil
 }
 
@@ -271,9 +501,32 @@ func (s *DevToolsService) DateTimeToTimestamp(datetime, format string) (int64, e
 	return t.Unix(), nil
 }
 
+// DateTimeToTimestampMs 将日期时间字符串转换为 Unix 毫秒时间戳
+func (s *DevToolsService) DateTimeToTimestampMs(datetime, format string) (int64, error) {
+	if datetime == "" {
+		return 0, fmt.Errorf("输入不能为空")
+	}
+
+	if format == "" {
+		format = "2006-01-02 15:04:05.000"
+	}
+
+	t, err := time.Parse(format, datetime)
+	if err != nil {
+		return 0, fmt.Errorf("日期时间解析失败: %v", err)
+	}
+
+	return t.UnixNano() / int64(time.Millisecond), nil
+}
+
 // GetCurrentTimestamp 获取当前 Unix 时间戳
 func (s *DevToolsService) GetCurrentTimestamp() int64 {
 	return time.Now().Unix()
+}
+
+// GetCurrentTimestampMs 获取当前 Unix 毫秒时间戳
+func (s *DevToolsService) GetCurrentTimestampMs() int64 {
+	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
 // ============================================================================

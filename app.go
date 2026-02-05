@@ -452,9 +452,24 @@ func (a *App) CalculateHash(input, algorithm string) (string, error) {
 	return a.devToolsService.CalculateHash(input, algorithm)
 }
 
+// EncryptText 对文本进行加密，返回 Base64 密文
+func (a *App) EncryptText(input, algorithm, keyHex, ivHex string) (string, error) {
+	return a.devToolsService.EncryptText(input, algorithm, keyHex, ivHex)
+}
+
+// DecryptText 对 Base64 密文进行解密
+func (a *App) DecryptText(input, algorithm, keyHex, ivHex string) (string, error) {
+	return a.devToolsService.DecryptText(input, algorithm, keyHex, ivHex)
+}
+
 // TimestampToDateTime 将 Unix 时间戳转换为日期时间字符串
 func (a *App) TimestampToDateTime(timestamp int64, format string) (string, error) {
 	return a.devToolsService.TimestampToDateTime(timestamp, format)
+}
+
+// TimestampToDateTimeMs 将 Unix 毫秒时间戳转换为日期时间字符串
+func (a *App) TimestampToDateTimeMs(timestampMs int64, format string) (string, error) {
+	return a.devToolsService.TimestampToDateTimeMs(timestampMs, format)
 }
 
 // DateTimeToTimestamp 将日期时间字符串转换为 Unix 时间戳
@@ -462,9 +477,19 @@ func (a *App) DateTimeToTimestamp(datetime, format string) (int64, error) {
 	return a.devToolsService.DateTimeToTimestamp(datetime, format)
 }
 
+// DateTimeToTimestampMs 将日期时间字符串转换为 Unix 毫秒时间戳
+func (a *App) DateTimeToTimestampMs(datetime, format string) (int64, error) {
+	return a.devToolsService.DateTimeToTimestampMs(datetime, format)
+}
+
 // GetCurrentTimestamp 获取当前 Unix 时间戳
 func (a *App) GetCurrentTimestamp() int64 {
 	return a.devToolsService.GetCurrentTimestamp()
+}
+
+// GetCurrentTimestampMs 获取当前 Unix 毫秒时间戳
+func (a *App) GetCurrentTimestampMs() int64 {
+	return a.devToolsService.GetCurrentTimestampMs()
 }
 
 // GenerateUUIDv4 生成 UUID v4

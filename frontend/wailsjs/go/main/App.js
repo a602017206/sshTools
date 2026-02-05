@@ -38,8 +38,16 @@ export function DateTimeToTimestamp(arg1, arg2) {
   return window['go']['main']['App']['DateTimeToTimestamp'](arg1, arg2);
 }
 
+export function DateTimeToTimestampMs(arg1, arg2) {
+  return window['go']['main']['App']['DateTimeToTimestampMs'](arg1, arg2);
+}
+
 export function DecodeBase64(arg1) {
   return window['go']['main']['App']['DecodeBase64'](arg1);
+}
+
+export function DecryptText(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DecryptText'](arg1, arg2, arg3, arg4);
 }
 
 export function DeleteFile(arg1, arg2) {
@@ -64,6 +72,10 @@ export function DownloadFiles(arg1, arg2, arg3) {
 
 export function EncodeBase64(arg1) {
   return window['go']['main']['App']['EncodeBase64'](arg1);
+}
+
+export function EncryptText(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['EncryptText'](arg1, arg2, arg3, arg4);
 }
 
 export function EscapeJSON(arg1) {
@@ -92,6 +104,10 @@ export function GetCurrentPath(arg1) {
 
 export function GetCurrentTimestamp() {
   return window['go']['main']['App']['GetCurrentTimestamp']();
+}
+
+export function GetCurrentTimestampMs() {
+  return window['go']['main']['App']['GetCurrentTimestampMs']();
 }
 
 export function GetFileInfo(arg1, arg2) {
@@ -208,6 +224,10 @@ export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
 
 export function TimestampToDateTime(arg1, arg2) {
   return window['go']['main']['App']['TimestampToDateTime'](arg1, arg2);
+}
+
+export function TimestampToDateTimeMs(arg1, arg2) {
+  return window['go']['main']['App']['TimestampToDateTimeMs'](arg1, arg2);
 }
 
 export function UpdateConnection(arg1) {

@@ -319,3 +319,72 @@ func TestFormatJSONError(t *testing.T) {
 		})
 	}
 }
+
+func TestEncryptDecryptAESGCM(t *testing.T) {
+	service := NewDevToolsService()
+	plaintext := "hello gcm"
+	keyHex := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+	nonceHex := "0f0e0d0c0b0a090807060504"
+
+	ciphertext, err := service.EncryptText(plaintext, "aes-gcm", keyHex, nonceHex)
+	if err != nil {
+		t.Fatalf("EncryptText(aes-gcm) error = %v", err)
+	}
+	if ciphertext == "" {
+		t.Fatalf("EncryptText(aes-gcm) returned empty ciphertext")
+	}
+
+	decoded, err := service.DecryptText(ciphertext, "aes-gcm", keyHex, nonceHex)
+	if err != nil {
+		t.Fatalf("DecryptText(aes-gcm) error = %v", err)
+	}
+	if decoded != plaintext {
+		t.Fatalf("DecryptText(aes-gcm) = %q, want %q", decoded, plaintext)
+	}
+}
+
+func TestEncryptDecryptAESCBC(t *testing.T) {
+	service := NewDevToolsService()
+	plaintext := "hello cbc"
+	keyHex := "00112233445566778899aabbccddeeff"
+	ivHex := "0102030405060708090a0b0c0d0e0f10"
+
+	ciphertext, err := service.EncryptText(plaintext, "aes-cbc", keyHex, ivHex)
+	if err != nil {
+		t.Fatalf("EncryptText(aes-cbc) error = %v", err)
+	}
+	if ciphertext == "" {
+		t.Fatalf("EncryptText(aes-cbc) returned empty ciphertext")
+	}
+
+	decoded, err := service.DecryptText(ciphertext, "aes-cbc", keyHex, ivHex)
+	if err != nil {
+		t.Fatalf("DecryptText(aes-cbc) error = %v", err)
+	}
+	if decoded != plaintext {
+		t.Fatalf("DecryptText(aes-cbc) = %q, want %q", decoded, plaintext)
+	}
+}
+
+func TestEncryptDecryptSM4CBC(t *testing.T) {
+	service := NewDevToolsService()
+	plaintext := "hello sm4"
+	keyHex := "0123456789abcdeffedcba9876543210"
+	ivHex := "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+
+	ciphertext, err := service.EncryptText(plaintext, "sm4-cbc", keyHex, ivHex)
+	if err != nil {
+		t.Fatalf("EncryptText(sm4-cbc) error = %v", err)
+	}
+	if ciphertext == "" {
+		t.Fatalf("EncryptText(sm4-cbc) returned empty ciphertext")
+	}
+
+	decoded, err := service.DecryptText(ciphertext, "sm4-cbc", keyHex, ivHex)
+	if err != nil {
+		t.Fatalf("DecryptText(sm4-cbc) error = %v", err)
+	}
+	if decoded != plaintext {
+		t.Fatalf("DecryptText(sm4-cbc) = %q, want %q", decoded, plaintext)
+	}
+}

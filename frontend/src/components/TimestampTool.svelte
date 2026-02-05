@@ -2,18 +2,24 @@
   export let themeStore;
 
   let mode = 'toDateTime';
+  let unit = 'seconds';
   let timestampInput = '';
   let datetimeInput = '';
   let output = '';
   let isLoading = false;
   let currentTimestamp = 0;
+  const formatSeconds = '2006-01-02 15:04:05';
+  const formatMilliseconds = '2006-01-02 15:04:05.000';
 
   $: updateCurrentTimestamp();
 
   function updateCurrentTimestamp() {
-    if (window.wailsBindings) {
-      currentTimestamp = Math.floor(Date.now() / 1000);
-    }
+    const now = Date.now();
+    currentTimestamp = unit === 'milliseconds' ? now : Math.floor(now / 1000);
+  }
+
+  function getFormat() {
+    return unit === 'milliseconds' ? formatMilliseconds : formatSeconds;
   }
 
   async function convert() {
@@ -28,13 +34,22 @@
         if (isNaN(ts)) {
           throw new Error('请输入有效的时间戳');
         }
-        output = await window.wailsBindings.TimestampToDateTime(ts, '2006-01-02 15:04:05');
+        if (unit === 'milliseconds') {
+          output = await window.wailsBindings.TimestampToDateTimeMs(ts, getFormat());
+        } else {
+          output = await window.wailsBindings.TimestampToDateTime(ts, getFormat());
+        }
       } else {
         if (!datetimeInput.trim()) {
           throw new Error('请输入日期时间');
         }
-        const ts = await window.wailsBindings.DateTimeToTimestamp(datetimeInput, '2006-01-02 15:04:05');
-        output = ts.toString();
+        if (unit === 'milliseconds') {
+          const ts = await window.wailsBindings.DateTimeToTimestampMs(datetimeInput, getFormat());
+          output = ts.toString();
+        } else {
+          const ts = await window.wailsBindings.DateTimeToTimestamp(datetimeInput, getFormat());
+          output = ts.toString();
+        }
       }
     } catch (error) {
       output = '';
@@ -48,7 +63,9 @@
   async function useCurrentTimestamp() {
     if (!window.wailsBindings) return;
     try {
-      const ts = await window.wailsBindings.GetCurrentTimestamp();
+      const ts = unit === 'milliseconds'
+        ? await window.wailsBindings.GetCurrentTimestampMs()
+        : await window.wailsBindings.GetCurrentTimestamp();
       timestampInput = ts.toString();
     } catch (error) {
       console.error('获取当前时间戳失败:', error);
@@ -58,8 +75,12 @@
   async function useCurrentDateTime() {
     if (!window.wailsBindings) return;
     try {
-      const ts = await window.wailsBindings.GetCurrentTimestamp();
-      const dt = await window.wailsBindings.TimestampToDateTime(ts, '2006-01-02 15:04:05');
+      const ts = unit === 'milliseconds'
+        ? await window.wailsBindings.GetCurrentTimestampMs()
+        : await window.wailsBindings.GetCurrentTimestamp();
+      const dt = unit === 'milliseconds'
+        ? await window.wailsBindings.TimestampToDateTimeMs(ts, getFormat())
+        : await window.wailsBindings.TimestampToDateTime(ts, getFormat());
       datetimeInput = dt;
     } catch (error) {
       console.error('获取当前时间失败:', error);
@@ -118,19 +139,44 @@
     </button>
   </div>
 
+  <div class="flex justify-end">
+    <div class="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+      <button
+        on:click={() => { unit = 'seconds'; clearAll(); }}
+        class="px-4 py-2 rounded-lg text-xs font-semibold transition-all {
+          unit === 'seconds'
+            ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+            : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+        }"
+      >
+        秒
+      </button>
+      <button
+        on:click={() => { unit = 'milliseconds'; clearAll(); }}
+        class="px-4 py-2 rounded-lg text-xs font-semibold transition-all {
+          unit === 'milliseconds'
+            ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+            : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+        }"
+      >
+        毫秒
+      </button>
+    </div>
+  </div>
+
   <div class="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 rounded-xl p-4 border border-amber-200 dark:border-amber-800/50">
     <div class="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-300">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
-      <span>当前时间戳: <strong class="font-mono">{currentTimestamp}</strong></span>
+      <span>当前时间戳（{unit === 'milliseconds' ? '毫秒' : '秒'}）: <strong class="font-mono">{currentTimestamp}</strong></span>
     </div>
   </div>
 
   {#if mode === 'toDateTime'}
     <div>
       <div class="flex items-center justify-between mb-2">
-        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">输入 Unix 时间戳（秒）</label>
+        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">输入 Unix 时间戳（{unit === 'milliseconds' ? '毫秒' : '秒'}）</label>
         <button
           on:click={useCurrentTimestamp}
           class="text-xs flex items-center gap-1 px-3 py-1.5 bg-purple-100 dark:bg-purple-900/50 hover:bg-purple-200 dark:hover:bg-purple-800/50 rounded-lg transition-colors text-purple-700 dark:text-purple-300"
@@ -144,7 +190,7 @@
       <input
         type="number"
         bind:value={timestampInput}
-        placeholder="例如: 1234567890"
+        placeholder={unit === 'milliseconds' ? '例如: 1234567890123' : '例如: 1234567890'}
         on:keydown={handleKeyDown}
         class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-sm font-mono focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 focus:ring-2 transition-all dark:text-white"
       />
@@ -164,13 +210,14 @@
         </button>
       </div>
       <input
-        type="datetime-local"
+        type="text"
         bind:value={datetimeInput}
+        placeholder={unit === 'milliseconds' ? '例如: 2025-01-01 12:30:45.123' : '例如: 2025-01-01 12:30:45'}
         on:keydown={handleKeyDown}
         class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 transition-all dark:text-white"
       />
       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-        格式: YYYY-MM-DD HH:MM:SS
+        格式: {unit === 'milliseconds' ? 'YYYY-MM-DD HH:MM:SS.SSS' : 'YYYY-MM-DD HH:MM:SS'}
       </div>
     </div>
   {/if}

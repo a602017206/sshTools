@@ -7,8 +7,13 @@
     DownloadFiles,
     SelectUploadFiles,
     SelectDownloadDirectory,
+    CancelTransfer,
+    DeleteFiles,
+    RenameFile,
   } from '../../wailsjs/go/main/App.js';
   import { activeSessionIdStore, connectionsStore } from '../stores.js';
+  import ConfirmDialog from './ui/ConfirmDialog.svelte';
+  import InputDialog from './ui/InputDialog.svelte';
 
   // Per-session path storage
   let sessionPaths = new Map();
@@ -17,9 +22,22 @@
   let files = [];
   let isLoading = false;
   let error = null;
+  let selectedFiles = new Set();
 
   // Transfer progress unsubscribers
   let progressUnsubscribers = [];
+
+  // Upload transfer states
+  let uploadTransfers = [];
+  let isUploadCollapsed = false;
+
+  // Context menu state
+  let contextMenu = {
+    open: false,
+    x: 0,
+    y: 0,
+    file: null,
+  };
 
   // Editable path and search input
   let isEditingPath = false;
@@ -27,14 +45,37 @@
   let isPathInputOpen = false;
   let pathInput = '';
 
+  // Delete confirmation dialog state
+  let showDeleteConfirm = false;
+  let deleteConfirmMessage = '';
+  let pendingDeleteFiles = [];
+
+  // Cancel upload confirmation dialog state
+  let showCancelUploadConfirm = false;
+  let pendingCancelTransfer = null;
+
+  // Rename input dialog state
+  let showRenameDialog = false;
+  let renameDialogTitle = '';
+  let renameDefaultName = '';
+  let pendingRenameFile = null;
+
   // Get current session object
   $: currentSession = $activeSessionIdStore ? $connectionsStore.get($activeSessionIdStore) : null;
   $: isSessionConnected = currentSession?.connected || false;
   $: isLocalSession = currentSession?.type === 'local';
   $: canUseFileManager = isSessionConnected && !isLocalSession;
 
-  // Get current path for the active session
-  $: currentPath = getSessionPath($activeSessionIdStore);
+  // Current path for the active session
+  let currentPath = '/';
+  $: if ($activeSessionIdStore) {
+    const storedPath = getSessionPath($activeSessionIdStore);
+    if (storedPath && storedPath !== currentPath) {
+      currentPath = storedPath;
+    }
+  } else {
+    currentPath = '/';
+  }
 
   // Get path for a session, default to '/'
   function getSessionPath(sessionId) {
@@ -45,13 +86,17 @@
   // Set path for a session
   function setSessionPath(sessionId, path) {
     if (!sessionId) return;
-    sessionPaths.set(sessionId, path);
+    const nextPaths = new Map(sessionPaths);
+    nextPaths.set(sessionId, path);
+    sessionPaths = nextPaths;
   }
 
   // Remove path for a session (cleanup)
   function removeSessionPath(sessionId) {
     if (!sessionId) return;
-    sessionPaths.delete(sessionId);
+    const nextPaths = new Map(sessionPaths);
+    nextPaths.delete(sessionId);
+    sessionPaths = nextPaths;
   }
 
   // Sort files: directories first, then alphabetical by name
@@ -101,6 +146,7 @@
       const fileList = await ListFiles($activeSessionIdStore, path);
       files = fileList || [];
       setSessionPath($activeSessionIdStore, path);
+      currentPath = path;
     } catch (err) {
       console.error('Failed to load directory:', err);
       error = err.message || '加载目录失败';
@@ -132,6 +178,106 @@
     return `${size.toFixed(1)} ${units[i]}`;
   }
 
+  function formatSpeed(speed) {
+    if (!speed) return '0 B/s';
+    return `${formatFileSize(speed)}/s`;
+  }
+
+  function getTransferPercentage(transfer) {
+    if (!transfer) return 0;
+    if (transfer.totalBytes) {
+      return (transfer.bytesSent / transfer.totalBytes) * 100;
+    }
+    return transfer.percentage || 0;
+  }
+
+  function getOverallUploadPercentage() {
+    if (uploadTransfers.length === 0) return 0;
+    let totalBytes = 0;
+    let sentBytes = 0;
+    uploadTransfers.forEach((transfer) => {
+      const total = transfer.totalBytes || 0;
+      const sent = transfer.bytesSent || 0;
+      totalBytes += total;
+      sentBytes += sent;
+    });
+
+    if (totalBytes > 0) {
+      return (sentBytes / totalBytes) * 100;
+    }
+
+    const sumPercentage = uploadTransfers.reduce((sum, transfer) => sum + getTransferPercentage(transfer), 0);
+    return sumPercentage / uploadTransfers.length;
+  }
+
+  async function handleRemoveTransfer(transfer) {
+    if (!transfer) return;
+
+    if (transfer.status === 'running') {
+      // Show confirmation dialog
+      pendingCancelTransfer = transfer;
+      showCancelUploadConfirm = true;
+    } else {
+      removeUploadTransfer(transfer.id);
+    }
+  }
+
+  async function handleConfirmCancelUpload() {
+    showCancelUploadConfirm = false;
+    const transfer = pendingCancelTransfer;
+    pendingCancelTransfer = null;
+
+    if (transfer) {
+      try {
+        await CancelTransfer(transfer.id);
+      } catch (err) {
+        console.error('Cancel transfer failed:', err);
+      }
+    }
+    removeUploadTransfer(transfer.id);
+  }
+
+  function handleCancelCancelUpload() {
+    showCancelUploadConfirm = false;
+    pendingCancelTransfer = null;
+  }
+
+  function upsertUploadTransfer(progress, transferId) {
+    const id = transferId || progress.transfer_id || progress.transferId;
+    if (!id) return;
+
+    const filename = progress.filename || progress.fileName || 'unknown';
+    const bytesSent = progress.bytes_sent ?? progress.bytesSent ?? 0;
+    const totalBytes = progress.total_bytes ?? progress.totalBytes ?? 0;
+    const percentage = progress.percentage ?? 0;
+    const speed = progress.speed ?? 0;
+    const status = progress.status || 'running';
+    const errorMessage = progress.error || '';
+
+    const existingIndex = uploadTransfers.findIndex((item) => item.id === id);
+    const nextItem = {
+      id,
+      filename,
+      bytesSent,
+      totalBytes,
+      percentage,
+      speed,
+      status,
+      error: errorMessage,
+    };
+
+    if (existingIndex === -1) {
+      uploadTransfers = [nextItem, ...uploadTransfers];
+      return;
+    }
+
+    uploadTransfers = uploadTransfers.map((item) => (item.id === id ? nextItem : item));
+  }
+
+  function removeUploadTransfer(transferId) {
+    uploadTransfers = uploadTransfers.filter((item) => item.id !== transferId);
+  }
+
   async function handleRefresh() {
     await loadDirectory(currentPath);
   }
@@ -144,7 +290,7 @@
       if (!localPaths || localPaths.length === 0) return;
 
       const transferIDs = await UploadFiles($activeSessionIdStore, localPaths, currentPath);
-      transferIDs.forEach((id) => subscribeToTransfer(id));
+      transferIDs.forEach((id) => subscribeToTransfer(id, 'upload'));
 
       // Refresh directory after a short delay
       setTimeout(() => loadDirectory(currentPath), 2000);
@@ -162,21 +308,145 @@
       if (!localDir) return;
 
       const transferIDs = await DownloadFiles($activeSessionIdStore, [file.path], localDir);
-      transferIDs.forEach((id) => subscribeToTransfer(id));
+      transferIDs.forEach((id) => subscribeToTransfer(id, 'download'));
     } catch (err) {
       console.error('Download failed:', err);
       error = err.message || '下载失败';
     }
   }
 
+  function handleSelectFile(file) {
+    if (!file || file.is_parent) return;
+    selectedFiles = new Set([file.path]);
+  }
+
+  function handleItemClick(file) {
+    if (!file || file.is_parent) return;
+    handleSelectFile(file);
+  }
+
+  function handleParentClick(file) {
+    if (!file || !file.is_parent) return;
+    navigateTo(file.path);
+  }
+
+  function handleContextMenu(event, file) {
+    if (file?.is_parent) return;
+    event.preventDefault();
+    handleSelectFile(file);
+    contextMenu = {
+      open: true,
+      x: event.clientX,
+      y: event.clientY,
+      file,
+    };
+  }
+
+  function closeContextMenu() {
+    if (!contextMenu.open) return;
+    contextMenu = { ...contextMenu, open: false };
+  }
+
+  async function handleDeleteSelection() {
+    if (!$activeSessionIdStore || !isSessionConnected || isLocalSession) return;
+    if (selectedFiles.size === 0) return;
+
+    // Show confirmation dialog
+    pendingDeleteFiles = Array.from(selectedFiles);
+    const count = pendingDeleteFiles.length;
+    deleteConfirmMessage = count === 1
+      ? `确定要删除选中的 1 个文件/文件夹吗？`
+      : `确定要删除选中的 ${count} 个文件/文件夹吗？`;
+    showDeleteConfirm = true;
+  }
+
+  async function handleConfirmDelete() {
+    showDeleteConfirm = false;
+    try {
+      await DeleteFiles($activeSessionIdStore, pendingDeleteFiles);
+      selectedFiles = new Set();
+      pendingDeleteFiles = [];
+      await loadDirectory(currentPath);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      error = err.message || '删除失败';
+    }
+  }
+
+  function handleCancelDelete() {
+    showDeleteConfirm = false;
+    pendingDeleteFiles = [];
+  }
+
+  async function handleContextDelete() {
+    const file = contextMenu.file;
+    if (!file) return;
+
+    closeContextMenu();
+
+    // Show confirmation dialog
+    pendingDeleteFiles = [file.path];
+    deleteConfirmMessage = `确定要删除 "${file.name}" 吗？`;
+    showDeleteConfirm = true;
+  }
+
+  async function handleContextDownload() {
+    const file = contextMenu.file;
+    closeContextMenu();
+    if (file && !file.is_dir) {
+      await handleDownload(file);
+    }
+  }
+
+  async function handleContextRename() {
+    const file = contextMenu.file;
+    closeContextMenu();
+    if (!file) return;
+
+    // Show rename input dialog
+    pendingRenameFile = file;
+    renameDialogTitle = '重命名';
+    renameDefaultName = file.name;
+    showRenameDialog = true;
+  }
+
+  async function handleConfirmRename(newName) {
+    showRenameDialog = false;
+    const file = pendingRenameFile;
+    pendingRenameFile = null;
+
+    if (!file || !newName || newName.trim() === file.name) return;
+
+    try {
+      const basePath = currentPath.endsWith('/') ? currentPath : `${currentPath}/`;
+      const newPath = `${basePath}${newName.trim()}`;
+      await RenameFile($activeSessionIdStore, file.path, newPath);
+      await loadDirectory(currentPath);
+    } catch (err) {
+      console.error('Rename failed:', err);
+      error = err.message || '重命名失败';
+    }
+  }
+
+  function handleCancelRename() {
+    showRenameDialog = false;
+    pendingRenameFile = null;
+  }
+
   // Transfer progress subscription
-  function subscribeToTransfer(transferID) {
+  function subscribeToTransfer(transferID, kind) {
     const eventName = `sftp:progress:${transferID}`;
     const unsubscriber = EventsOn(eventName, (progress) => {
+      if (kind === 'upload') {
+        upsertUploadTransfer(progress, transferID);
+      }
+
       // Auto-cleanup completed transfers after 3 seconds
       if (progress.status === 'completed' || progress.status === 'failed') {
         setTimeout(() => {
-          // Could show transfer status in UI if needed
+          if (kind === 'upload') {
+            removeUploadTransfer(transferID);
+          }
         }, 3000);
       }
     });
@@ -234,11 +504,13 @@
   $: if ($connectionsStore) {
     const activeSessionIds = new Set($connectionsStore.keys());
     // Remove paths for deleted sessions
-    for (const sessionId of sessionPaths.keys()) {
+    const nextPaths = new Map(sessionPaths);
+    for (const sessionId of nextPaths.keys()) {
       if (!activeSessionIds.has(sessionId)) {
-        sessionPaths.delete(sessionId);
+        nextPaths.delete(sessionId);
       }
     }
+    sessionPaths = nextPaths;
   }
 
   onMount(() => {
@@ -284,7 +556,17 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
           </button>
-       </div>
+          <button
+            on:click={handleDeleteSelection}
+            disabled={isLocalSession || selectedFiles.size === 0}
+            class="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="删除选中"
+          >
+            <svg class="w-4 h-4 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7" />
+            </svg>
+          </button>
+        </div>
     </div>
 
     <!-- 路径导航 -->
@@ -380,8 +662,95 @@
     {/if}
   </div>
 
+  {#if uploadTransfers.length > 0}
+    <div class="mx-3 mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3">
+      <div class="flex items-center justify-between text-[11px] text-gray-600 dark:text-gray-400 mb-2">
+        <div class="flex items-center gap-2">
+          <button
+            on:click={() => (isUploadCollapsed = !isUploadCollapsed)}
+            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            title={isUploadCollapsed ? '展开' : '折叠'}
+          >
+            {#if isUploadCollapsed}
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14m7-7H5" />
+              </svg>
+            {:else}
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14" />
+              </svg>
+            {/if}
+          </button>
+          <span>上传进度</span>
+        </div>
+        <span>{uploadTransfers.length} 个任务</span>
+      </div>
+
+      {#if isUploadCollapsed}
+        <div class="flex items-center gap-2">
+          <div class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div
+              class="h-full bg-blue-500 transition-all"
+              style={`width: ${Math.min(100, Math.max(0, getOverallUploadPercentage()))}%`}
+            ></div>
+          </div>
+          <span class="text-[10px] text-gray-500 dark:text-gray-400">
+            {Math.round(getOverallUploadPercentage())}%
+          </span>
+        </div>
+      {:else}
+        <div class="space-y-2 max-h-40 overflow-y-auto">
+          {#each uploadTransfers as transfer (transfer.id)}
+            <div class="rounded-md bg-white/80 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700 px-2.5 py-2">
+              <div class="flex items-center justify-between text-[11px] text-gray-700 dark:text-gray-300 mb-1">
+                <span class="truncate max-w-[180px]" title={transfer.filename}>{transfer.filename}</span>
+                <div class="flex items-center gap-2">
+                  {#if transfer.status === 'failed'}
+                    <span class="text-red-500">失败</span>
+                  {:else if transfer.status === 'completed'}
+                    <span class="text-green-500">完成</span>
+                  {:else}
+                    <span>{Math.round(getTransferPercentage(transfer))}%</span>
+                  {/if}
+                  <button
+                    on:click={() => handleRemoveTransfer(transfer)}
+                    class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
+                    title="删除任务"
+                  >
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-blue-500 transition-all"
+                  style={`width: ${Math.min(100, Math.max(0, getTransferPercentage(transfer)))}%`}
+                ></div>
+              </div>
+              <div class="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 mt-1">
+                <span>{formatFileSize(transfer.bytesSent)} / {formatFileSize(transfer.totalBytes)}</span>
+                {#if transfer.status === 'running'}
+                  <span>{formatSpeed(transfer.speed)}</span>
+                {:else if transfer.status === 'failed'}
+                  <span class="text-red-500 truncate max-w-[140px]" title={transfer.error}>{transfer.error || '上传失败'}</span>
+                {:else}
+                  <span>完成</span>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
+
   <!-- 文件列表 -->
-  <div class="flex-1 overflow-y-auto scrollbar-thin text-xs">
+  <div
+    class="flex-1 overflow-y-auto scrollbar-thin text-xs"
+    on:click={closeContextMenu}
+  >
     {#if isLoading}
       <div class="flex flex-col items-center justify-center h-40 text-gray-500 dark:text-gray-400 gap-2">
         <svg class="animate-spin w-6 h-6" fill="none" viewBox="0 0 24 24">
@@ -420,9 +789,16 @@
      {:else}
       {#each displayFiles as file, index (file.path)}
         <div
-          class="group flex items-center gap-2 px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer transition-colors mx-2 my-0.5 rounded-lg {file.is_parent ? 'text-gray-500 dark:text-gray-400 italic' : ''}"
-          on:click={() => file.is_dir && navigateTo(file.path)}
-          on:dblclick={() => { if (!file.is_dir) handleDownload(file); }}
+          class="group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors mx-2 my-0.5 rounded-lg {file.is_parent ? 'text-gray-500 dark:text-gray-400 italic' : ''} {selectedFiles.has(file.path) && !file.is_parent ? 'bg-purple-100 dark:bg-purple-900/40' : 'hover:bg-purple-50 dark:hover:bg-purple-900/20'}"
+          on:click={() => (file.is_parent ? handleParentClick(file) : handleItemClick(file))}
+          on:dblclick={() => {
+            if (file.is_dir && !file.is_parent) {
+              navigateTo(file.path);
+            } else if (!file.is_dir) {
+              handleDownload(file);
+            }
+          }}
+          on:contextmenu={(event) => handleContextMenu(event, file)}
         >
           {#if file.is_parent}
             <svg class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -467,4 +843,65 @@
       {/each}
     {/if}
   </div>
+
+  {#if contextMenu.open}
+    <div
+      class="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg text-xs py-1 min-w-[140px]"
+      style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
+    >
+      <button
+        class="w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700"
+        on:click={handleContextDownload}
+        disabled={contextMenu.file?.is_dir}
+      >
+        下载
+      </button>
+      <button
+        class="w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700"
+        on:click={handleContextRename}
+      >
+        重命名
+      </button>
+      <button
+        class="w-full text-left px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400"
+        on:click={handleContextDelete}
+      >
+        删除
+      </button>
+    </div>
+  {/if}
+
+  <ConfirmDialog
+    bind:isOpen={showDeleteConfirm}
+    title="删除文件"
+    message={deleteConfirmMessage}
+    type="danger"
+    confirmText="删除"
+    cancelText="取消"
+    onConfirm={handleConfirmDelete}
+    onCancel={handleCancelDelete}
+  />
+
+  <ConfirmDialog
+    bind:isOpen={showCancelUploadConfirm}
+    title="取消上传"
+    message="上传未完成，是否终止上传？"
+    type="warning"
+    confirmText="终止上传"
+    cancelText="继续上传"
+    onConfirm={handleConfirmCancelUpload}
+    onCancel={handleCancelCancelUpload}
+  />
+
+  <InputDialog
+    bind:isOpen={showRenameDialog}
+    title={renameDialogTitle}
+    message="请输入新的文件/文件夹名称"
+    placeholder="新名称"
+    defaultValue={renameDefaultName}
+    confirmText="重命名"
+    cancelText="取消"
+    onConfirm={handleConfirmRename}
+    onCancel={handleCancelRename}
+  />
 </div>
