@@ -2,35 +2,85 @@
   import { onMount, onDestroy } from 'svelte';
   import { activeSessionIdStore, connectionsStore } from '../stores.js';
 
+  const defaultStats = {
+    cpu: 0,
+    memory: 0,
+    disk: 0,
+    network: { in: 0, out: 0 }
+  };
+
+  const defaultSystemInfo = {
+    os: 'Unknown',
+    kernel: 'Unknown',
+    uptime: 'Unknown',
+    processes: 0
+  };
+
+  const defaultDiskInfo = {
+    used: '0 GB',
+    total: '0 GB'
+  };
+
   let cpuData = [];
   let memoryData = [];
   let cpuPerCore = []; // Per-core CPU usage array
-  let currentStats = {
-    cpu: 45,
-    memory: 62,
-    disk: 78,
-    network: { in: 125.5, out: 89.3 }
-  };
+  let currentStats = { ...defaultStats };
+  let systemInfo = { ...defaultSystemInfo };
+  let diskInfo = { ...defaultDiskInfo };
 
-  let systemInfo = {
-    os: 'Ubuntu 22.04 LTS',
-    kernel: '5.15.0-91-generic',
-    uptime: '15天 7小时 32分',
-    processes: 187
-  };
-
-  let diskInfo = {
-    used: '156 GB',
-    total: '200 GB'
-  };
+  // Per-session monitoring history
+  let sessionCpuData = new Map();
+  let sessionMemoryData = new Map();
+  let sessionCpuPerCore = new Map();
+  let sessionStats = new Map();
+  let sessionSystemInfo = new Map();
+  let sessionDiskInfo = new Map();
 
   let dataInterval = null;
+  let previousSessionId = null;
 
   // Get current session object
   $: currentSession = $activeSessionIdStore ? $connectionsStore.get($activeSessionIdStore) : null;
   $: isSessionConnected = currentSession?.connected || false;
   $: isLocalSession = currentSession?.type === 'local';
   $: canUseMonitor = isSessionConnected && !isLocalSession;
+
+  function applySessionSnapshot(sessionId) {
+    if (!sessionId) {
+      cpuData = [];
+      memoryData = [];
+      cpuPerCore = [];
+      currentStats = { ...defaultStats };
+      systemInfo = { ...defaultSystemInfo };
+      diskInfo = { ...defaultDiskInfo };
+      return;
+    }
+
+    cpuData = sessionCpuData.get(sessionId) || [];
+    memoryData = sessionMemoryData.get(sessionId) || [];
+    cpuPerCore = sessionCpuPerCore.get(sessionId) || [];
+    currentStats = sessionStats.get(sessionId) || { ...defaultStats };
+    systemInfo = sessionSystemInfo.get(sessionId) || { ...defaultSystemInfo };
+    diskInfo = sessionDiskInfo.get(sessionId) || { ...defaultDiskInfo };
+  }
+
+  function persistSessionSnapshot(sessionId) {
+    if (!sessionId) return;
+    sessionCpuData = new Map(sessionCpuData).set(sessionId, cpuData);
+    sessionMemoryData = new Map(sessionMemoryData).set(sessionId, memoryData);
+    sessionCpuPerCore = new Map(sessionCpuPerCore).set(sessionId, cpuPerCore);
+    sessionStats = new Map(sessionStats).set(sessionId, currentStats);
+    sessionSystemInfo = new Map(sessionSystemInfo).set(sessionId, systemInfo);
+    sessionDiskInfo = new Map(sessionDiskInfo).set(sessionId, diskInfo);
+  }
+
+  $: if (previousSessionId !== $activeSessionIdStore) {
+    if (previousSessionId) {
+      persistSessionSnapshot(previousSessionId);
+    }
+    applySessionSnapshot($activeSessionIdStore);
+  }
+  $: previousSessionId = $activeSessionIdStore;
 
   function getStatusColor(value) {
     if (value < 50) return '#10b981'; // green
@@ -58,13 +108,12 @@
   function normalizeMonitoringData(data) {
     if (!data) return null;
 
-    // Handle per-core CPU data
-    if (data.cpu?.per_core && Array.isArray(data.cpu.per_core)) {
-      cpuPerCore = data.cpu.per_core;
-    }
+    const nextCpuPerCore = data.cpu?.per_core && Array.isArray(data.cpu.per_core)
+      ? data.cpu.per_core
+      : null;
 
     // Backend returns detailed structure, normalize to simple format
-    const normalized = {
+    const stats = {
       cpu: typeof data.cpu === 'number' ? data.cpu : (data.cpu?.overall || 0),
       memory: typeof data.memory === 'number' ? data.memory : (data.memory?.used_percent || 0),
       disk: typeof data.disk === 'number' ? data.disk : (data.disk?.partitions?.[0]?.used_percent || 0),
@@ -77,48 +126,68 @@
     };
 
     // Update system info if available
-    if (data.system) {
-      systemInfo = {
-        os: data.system.os || systemInfo.os,
-        kernel: data.system.kernel || systemInfo.kernel,
-        uptime: data.system.uptime || systemInfo.uptime,
-        processes: systemInfo.processes // Backend doesn't provide process count
-      };
-    }
+    const nextSystemInfo = data.system ? {
+      os: data.system.os || defaultSystemInfo.os,
+      kernel: data.system.kernel || defaultSystemInfo.kernel,
+      uptime: data.system.uptime || defaultSystemInfo.uptime,
+      processes: data.system.processes || defaultSystemInfo.processes
+    } : null;
 
     // Update disk info if available
+    let nextDiskInfo = null;
     if (data.disk?.partitions?.[0]) {
       const partition = data.disk.partitions[0];
       const usedGB = (partition.used / (1024 * 1024 * 1024)).toFixed(1);
       const totalGB = (partition.total / (1024 * 1024 * 1024)).toFixed(1);
-      diskInfo = {
+      nextDiskInfo = {
         used: `${usedGB} GB`,
         total: `${totalGB} GB`
       };
     }
 
-    return normalized;
+    return {
+      stats,
+      cpuPerCore: nextCpuPerCore,
+      systemInfo: nextSystemInfo,
+      diskInfo: nextDiskInfo
+    };
   }
 
   // 获取监控数据
   async function fetchMonitoringData() {
-    if (!$activeSessionIdStore || !isSessionConnected || isLocalSession) return;
+    const sessionId = $activeSessionIdStore;
+    if (!sessionId || !isSessionConnected || isLocalSession) return;
 
     const { GetMonitoringData } = window.wailsBindings || {};
     if (typeof GetMonitoringData !== 'function') return;
 
     try {
-      const data = await GetMonitoringData($activeSessionIdStore);
+      const data = await GetMonitoringData(sessionId);
       const normalizedData = normalizeMonitoringData(data);
       console.log('data:', data);
       if (normalizedData) {
-        currentStats = normalizedData;
+        const nextCpuData = [...(sessionCpuData.get(sessionId) || []), normalizedData.stats.cpu].slice(-60);
+        const nextMemoryData = [...(sessionMemoryData.get(sessionId) || []), normalizedData.stats.memory].slice(-60);
+        const nextCpuPerCore = normalizedData.cpuPerCore || sessionCpuPerCore.get(sessionId) || [];
+        const nextSystemInfo = normalizedData.systemInfo || sessionSystemInfo.get(sessionId) || { ...defaultSystemInfo };
+        const nextDiskInfo = normalizedData.diskInfo || sessionDiskInfo.get(sessionId) || { ...defaultDiskInfo };
+        const nextStats = normalizedData.stats;
 
-        // Update CPU history array (keep last 60 data points)
-        cpuData = [...cpuData, normalizedData.cpu].slice(-60);
+        sessionCpuData = new Map(sessionCpuData).set(sessionId, nextCpuData);
+        sessionMemoryData = new Map(sessionMemoryData).set(sessionId, nextMemoryData);
+        sessionCpuPerCore = new Map(sessionCpuPerCore).set(sessionId, nextCpuPerCore);
+        sessionStats = new Map(sessionStats).set(sessionId, nextStats);
+        sessionSystemInfo = new Map(sessionSystemInfo).set(sessionId, nextSystemInfo);
+        sessionDiskInfo = new Map(sessionDiskInfo).set(sessionId, nextDiskInfo);
 
-        // Update memory history array (keep last 60 data points)
-        memoryData = [...memoryData, normalizedData.memory].slice(-60);
+        if (sessionId === $activeSessionIdStore) {
+          currentStats = nextStats;
+          cpuData = nextCpuData;
+          memoryData = nextMemoryData;
+          cpuPerCore = nextCpuPerCore;
+          systemInfo = nextSystemInfo;
+          diskInfo = nextDiskInfo;
+        }
       }
     } catch (error) {
       console.error('Failed to fetch monitoring data:', error);

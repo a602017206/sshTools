@@ -14,11 +14,12 @@ func roundTo2Decimals(value float64) float64 {
 
 // SystemInfo contains basic system information
 type SystemInfo struct {
-	Hostname string `json:"hostname"`
-	Uptime   string `json:"uptime"`
-	OS       string `json:"os"`
-	Kernel   string `json:"kernel"`
-	Username string `json:"username"`
+	Hostname  string `json:"hostname"`
+	Uptime    string `json:"uptime"`
+	OS        string `json:"os"`
+	Kernel    string `json:"kernel"`
+	Username  string `json:"username"`
+	Processes int    `json:"processes"`
 }
 
 // CPUMetrics contains CPU usage information
@@ -170,6 +171,12 @@ func (mc *MonitorCollector) collectSystemInfo(sessionID string, timeout time.Dur
 	stdout, _, err = mc.sessionManager.ExecuteCommand(sessionID, "whoami", timeout)
 	if err == nil {
 		info.Username = strings.TrimSpace(stdout)
+	}
+
+	stdout, _, err = mc.sessionManager.ExecuteCommand(sessionID, `ps aux | wc -l`, timeout)
+	if err == nil {
+		count, _ := strconv.Atoi(strings.TrimSpace(stdout))
+		info.Processes = count
 	}
 
 	return info, nil

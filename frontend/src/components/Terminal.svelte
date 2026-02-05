@@ -225,6 +225,10 @@
         on_retract: () => {
           console.log('ZMODEM retracted');
           zsession = null;
+          zmodemActive = false;
+          if (terminal) {
+            terminal.options.disableStdin = false;
+          }
         }
       });
 
@@ -466,6 +470,10 @@
           console.log('No files selected, closing session');
           session.close();
           skip_zmodem = false;
+          zmodemActive = false;
+          if (terminal) {
+            terminal.options.disableStdin = false;
+          }
           resolve();
           return;
         }

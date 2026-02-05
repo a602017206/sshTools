@@ -238,6 +238,7 @@ export namespace ssh {
 	    os: string;
 	    kernel: string;
 	    username: string;
+	    processes: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new SystemInfo(source);
@@ -250,6 +251,7 @@ export namespace ssh {
 	        this.os = source["os"];
 	        this.kernel = source["kernel"];
 	        this.username = source["username"];
+	        this.processes = source["processes"];
 	    }
 	}
 	export class MonitoringData {
