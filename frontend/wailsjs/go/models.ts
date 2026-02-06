@@ -1,5 +1,23 @@
 export namespace config {
 	
+	export class FileManagerSettings {
+	    directory_tracking: boolean;
+	    history_enabled: boolean;
+	    history_limit: number;
+	    history: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FileManagerSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.directory_tracking = source["directory_tracking"];
+	        this.history_enabled = source["history_enabled"];
+	        this.history_limit = source["history_limit"];
+	        this.history = source["history"];
+	    }
+	}
 	export class AppSettings {
 	    theme: string;
 	    font_family: string;
@@ -14,6 +32,7 @@ export namespace config {
 	    file_manager_show_hidden: boolean;
 	    file_manager_sort_by: string;
 	    file_manager_sort_order: string;
+	    file_manager_per_connection?: Record<string, FileManagerSettings>;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -34,7 +53,26 @@ export namespace config {
 	        this.file_manager_show_hidden = source["file_manager_show_hidden"];
 	        this.file_manager_sort_by = source["file_manager_sort_by"];
 	        this.file_manager_sort_order = source["file_manager_sort_order"];
+	        this.file_manager_per_connection = this.convertValues(source["file_manager_per_connection"], FileManagerSettings, true);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ConnectionConfig {
 	    id: string;
@@ -296,6 +334,22 @@ export namespace ssh {
 	}
 	
 	
+	export class SearchResult {
+	    path: string;
+	    name: string;
+	    depth: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SearchResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.depth = source["depth"];
+	    }
+	}
 	
 	export class TransferProgress {
 	    transfer_id: string;

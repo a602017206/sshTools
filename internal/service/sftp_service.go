@@ -44,14 +44,15 @@ func (s *SFTPService) ChangeDirectory(sessionID string, path string) error {
 	return sftpClient.ChangeDirectory(path)
 }
 
-// GetCurrentPath returns the current working directory
+// GetCurrentPath returns current working directory from the SSH session
+// This queries the actual terminal session to get the real current directory (not SFTP's cached path)
 func (s *SFTPService) GetCurrentPath(sessionID string) (string, error) {
-	sftpClient, err := s.sessionManager.GetOrCreateSFTPClient(sessionID)
-	if err != nil {
-		return "", fmt.Errorf("failed to get SFTP client: %w", err)
-	}
+	return s.sessionManager.GetCurrentWorkingDirectory(sessionID)
+}
 
-	return sftpClient.GetCurrentPath(), nil
+// UpdateCurrentPath updates the tracked current directory for a session
+func (s *SFTPService) UpdateCurrentPath(sessionID, path string) error {
+	return s.sessionManager.UpdateCurrentWorkingDirectory(sessionID, path)
 }
 
 // GetFileInfo gets information about a file
@@ -280,4 +281,14 @@ func (s *SFTPService) GetTransferStatus(transferID string) (*ssh.TransferProgres
 		return nil, err
 	}
 	return &progress, nil
+}
+
+// SearchDirectories searches for directories matching the query recursively
+func (s *SFTPService) SearchDirectories(sessionID string, searchPath string, query string, maxDepth int, maxResults int) ([]ssh.SearchResult, error) {
+	sftpClient, err := s.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.SearchDirectories(searchPath, query, maxDepth, maxResults)
 }

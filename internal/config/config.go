@@ -40,11 +40,20 @@ type AppSettings struct {
 	MonitorRefreshInterval int  `json:"monitor_refresh_interval"` // seconds
 
 	// File manager settings
-	FileManagerCollapsed  bool   `json:"file_manager_collapsed"`
-	FileManagerWidth      int    `json:"file_manager_width"`
-	FileManagerShowHidden bool   `json:"file_manager_show_hidden"`
-	FileManagerSortBy     string `json:"file_manager_sort_by"`
-	FileManagerSortOrder  string `json:"file_manager_sort_order"`
+	FileManagerCollapsed     bool                           `json:"file_manager_collapsed"`
+	FileManagerWidth         int                            `json:"file_manager_width"`
+	FileManagerShowHidden    bool                           `json:"file_manager_show_hidden"`
+	FileManagerSortBy        string                         `json:"file_manager_sort_by"`
+	FileManagerSortOrder     string                         `json:"file_manager_sort_order"`
+	FileManagerPerConnection map[string]FileManagerSettings `json:"file_manager_per_connection,omitempty"`
+}
+
+// FileManagerSettings stores file manager configuration per connection
+type FileManagerSettings struct {
+	DirectoryTracking bool     `json:"directory_tracking"` // Enable terminal → FM sync
+	HistoryEnabled    bool     `json:"history_enabled"`    // Enable history tracking
+	HistoryLimit      int      `json:"history_limit"`      // Max history entries
+	History           []string `json:"history"`            // History path list
 }
 
 // DefaultSettings returns default application settings
@@ -63,6 +72,16 @@ func DefaultSettings() AppSettings {
 		FileManagerShowHidden:  false,
 		FileManagerSortBy:      "name",
 		FileManagerSortOrder:   "asc",
+	}
+}
+
+// DefaultFileManagerSettings returns default file manager settings for a connection
+func DefaultFileManagerSettings() FileManagerSettings {
+	return FileManagerSettings{
+		DirectoryTracking: false,
+		HistoryEnabled:    true,
+		HistoryLimit:      5,
+		History:           []string{},
 	}
 }
 
@@ -226,5 +245,47 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 		cm.config.Settings.FileManagerSortOrder = fileManagerSortOrder
 	}
 
+	// File manager per-connection settings
+	if connID, ok := updates["connection_id"].(string); ok {
+		if fmSettings, ok := updates["file_manager_settings"].(map[string]interface{}); ok {
+			if cm.config.Settings.FileManagerPerConnection == nil {
+				cm.config.Settings.FileManagerPerConnection = make(map[string]FileManagerSettings)
+			}
+
+			settings := cm.config.Settings.FileManagerPerConnection[connID]
+
+			if directoryTracking, ok := fmSettings["directory_tracking"].(bool); ok {
+				settings.DirectoryTracking = directoryTracking
+			}
+			if historyEnabled, ok := fmSettings["history_enabled"].(bool); ok {
+				settings.HistoryEnabled = historyEnabled
+			}
+			if historyLimit, ok := fmSettings["history_limit"].(float64); ok {
+				settings.HistoryLimit = int(historyLimit)
+			}
+			if history, ok := fmSettings["history"].([]interface{}); ok {
+				historyList := []string{}
+				for _, h := range history {
+					if path, ok := h.(string); ok {
+						historyList = append(historyList, path)
+					}
+				}
+				settings.History = historyList
+			}
+
+			cm.config.Settings.FileManagerPerConnection[connID] = settings
+		}
+	}
+
 	return cm.Save()
+}
+
+// GetFileManagerSettings returns file manager settings for a specific connection
+func (cm *ConfigManager) GetFileManagerSettings(connectionId string) FileManagerSettings {
+	if cm.config.Settings.FileManagerPerConnection != nil {
+		if settings, exists := cm.config.Settings.FileManagerPerConnection[connectionId]; exists {
+			return settings
+		}
+	}
+	return DefaultFileManagerSettings()
 }

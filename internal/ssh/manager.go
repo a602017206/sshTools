@@ -3,6 +3,8 @@ package ssh
 import (
 	"fmt"
 	"io"
+	"path"
+	"strings"
 	"sync"
 	"time"
 )
@@ -31,6 +33,11 @@ type ManagedSession struct {
 	Type     SessionType
 	Running  bool
 	stopChan chan struct{}
+	cwdMu    sync.Mutex
+	cwd      string
+	prevCwd  string
+	homeCwd  string
+	inputBuf string
 }
 
 // NewSessionManager creates a new session manager
@@ -139,7 +146,12 @@ func (sm *SessionManager) WriteToSession(sessionID string, data []byte) error {
 	}
 
 	_, err := managed.Session.Write(data)
-	return err
+	if err != nil {
+		return err
+	}
+
+	sm.trackCwdFromInput(managed, data)
+	return nil
 }
 
 // ResizeSession resizes the terminal
@@ -229,6 +241,376 @@ func (sm *SessionManager) ExecuteCommand(sessionID string, cmd string, timeout t
 	}
 
 	return managed.Session.ExecuteCommand(cmd, timeout)
+}
+
+// GetCurrentWorkingDirectory gets the current working directory from the SSH session
+// This executes 'pwd' command on the SSH session to get the actual current directory
+func (sm *SessionManager) GetCurrentWorkingDirectory(sessionID string) (string, error) {
+	sm.mu.RLock()
+	managed, exists := sm.sessions[sessionID]
+	sm.mu.RUnlock()
+
+	if !exists {
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	if !managed.Running {
+		return "", fmt.Errorf("session not running: %s", sessionID)
+	}
+
+	managed.cwdMu.Lock()
+	defer managed.cwdMu.Unlock()
+
+	if managed.cwd != "" {
+		return managed.cwd, nil
+	}
+
+	stdout, _, err := managed.Session.ExecuteCommand("pwd", 2*time.Second)
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	currentPath := strings.TrimSpace(stdout)
+	if currentPath == "" {
+		currentPath = "/"
+	}
+
+	managed.homeCwd = currentPath
+	managed.cwd = currentPath
+
+	if sftpClient, sftpExists := sm.sftpClients[sessionID]; sftpExists {
+		sftpClient.SetCurrentPath(currentPath)
+	}
+
+	return currentPath, nil
+}
+
+// UpdateCurrentWorkingDirectory updates the tracked cwd for a session
+func (sm *SessionManager) UpdateCurrentWorkingDirectory(sessionID, cwd string) error {
+	sm.mu.RLock()
+	managed, exists := sm.sessions[sessionID]
+	sm.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	if !managed.Running {
+		return fmt.Errorf("session not running: %s", sessionID)
+	}
+
+	normalized := normalizeCwdPath(cwd)
+	if normalized == "" {
+		return fmt.Errorf("invalid cwd")
+	}
+
+	managed.cwdMu.Lock()
+	if managed.homeCwd == "" {
+		managed.homeCwd = normalized
+	}
+	managed.prevCwd = managed.cwd
+	managed.cwd = normalized
+	managed.cwdMu.Unlock()
+
+	sm.syncSftpPath(sessionID, normalized)
+	return nil
+}
+
+func (sm *SessionManager) trackCwdFromInput(managed *ManagedSession, data []byte) {
+	if managed == nil || len(data) == 0 {
+		return
+	}
+
+	var nextPath string
+	var pathChanged bool
+
+	managed.cwdMu.Lock()
+	managed.inputBuf += string(data)
+	lines, remainder := splitInputLines(managed.inputBuf)
+	managed.inputBuf = remainder
+
+	for _, line := range lines {
+		if applyCdCommand(managed, line) {
+			pathChanged = true
+			nextPath = managed.cwd
+		}
+	}
+	managed.cwdMu.Unlock()
+
+	if pathChanged && nextPath != "" {
+		sm.syncSftpPath(managed.ID, nextPath)
+	}
+}
+
+func splitInputLines(input string) ([]string, string) {
+	if input == "" {
+		return nil, ""
+	}
+
+	lines := []string{}
+	remaining := input
+	for {
+		idx := strings.IndexAny(remaining, "\r\n")
+		if idx == -1 {
+			break
+		}
+
+		line := remaining[:idx]
+		lines = append(lines, line)
+
+		skip := idx + 1
+		if idx < len(remaining) && remaining[idx] == '\r' {
+			if skip < len(remaining) && remaining[skip] == '\n' {
+				skip++
+			}
+		}
+		remaining = remaining[skip:]
+	}
+
+	return lines, remaining
+}
+
+func applyCdCommand(managed *ManagedSession, line string) bool {
+	if managed == nil {
+		return false
+	}
+
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+
+	commands := splitShellCommands(trimmed)
+	changed := false
+	for _, command := range commands {
+		if applyCdCommandTokens(managed, command) {
+			changed = true
+		}
+	}
+
+	return changed
+}
+
+func applyCdCommandTokens(managed *ManagedSession, command string) bool {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return false
+	}
+
+	tokens := splitShellTokens(command)
+	if len(tokens) == 0 || tokens[0] != "cd" {
+		return false
+	}
+
+	idx := 1
+	for idx < len(tokens) {
+		if tokens[idx] == "-" || tokens[idx] == "--" {
+			break
+		}
+		if strings.HasPrefix(tokens[idx], "-") {
+			idx++
+			continue
+		}
+		break
+	}
+
+	if idx < len(tokens) && tokens[idx] == "--" {
+		idx++
+	}
+
+	target := ""
+	if idx < len(tokens) {
+		target = tokens[idx]
+	}
+
+	if strings.Contains(target, "$") {
+		return false
+	}
+
+	current := managed.cwd
+	if current == "" {
+		current = managed.homeCwd
+	}
+	if current == "" {
+		current = "/"
+	}
+
+	var next string
+	if target == "" || target == "~" {
+		next = managed.homeCwd
+		if next == "" {
+			next = current
+		}
+	} else if target == "-" {
+		if managed.prevCwd != "" {
+			next = managed.prevCwd
+		} else {
+			next = current
+		}
+	} else if strings.HasPrefix(target, "~") {
+		if managed.homeCwd == "" {
+			return false
+		}
+		if target == "~" {
+			next = managed.homeCwd
+		} else if strings.HasPrefix(target, "~/") {
+			next = path.Join(managed.homeCwd, strings.TrimPrefix(target, "~/"))
+		} else {
+			return false
+		}
+	} else if path.IsAbs(target) {
+		next = target
+	} else {
+		next = path.Join(current, target)
+	}
+
+	next = path.Clean(next)
+	if next == managed.cwd {
+		return false
+	}
+
+	managed.prevCwd = managed.cwd
+	managed.cwd = next
+	return true
+}
+
+func splitShellCommands(input string) []string {
+	if input == "" {
+		return nil
+	}
+
+	commands := []string{}
+	var buf strings.Builder
+	var inSingle bool
+	var inDouble bool
+	var escaped bool
+
+	for i := 0; i < len(input); i++ {
+		ch := input[i]
+		if escaped {
+			buf.WriteByte(ch)
+			escaped = false
+			continue
+		}
+
+		if ch == '\\' && !inSingle {
+			escaped = true
+			continue
+		}
+
+		if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+			buf.WriteByte(ch)
+			continue
+		}
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+			buf.WriteByte(ch)
+			continue
+		}
+
+		if !inSingle && !inDouble {
+			if ch == ';' {
+				commands = append(commands, buf.String())
+				buf.Reset()
+				continue
+			}
+			if ch == '&' && i+1 < len(input) && input[i+1] == '&' {
+				commands = append(commands, buf.String())
+				buf.Reset()
+				i++
+				continue
+			}
+			if ch == '|' && i+1 < len(input) && input[i+1] == '|' {
+				commands = append(commands, buf.String())
+				buf.Reset()
+				i++
+				continue
+			}
+		}
+
+		buf.WriteByte(ch)
+	}
+
+	if buf.Len() > 0 {
+		commands = append(commands, buf.String())
+	}
+
+	return commands
+}
+
+func splitShellTokens(input string) []string {
+	if input == "" {
+		return nil
+	}
+
+	var tokens []string
+	var buf strings.Builder
+	var inSingle bool
+	var inDouble bool
+	var escaped bool
+
+	flush := func() {
+		if buf.Len() > 0 {
+			tokens = append(tokens, buf.String())
+			buf.Reset()
+		}
+	}
+
+	for i := 0; i < len(input); i++ {
+		ch := input[i]
+		if escaped {
+			buf.WriteByte(ch)
+			escaped = false
+			continue
+		}
+
+		if ch == '\\' && !inSingle {
+			escaped = true
+			continue
+		}
+
+		if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+			continue
+		}
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+			continue
+		}
+
+		if !inSingle && !inDouble && (ch == ' ' || ch == '\t') {
+			flush()
+			continue
+		}
+
+		buf.WriteByte(ch)
+	}
+
+	flush()
+	return tokens
+}
+
+func (sm *SessionManager) syncSftpPath(sessionID, nextPath string) {
+	sm.mu.RLock()
+	sftpClient, sftpExists := sm.sftpClients[sessionID]
+	sm.mu.RUnlock()
+	if sftpExists {
+		sftpClient.SetCurrentPath(nextPath)
+	}
+}
+
+func normalizeCwdPath(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	cleaned := path.Clean(trimmed)
+	if !path.IsAbs(cleaned) {
+		cleaned = "/" + cleaned
+	}
+	return cleaned
 }
 
 // GetOrCreateSFTPClient gets or creates an SFTP client for a session

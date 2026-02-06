@@ -114,6 +114,10 @@ export function GetFileInfo(arg1, arg2) {
   return window['go']['main']['App']['GetFileInfo'](arg1, arg2);
 }
 
+export function GetFileManagerSettings(arg1) {
+  return window['go']['main']['App']['GetFileManagerSettings'](arg1);
+}
+
 export function GetMonitoringData(arg1) {
   return window['go']['main']['App']['GetMonitoringData'](arg1);
 }
@@ -172,6 +176,10 @@ export function SaveBinaryFile(arg1, arg2) {
 
 export function SavePassword(arg1, arg2) {
   return window['go']['main']['App']['SavePassword'](arg1, arg2);
+}
+
+export function SearchDirectories(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SearchDirectories'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function SelectDownloadDirectory() {
@@ -234,12 +242,16 @@ export function UpdateConnection(arg1) {
   return window['go']['main']['App']['UpdateConnection'](arg1);
 }
 
-export function UpdateSettings(arg1) {
-  return window['go']['main']['App']['UpdateSettings'](arg1);
+export function UpdateCurrentPath(arg1, arg2) {
+  return window['go']['main']['App']['UpdateCurrentPath'](arg1, arg2);
 }
 
-export function UploadFile(arg1, arg2, arg3) {
-  return window['go']['main']['App']['UploadFile'](arg1, arg2, arg3);
+export function UpdateFileManagerSettings(arg1, arg2) {
+  return window['go']['main']['App']['UpdateFileManagerSettings'](arg1, arg2);
+}
+
+export function UpdateSettings(arg1) {
+  return window['go']['main']['App']['UpdateSettings'](arg1);
 }
 
 export function UploadFiles(arg1, arg2, arg3) {

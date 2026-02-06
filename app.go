@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"regexp"
+	"time"
 
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/service"
@@ -13,6 +15,8 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+var cwdRegex = regexp.MustCompile(`\033\]0;CWD:([^\007]+)\007`)
 
 // App struct
 type App struct {
@@ -25,6 +29,7 @@ type App struct {
 	monitorService    *service.MonitorService
 	settingsService   *service.SettingsService
 	devToolsService   *service.DevToolsService
+	configManager     *config.ConfigManager
 }
 
 // NewApp creates a new App application struct
@@ -42,6 +47,7 @@ func (a *App) startup(ctx context.Context) {
 	if err != nil {
 		fmt.Printf("Failed to initialize config manager: %v\n", err)
 	}
+	a.configManager = configManager
 
 	// Initialize credential store
 	credentialStore := store.NewCredentialStore()
@@ -98,23 +104,43 @@ func (a *App) TestConnection(host string, port int, user, authType, authValue, p
 	return a.connectionService.TestConnection(host, port, user, authType, authValue, passphrase)
 }
 
-// ConnectSSH creates and starts an SSH session
-// authType: "password" or "key"
-// authValue: password for password auth, or key file path for key auth
-// passphrase: passphrase for encrypted keys (optional)
 func (a *App) ConnectSSH(sessionID, host string, port int, user, authType, authValue, passphrase string, cols, rows int) error {
-	// Use service with Wails-specific output callback
 	err := a.sessionService.ConnectSSH(sessionID, host, port, user, authType, authValue, passphrase, cols, rows, func(data []byte) {
-		// Emit output to frontend as base64 to preserve binary data for ZMODEM
-		// ZMODEM protocol requires raw binary data, not UTF-8 encoded strings
+		cwd := a.parseCWDFromOutput(sessionID, data)
+		if cwd != "" {
+			runtime.EventsEmit(a.ctx, "ssh:cwd:"+sessionID, cwd)
+		}
+
 		encoded := base64.StdEncoding.EncodeToString(data)
 		runtime.EventsEmit(a.ctx, "ssh:output:"+sessionID, encoded)
 	})
 
 	if err == nil {
 		fmt.Printf("SSH session started: %s (%s@%s:%d)\n", sessionID, user, host, port)
+		a.setupCWDTracking(sessionID)
 	}
 	return err
+}
+
+func (a *App) parseCWDFromOutput(sessionID string, data []byte) string {
+	matches := cwdRegex.FindSubmatch(data)
+	if len(matches) >= 2 {
+		cwd := string(matches[1])
+		if err := a.sftpService.UpdateCurrentPath(sessionID, cwd); err == nil {
+			return cwd
+		}
+	}
+	return ""
+}
+
+func (a *App) setupCWDTracking(sessionID string) {
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		promptCmd := `export PROMPT_COMMAND='echo -ne "\033]0;CWD:$(pwd)\007"'` + "\n"
+		if err := a.sessionService.SendData(sessionID, promptCmd); err != nil {
+			fmt.Printf("Failed to setup CWD tracking for session %s: %v\n", sessionID, err)
+		}
+	}()
 }
 
 // SendSSHData sends data to an SSH session
@@ -318,13 +344,23 @@ func (a *App) GetCurrentPath(sessionID string) (string, error) {
 	return a.sftpService.GetCurrentPath(sessionID)
 }
 
-// UploadFile uploads a single file
-func (a *App) UploadFile(sessionID string, localPath string, remotePath string) (string, error) {
-	// Use service with Wails-specific progress callback
-	return a.sftpService.UploadFile(sessionID, localPath, remotePath, func(progress ssh.TransferProgress) {
-		// Emit event to frontend
-		runtime.EventsEmit(a.ctx, "sftp:progress:"+progress.TransferID, progress)
-	})
+// UpdateCurrentPath updates the tracked working directory for a session
+func (a *App) UpdateCurrentPath(sessionID string, path string) error {
+	return a.sftpService.UpdateCurrentPath(sessionID, path)
+}
+
+// GetFileManagerSettings returns file manager settings for a specific connection
+func (a *App) GetFileManagerSettings(connectionId string) (config.FileManagerSettings, error) {
+	return a.settingsService.GetFileManagerSettings(connectionId), nil
+}
+
+// UpdateFileManagerSettings updates file manager settings for a specific connection
+func (a *App) UpdateFileManagerSettings(connectionId string, settings map[string]interface{}) error {
+	updates := map[string]interface{}{
+		"connection_id":         connectionId,
+		"file_manager_settings": settings,
+	}
+	return a.configManager.UpdateSettings(updates)
 }
 
 // UploadFiles uploads multiple files
@@ -375,6 +411,11 @@ func (a *App) CreateDirectory(sessionID string, path string) error {
 // GetFileInfo gets information about a file
 func (a *App) GetFileInfo(sessionID string, path string) (*ssh.FileInfo, error) {
 	return a.sftpService.GetFileInfo(sessionID, path)
+}
+
+// SearchDirectories searches for directories matching the query recursively
+func (a *App) SearchDirectories(sessionID string, searchPath string, query string, maxDepth int, maxResults int) ([]ssh.SearchResult, error) {
+	return a.sftpService.SearchDirectories(sessionID, searchPath, query, maxDepth, maxResults)
 }
 
 // CancelTransfer cancels a file transfer

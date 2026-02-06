@@ -8,6 +8,7 @@
   let terminalRefs = {};
   let sessionsList = [];
   let sessionUnsubscribers = new Map();
+  let osc7PendingBuffers = new Map();
 
   // Close confirmation dialog state
   let showCloseConfirm = false;
@@ -436,10 +437,172 @@
         for (let i = 0; i < decodedData.length; i++) {
           octets[i] = decodedData.charCodeAt(i);
         }
+        maybeUpdateCwdFromOutput(sessionId, octets, true);
         terminal.write(octets);
       }
     });
     sessionUnsubscribers.set(sessionId, unsubscribe);
+  }
+
+  function maybeUpdateCwdFromOutput(sessionId, octets, isLocal) {
+    if (!sessionId || !octets || octets.length === 0 || isLocal) {
+      return;
+    }
+
+    const { paths, pending } = extractOsc7PathsBuffered(sessionId, octets);
+    osc7PendingBuffers.set(sessionId, pending);
+    if (paths.length === 0) {
+      return;
+    }
+
+    const latestPath = paths[paths.length - 1];
+    if (!latestPath) {
+      return;
+    }
+
+    const { UpdateCurrentPath } = window.wailsBindings || {};
+    if (typeof UpdateCurrentPath === 'function') {
+      UpdateCurrentPath(sessionId, latestPath).catch(error => {
+        console.error('Failed to update current path:', error);
+      });
+    }
+  }
+
+  function extractOsc7PathsBuffered(sessionId, octets) {
+    const pending = osc7PendingBuffers.get(sessionId);
+    const combined = pending && pending.length > 0
+      ? concatOctets(pending, octets)
+      : octets;
+
+    const paths = extractOsc7Paths(combined);
+    const nextPending = extractOsc7Pending(combined);
+
+    return { paths, pending: nextPending };
+  }
+
+  function concatOctets(left, right) {
+    const combined = new Uint8Array(left.length + right.length);
+    combined.set(left, 0);
+    combined.set(right, left.length);
+    return combined;
+  }
+
+  function extractOsc7Pending(octets) {
+    const prefix = [0x1b, 0x5d, 0x37, 0x3b];
+    let lastPrefixIndex = -1;
+
+    for (let i = octets.length - prefix.length; i >= 0; i--) {
+      if (
+        octets[i] === prefix[0] &&
+        octets[i + 1] === prefix[1] &&
+        octets[i + 2] === prefix[2] &&
+        octets[i + 3] === prefix[3]
+      ) {
+        lastPrefixIndex = i;
+        break;
+      }
+    }
+
+    if (lastPrefixIndex === -1) {
+      return octets.slice(Math.max(0, octets.length - (prefix.length - 1)));
+    }
+
+    const terminatorIndex = findOsc7Terminator(octets, lastPrefixIndex + prefix.length);
+    if (terminatorIndex === -1) {
+      return octets.slice(lastPrefixIndex);
+    }
+
+    return octets.slice(Math.max(0, octets.length - (prefix.length - 1)));
+  }
+
+  function findOsc7Terminator(octets, startIndex) {
+    for (let i = startIndex; i < octets.length; i++) {
+      if (octets[i] === 0x07) {
+        return i;
+      }
+      if (octets[i] === 0x1b && i + 1 < octets.length && octets[i + 1] === 0x5c) {
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
+  function extractOsc7Paths(octets) {
+    const paths = [];
+    const prefix = [0x1b, 0x5d, 0x37, 0x3b];
+    let i = 0;
+    while (i <= octets.length - prefix.length) {
+      if (
+        octets[i] === prefix[0] &&
+        octets[i + 1] === prefix[1] &&
+        octets[i + 2] === prefix[2] &&
+        octets[i + 3] === prefix[3]
+      ) {
+        i += prefix.length;
+        const start = i;
+        let end = -1;
+        while (i < octets.length) {
+          if (octets[i] === 0x07) {
+            end = i;
+            i += 1;
+            break;
+          }
+          if (octets[i] === 0x1b && i + 1 < octets.length && octets[i + 1] === 0x5c) {
+            end = i;
+            i += 2;
+            break;
+          }
+          i += 1;
+        }
+
+        if (end > start) {
+          const content = octetsToString(octets.slice(start, end));
+          const path = parseOsc7Path(content);
+          if (path) {
+            paths.push(path);
+          }
+        }
+        continue;
+      }
+      i += 1;
+    }
+
+    return paths;
+  }
+
+  function octetsToString(octets) {
+    let text = '';
+    for (let i = 0; i < octets.length; i++) {
+      text += String.fromCharCode(octets[i]);
+    }
+    return text;
+  }
+
+  function parseOsc7Path(content) {
+    if (!content) {
+      return '';
+    }
+
+    let value = content;
+    if (value.startsWith('file://')) {
+      value = value.slice('file://'.length);
+      const slashIndex = value.indexOf('/');
+      if (slashIndex === -1) {
+        return '/';
+      }
+      value = value.slice(slashIndex);
+    } else if (value.startsWith('file:')) {
+      value = value.slice('file:'.length);
+    }
+
+    try {
+      value = decodeURIComponent(value);
+    } catch (error) {
+      return value;
+    }
+
+    return value;
   }
 
   // 处理终端数据
@@ -556,6 +719,7 @@
         for (let i = 0; i < decodedData.length; i++) {
           octets[i] = decodedData.charCodeAt(i);
         }
+        maybeUpdateCwdFromOutput(sessionId, octets, false);
         terminal.write(octets);
       }
     });

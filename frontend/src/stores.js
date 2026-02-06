@@ -145,3 +145,77 @@ export function setRightPanelWidth(width) {
 export function setFileManagerHeight(height) {
   uiStore.update($ui => ({ ...$ui, fileManagerHeight: height }));
 }
+
+// ==================== File Manager Config Store ====================
+// 文件管理器配置存储（通过后端持久化到 ~/.ahasshtools/config.json）
+
+const FILEMANAGER_CONFIG_KEY = 'ssh-tools-filemanager-config-temp';
+
+// 文件管理器配置（临时缓存，实际值从后端加载）
+const defaultFileManagerConfig = {
+  directoryTracking: false,
+  historyEnabled:    true,
+  historyLimit:     5,
+  history:          [],
+};
+
+export const fileManagerConfigStore = writable({
+  ...defaultFileManagerConfig,
+});
+
+// 辅助函数：获取当前会话的配置
+export async function loadFileManagerConfig(connectionId) {
+  if (typeof window === 'undefined' || !window.wailsBindings) return null;
+
+  try {
+    const { GetFileManagerSettings } = window.wailsBindings;
+    if (typeof GetFileManagerSettings !== 'function') return null;
+
+    const config = await GetFileManagerSettings(connectionId);
+    // Map snake_case backend response to camelCase frontend state
+    const mappedConfig = {
+      directoryTracking: config?.directory_tracking ?? false,
+      historyEnabled: config?.history_enabled ?? true,
+      historyLimit: config?.history_limit ?? 5,
+      history: config?.history ?? [],
+    };
+    fileManagerConfigStore.set(mappedConfig);
+    return mappedConfig;
+  } catch (error) {
+    console.error('Failed to load file manager config:', error);
+    return null;
+  }
+}
+
+// 辅助函数：更新文件管理器配置
+export async function updateFileManagerConfig(connectionId, settings) {
+  if (typeof window === 'undefined' || !window.wailsBindings) return;
+  
+  try {
+    const { UpdateFileManagerSettings } = window.wailsBindings;
+    if (typeof UpdateFileManagerSettings !== 'function') return;
+    
+    await UpdateFileManagerSettings(connectionId, settings);
+    
+    fileManagerConfigStore.update($config => ({ ...$config, ...settings }));
+  } catch (error) {
+    console.error('Failed to update file manager config:', error);
+  }
+}
+
+// 辅助函数：获取当前活动的连接 ID
+export function getActiveConnectionId() {
+  if (typeof window === 'undefined') return null;
+  
+  // 从 connectionsStore 获取当前会话的连接信息
+  const activeSessionId = window.activeSessionIdStoreValue;
+  if (!activeSessionId) return null;
+  
+  const connectionsStore = window.connectionsStoreValue;
+  if (!connectionsStore || !connectionsStore.has) return null;
+  
+  const session = connectionsStore.get(activeSessionId);
+  if (!session) return null;
+  
+  return session.connection?.id || null;
+}

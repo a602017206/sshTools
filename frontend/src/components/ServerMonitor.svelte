@@ -224,7 +224,6 @@
     try {
       const data = await GetMonitoringData(sessionId);
       const normalizedData = normalizeMonitoringData(data);
-      console.log('data:', data);
       if (normalizedData) {
         const nextCpuData = [...(sessionCpuData.get(sessionId) || []), normalizedData.stats.cpu].slice(-60);
         const nextMemoryData = [...(sessionMemoryData.get(sessionId) || []), normalizedData.stats.memory].slice(-60);

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -410,6 +411,15 @@ func (sc *SFTPClient) GetCurrentPath() string {
 	return sc.currentPath
 }
 
+// SetCurrentPath updates the current working directory
+// This is used to sync the path from the terminal session to the SFTP client
+func (sc *SFTPClient) SetCurrentPath(path string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	sc.currentPath = path
+}
+
 // normalizePath normalizes a file path to Unix-style
 func normalizePath(p string) string {
 	// Convert backslashes to forward slashes
@@ -432,4 +442,104 @@ func min(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+// SearchResult represents a directory search result
+type SearchResult struct {
+	Path  string `json:"path"`
+	Name  string `json:"name"`
+	Depth int    `json:"depth"`
+}
+
+// SearchDirectories searches for directories matching the query recursively
+// searchPath: starting directory for search
+// query: search term (case-insensitive)
+// maxDepth: maximum recursion depth (0 = unlimited, but capped at 5 for safety)
+// maxResults: maximum number of results to return (0 = unlimited, but capped at 100)
+func (sc *SFTPClient) SearchDirectories(searchPath, query string, maxDepth, maxResults int) ([]SearchResult, error) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	searchPath = normalizePath(searchPath)
+	query = strings.ToLower(query)
+
+	// Safety limits
+	if maxDepth <= 0 || maxDepth > 5 {
+		maxDepth = 5
+	}
+	if maxResults <= 0 || maxResults > 100 {
+		maxResults = 100
+	}
+
+	var results []SearchResult
+	searchQueue := []struct {
+		path  string
+		depth int
+	}{{searchPath, 0}}
+
+	searched := make(map[string]bool)
+
+	for len(searchQueue) > 0 && len(results) < maxResults {
+		// Pop from queue
+		current := searchQueue[0]
+		searchQueue = searchQueue[1:]
+
+		// Skip if already searched
+		if searched[current.path] {
+			continue
+		}
+		searched[current.path] = true
+
+		// Skip if exceeds max depth
+		if current.depth > maxDepth {
+			continue
+		}
+
+		// Read directory contents
+		files, err := sc.client.ReadDir(current.path)
+		if err != nil {
+			// Permission denied or other errors, skip this directory
+			continue
+		}
+
+		for _, file := range files {
+			if !file.IsDir() {
+				continue
+			}
+
+			fileName := file.Name()
+			filePath := path.Join(current.path, fileName)
+
+			// Check for circular references (symlinks)
+			if file.Mode()&os.ModeSymlink != 0 {
+				target, err := sc.client.ReadLink(filePath)
+				if err == nil && searched[target] {
+					continue
+				}
+			}
+
+			// Check if name matches query
+			if strings.Contains(strings.ToLower(fileName), query) {
+				results = append(results, SearchResult{
+					Path:  filePath,
+					Name:  fileName,
+					Depth: current.depth + 1,
+				})
+
+				if len(results) >= maxResults {
+					break
+				}
+			}
+
+			// Add subdirectory to queue for further searching
+			if current.depth < maxDepth {
+				searchQueue = append(searchQueue, struct {
+					path  string
+					depth int
+				}{filePath, current.depth + 1})
+			}
+		}
+	}
+
+	return results, nil
 }

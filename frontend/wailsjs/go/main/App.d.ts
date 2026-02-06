@@ -60,6 +60,8 @@ export function GetCurrentTimestampMs():Promise<number>;
 
 export function GetFileInfo(arg1:string,arg2:string):Promise<ssh.FileInfo>;
 
+export function GetFileManagerSettings(arg1:string):Promise<config.FileManagerSettings>;
+
 export function GetMonitoringData(arg1:string):Promise<ssh.MonitoringData>;
 
 export function GetPassword(arg1:string):Promise<string>;
@@ -89,6 +91,8 @@ export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
 export function SaveBinaryFile(arg1:string,arg2:string):Promise<string>;
 
 export function SavePassword(arg1:string,arg2:string):Promise<void>;
+
+export function SearchDirectories(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<Array<ssh.SearchResult>>;
 
 export function SelectDownloadDirectory():Promise<string>;
 
@@ -120,9 +124,11 @@ export function TimestampToDateTimeMs(arg1:number,arg2:string):Promise<string>;
 
 export function UpdateConnection(arg1:config.ConnectionConfig):Promise<void>;
 
-export function UpdateSettings(arg1:Record<string, any>):Promise<void>;
+export function UpdateCurrentPath(arg1:string,arg2:string):Promise<void>;
 
-export function UploadFile(arg1:string,arg2:string,arg3:string):Promise<string>;
+export function UpdateFileManagerSettings(arg1:string,arg2:Record<string, any>):Promise<void>;
+
+export function UpdateSettings(arg1:Record<string, any>):Promise<void>;
 
 export function UploadFiles(arg1:string,arg2:Array<string>,arg3:string):Promise<Array<string>>;
 
