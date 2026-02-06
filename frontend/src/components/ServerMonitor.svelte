@@ -264,6 +264,18 @@
     fetchMonitoringData();
   }
 
+  // Clear monitoring data when no active session or cannot use monitor
+  $: if (!$activeSessionIdStore || !canUseMonitor) {
+    cpuData = [];
+    memoryData = [];
+    cpuPerCore = [];
+    currentStats = { ...defaultStats };
+    systemInfo = { ...defaultSystemInfo };
+    diskInfo = { ...defaultDiskInfo };
+    loadInfo = { ...defaultLoadInfo };
+    memoryDetail = { ...defaultMemoryDetail };
+  }
+
   onMount(() => {
     // 开始定时更新数据
     dataInterval = setInterval(fetchMonitoringData, 2000);

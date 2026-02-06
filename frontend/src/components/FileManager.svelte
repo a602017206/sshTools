@@ -692,6 +692,29 @@
     stopCWDTracking();
   }
 
+  // Clear all file manager state when no active session or cannot use file manager
+  $: if (!$activeSessionIdStore || !canUseFileManager) {
+    files = [];
+    error = null;
+    selectedFiles = new Set();
+    expandedDirs = new Set();
+    currentPath = '/';
+    sessionPaths = new Map();
+    sessionDirectoryTracking = new Map();
+    // Reset file manager config history but keep settings
+    fileManagerConfig = {
+      directoryTracking: false,
+      historyEnabled: true,
+      historyLimit: 5,
+      history: [],
+    };
+    // Close any open UI elements
+    showSettingsDialog = false;
+    showHistoryDropdown = false;
+    isDirSearchOpen = false;
+    contextMenu = { open: false, x: 0, y: 0, file: null };
+  }
+
   // Restart tracking when tracking settings change
   $: if ($activeSessionIdStore && canUseFileManager && fileManagerConfig.directoryTracking && currentTrackingEnabled) {
     startCWDTracking();

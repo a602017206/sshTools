@@ -99,7 +99,7 @@
       theme: currentTheme === 'light' ? lightTheme : darkTheme,
       allowProposedApi: true,
       scrollback: 1000,
-      convertEol: false, // 禁用自动换行转换，让后端控制换行
+      convertEol: true, // 启用自动换行转换，确保 \n 转换为 \r\n，光标回到行首
       rightClickSelectsWord: true, // 右键点击选择单词
       macOptionClickForcesSelection: true, // macOS Option+Click 强制选择
     });
