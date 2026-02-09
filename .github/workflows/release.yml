@@ -55,7 +55,7 @@ jobs:
         shell: bash
         run: |
           VERSION="-ldflags=-X main.Version=${{ github.ref_name }}"
-          wails build -platform ${{ matrix.os }}/${{ matrix.arch }} -clean $VERSION
+          wails build -platform ${{ matrix.os }}/${{ matrix.arch }} -clean "$VERSION"
 
       - name: Package macOS
         if: matrix.os == 'darwin'
