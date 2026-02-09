@@ -7,11 +7,21 @@
   export let themeStore = { subscribe: () => () => {} };
 
   let theme = 'light';
+  let version = 'loading...';
+
   const unsubscribe = themeStore.subscribe(t => {
     theme = t;
   });
 
-  onMount(() => {
+  onMount(async () => {
+    try {
+      const { GetVersion } = await import('../../wailsjs/go/main/App.js');
+      version = await GetVersion();
+    } catch (error) {
+      console.error('Failed to get version:', error);
+      version = 'unknown';
+    }
+
     return () => {
       unsubscribe();
     };
@@ -39,7 +49,7 @@
     <div class="text-center space-y-1">
       <h3 class="text-xl font-bold {theme === 'dark' ? 'text-white' : 'text-gray-900'}">AHaSSHTools</h3>
       <p class="text-sm {theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}">啊哈 SSH 连接工具</p>
-      <p class="text-xs {theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} mt-2">版本 1.0.0</p>
+      <p class="text-xs {theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} mt-2">版本 {version}</p>
     </div>
 
     <!-- Description -->

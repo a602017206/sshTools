@@ -121,6 +121,38 @@ export namespace service {
 	        this.error = source["error"];
 	    }
 	}
+	export class URLDecodeResult {
+	    decoded: string;
+	    params?: Record<string, string>;
+	    component?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new URLDecodeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.decoded = source["decoded"];
+	        this.params = source["params"];
+	        this.component = source["component"];
+	    }
+	}
+	export class URLEncodeResult {
+	    encoded: string;
+	    fullUrl?: string;
+	    component?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new URLEncodeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.encoded = source["encoded"];
+	        this.fullUrl = source["fullUrl"];
+	        this.component = source["component"];
+	    }
+	}
 
 }
 

@@ -1,24 +1,32 @@
 #!/bin/bash
 
-# Build script for macOS with proper signing
-# This script builds the app and applies ad-hoc signing
-
 set -e
 
 echo "=================================="
 echo "Building AHaSSHTools for macOS"
 echo "=================================="
 
-# Clean previous build
+GIT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+if [ -z "$GIT_VERSION" ]; then
+    echo "No git tag found, using default version"
+    VERSION=""
+else
+    VERSION="-ldflags=-X main.Version=$GIT_VERSION"
+    echo "Using version from git tag: $GIT_VERSION"
+fi
+
 echo "Cleaning previous build..."
 rm -rf build/bin/AHaSSHTools.app
 
-# Build the app
-echo "Building application..."
-wails build -clean
+echo "$VERSION"
 
-# Post-build processing
+echo "Building application..."
+
+wails build -clean "$VERSION"
+
 APP_PATH="./build/bin/AHaSSHTools.app"
+
+sleep 5
 
 if [ ! -d "$APP_PATH" ]; then
     echo "❌ Error: Build failed, app not found at $APP_PATH"
@@ -28,17 +36,14 @@ fi
 echo ""
 echo "Post-processing application..."
 
-# Remove quarantine attributes
 echo "→ Removing quarantine attributes..."
 xattr -cr "$APP_PATH"
 
-# Ad-hoc sign the app
 echo "→ Applying ad-hoc signature..."
 codesign --force --deep --sign - "$APP_PATH" 2>/dev/null || {
     echo "⚠️  Warning: codesign failed, but app should still work"
 }
 
-# Verify signature
 echo "→ Verifying signature..."
 codesign -dvv "$APP_PATH" 2>&1 | head -5
 
@@ -51,7 +56,7 @@ echo "=================================="
 echo "Distribution Instructions"
 echo "=================================="
 echo ""
-echo "1. Compress the app:"
+echo "1. Compress app:"
 echo "   cd build/bin && zip -r AHaSSHTools.zip AHaSSHTools.app"
 echo ""
 echo "2. Tell users to extract and run:"

@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -540,4 +541,150 @@ func (s *DevToolsService) GenerateUUIDv4() (string, error) {
 		return "", fmt.Errorf("生成UUID失败: %v", err)
 	}
 	return id.String(), nil
+}
+
+// ============================================================================
+// URL 编解码
+// ============================================================================
+
+// URLEncodeResult URL编码结果
+type URLEncodeResult struct {
+	Encoded   string `json:"encoded"`
+	FullURL   string `json:"fullUrl,omitempty"`
+	Component string `json:"component,omitempty"`
+}
+
+// URLDecodeResult URL解码结果
+type URLDecodeResult struct {
+	Decoded   string            `json:"decoded"`
+	Params    map[string]string `json:"params,omitempty"`
+	Component string            `json:"component,omitempty"`
+}
+
+// URLEncode 对字符串进行 URL 编码
+// mode: "path" - 编码路径部分, "query" - 编码查询参数值, "fragment" - 编码片段, "full" - 编码整个URL组件
+func (s *DevToolsService) URLEncode(input, mode string) (URLEncodeResult, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return URLEncodeResult{}, fmt.Errorf("输入不能为空")
+	}
+
+	result := URLEncodeResult{}
+
+	switch mode {
+	case "query":
+		// 编码查询参数值（空格转为 +）
+		result.Encoded = url.QueryEscape(input)
+		result.Component = "query"
+	case "path":
+		// 编码路径部分
+		result.Encoded = url.PathEscape(input)
+		result.Component = "path"
+	case "fragment":
+		// 编码URL片段
+		result.Encoded = url.QueryEscape(input)
+		result.Component = "fragment"
+	case "full":
+		// 尝试解析为完整URL，然后重新编码
+		u, err := url.Parse(input)
+		if err != nil {
+			// 不是完整URL，作为普通字符串编码
+			result.Encoded = url.QueryEscape(input)
+		} else {
+			result.FullURL = u.String()
+			result.Encoded = u.String()
+		}
+		result.Component = "full"
+	default:
+		// 默认使用 QueryEscape
+		result.Encoded = url.QueryEscape(input)
+		result.Component = "query"
+	}
+
+	return result, nil
+}
+
+// URLDecode 对 URL 编码的字符串进行解码
+func (s *DevToolsService) URLDecode(input, mode string) (URLDecodeResult, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return URLDecodeResult{}, fmt.Errorf("输入不能为空")
+	}
+
+	result := URLDecodeResult{}
+
+	var decoded string
+	var err error
+
+	switch mode {
+	case "query":
+		// 解码查询参数值（+ 转为空格）
+		decoded, err = url.QueryUnescape(input)
+		result.Component = "query"
+	case "path":
+		// 解码路径部分
+		decoded, err = url.PathUnescape(input)
+		result.Component = "path"
+	case "fragment":
+		decoded, err = url.QueryUnescape(input)
+		result.Component = "fragment"
+	case "full":
+		// 尝试解析完整URL
+		u, parseErr := url.Parse(input)
+		if parseErr == nil {
+			// 解析查询参数
+			result.Params = make(map[string]string)
+			for key, values := range u.Query() {
+				if len(values) > 0 {
+					result.Params[key] = values[0]
+				}
+			}
+		}
+		decoded, err = url.QueryUnescape(input)
+		result.Component = "full"
+	default:
+		// 默认尝试 QueryUnescape
+		decoded, err = url.QueryUnescape(input)
+		result.Component = "query"
+	}
+
+	if err != nil {
+		return URLDecodeResult{}, fmt.Errorf("URL解码失败: %v", err)
+	}
+
+	result.Decoded = decoded
+	return result, nil
+}
+
+// ParseURL 解析 URL 返回各个组成部分
+func (s *DevToolsService) ParseURL(input string) (map[string]interface{}, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil, fmt.Errorf("输入不能为空")
+	}
+
+	u, err := url.Parse(input)
+	if err != nil {
+		return nil, fmt.Errorf("URL解析失败: %v", err)
+	}
+
+	result := map[string]interface{}{
+		"scheme":   u.Scheme,
+		"host":     u.Host,
+		"hostname": u.Hostname(),
+		"port":     u.Port(),
+		"path":     u.Path,
+		"rawPath":  u.RawPath,
+		"rawQuery": u.RawQuery,
+		"fragment": u.Fragment,
+	}
+
+	// 解析查询参数
+	queryParams := make(map[string][]string)
+	for key, values := range u.Query() {
+		queryParams[key] = values
+	}
+	result["queryParams"] = queryParams
+
+	return result, nil
 }

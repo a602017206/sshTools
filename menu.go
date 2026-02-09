@@ -1,8 +1,12 @@
 package main
 
-import "github.com/wailsapp/wails/v2/pkg/menu"
+import (
+	"context"
 
-func buildAppMenu(isDarwin bool, showAbout func()) *menu.Menu {
+	"github.com/wailsapp/wails/v2/pkg/menu"
+)
+
+func buildAppMenu(isDarwin bool, ctx context.Context, showAbout func(), quitApp func()) *menu.Menu {
 	appMenu := menu.NewMenu()
 
 	if isDarwin {
@@ -15,9 +19,15 @@ func buildAppMenu(isDarwin bool, showAbout func()) *menu.Menu {
 		})
 
 		appSubmenu.AddSeparator()
-		appSubmenu.AddText("隐藏 AHaSSHTools", nil, nil)
+		appSubmenu.AddText("隐藏 AHaSSHTools", nil, func(cd *menu.CallbackData) {
+		})
+
 		appSubmenu.AddSeparator()
-		appSubmenu.AddText("退出 AHaSSHTools", nil, nil)
+		appSubmenu.AddText("退出 AHaSSHTools", nil, func(cd *menu.CallbackData) {
+			if quitApp != nil {
+				quitApp()
+			}
+		})
 	}
 
 	appMenu.Append(menu.EditMenu())

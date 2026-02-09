@@ -54,7 +54,8 @@ jobs:
       - name: Build ${{ matrix.os }} ${{ matrix.arch }}
         shell: bash
         run: |
-          wails build -platform ${{ matrix.os }}/${{ matrix.arch }} -clean
+          VERSION="-ldflags=-X main.Version=${{ github.ref_name }}"
+          wails build -platform ${{ matrix.os }}/${{ matrix.arch }} -clean $VERSION
 
       - name: Package macOS
         if: matrix.os == 'darwin'
@@ -118,8 +119,10 @@ jobs:
                   - 2026年02月06日16:42:50 目录跟随功能，历史打开文件夹记录，支持在设置中开启/关闭
                   - 2026年02月06日16:47:33 文件夹搜索功能，目前使用为黄色文件夹按钮
               - 修复问题：
+                  - 2026年02月09日19:46:16 修复了退出按钮的功能
               - 优化体验：
                   - 2026年02月06日16:47:07 目录跳转按钮紫色放大镜多余，去除
+                  - 2026年02月09日19:45:40 关于里面的版本号和tag版本号一致
             
             ## AHaSSHTools ${{ github.ref_name }}
 

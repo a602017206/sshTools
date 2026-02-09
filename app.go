@@ -16,6 +16,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+var Version = "dev"
+
 var cwdRegex = regexp.MustCompile(`\033\]0;CWD:([^\007]+)\007`)
 
 // App struct
@@ -68,6 +70,10 @@ func (a *App) startup(ctx context.Context) {
 // Greet returns a greeting for the given name
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
+}
+
+func (a *App) GetVersion() string {
+	return Version
 }
 
 // GetConnections returns all saved connections
@@ -536,6 +542,21 @@ func (a *App) GetCurrentTimestampMs() int64 {
 // GenerateUUIDv4 生成 UUID v4
 func (a *App) GenerateUUIDv4() (string, error) {
 	return a.devToolsService.GenerateUUIDv4()
+}
+
+// URLEncode 对字符串进行 URL 编码
+func (a *App) URLEncode(input, mode string) (service.URLEncodeResult, error) {
+	return a.devToolsService.URLEncode(input, mode)
+}
+
+// URLDecode 对 URL 编码的字符串进行解码
+func (a *App) URLDecode(input, mode string) (service.URLDecodeResult, error) {
+	return a.devToolsService.URLDecode(input, mode)
+}
+
+// ParseURL 解析 URL 返回各个组成部分
+func (a *App) ParseURL(input string) (map[string]interface{}, error) {
+	return a.devToolsService.ParseURL(input)
 }
 
 // ShowAboutDialog 显示关于对话框

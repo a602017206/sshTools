@@ -134,6 +134,10 @@ export function GetTransferStatus(arg1) {
   return window['go']['main']['App']['GetTransferStatus'](arg1);
 }
 
+export function GetVersion() {
+  return window['go']['main']['App']['GetVersion']();
+}
+
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
@@ -152,6 +156,10 @@ export function ListSSHSessions() {
 
 export function MinifyJSON(arg1) {
   return window['go']['main']['App']['MinifyJSON'](arg1);
+}
+
+export function ParseURL(arg1) {
+  return window['go']['main']['App']['ParseURL'](arg1);
 }
 
 export function RemoveConnection(arg1) {
@@ -236,6 +244,14 @@ export function TimestampToDateTime(arg1, arg2) {
 
 export function TimestampToDateTimeMs(arg1, arg2) {
   return window['go']['main']['App']['TimestampToDateTimeMs'](arg1, arg2);
+}
+
+export function URLDecode(arg1, arg2) {
+  return window['go']['main']['App']['URLDecode'](arg1, arg2);
+}
+
+export function URLEncode(arg1, arg2) {
+  return window['go']['main']['App']['URLEncode'](arg1, arg2);
 }
 
 export function UpdateConnection(arg1) {

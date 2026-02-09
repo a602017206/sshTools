@@ -5,6 +5,7 @@
   import HashTool from './HashTool.svelte';
   import TimestampTool from './TimestampTool.svelte';
   import UuidTool from './UuidTool.svelte';
+  import UrlTool from './UrlTool.svelte';
 
   export let isOpen = false;
   export let themeStore;
@@ -15,6 +16,7 @@
   const tools = [
     { id: 'json', name: 'JSON 格式化', icon: '📄', color: 'text-purple-500' },
     { id: 'base64', name: 'Base64 编解码', icon: '🔐', color: 'text-blue-500' },
+    { id: 'url', name: 'URL 编解码', icon: '🔗', color: 'text-orange-500' },
     { id: 'hash', name: '加密解密', icon: '#️⃣', color: 'text-green-500' },
     { id: 'timestamp', name: '时间戳转换', icon: '🕐', color: 'text-amber-500' },
     { id: 'uuid', name: 'UUID 生成', icon: '🆔', color: 'text-indigo-500' },
@@ -126,6 +128,8 @@
                   <svelte:component this={JsonFormatter} {themeStore} />
                 {:else if activeToolId === 'base64'}
                   <svelte:component this={Base64Tool} {themeStore} />
+                {:else if activeToolId === 'url'}
+                  <svelte:component this={UrlTool} {themeStore} />
                 {:else if activeToolId === 'hash'}
                   <svelte:component this={HashTool} {themeStore} />
                 {:else if activeToolId === 'timestamp'}

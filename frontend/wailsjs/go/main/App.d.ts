@@ -70,6 +70,8 @@ export function GetSettings():Promise<config.AppSettings>;
 
 export function GetTransferStatus(arg1:string):Promise<ssh.TransferProgress>;
 
+export function GetVersion():Promise<string>;
+
 export function Greet(arg1:string):Promise<string>;
 
 export function HasPassword(arg1:string):Promise<boolean>;
@@ -79,6 +81,8 @@ export function ListFiles(arg1:string,arg2:string):Promise<Array<ssh.FileInfo>>;
 export function ListSSHSessions():Promise<Array<string>>;
 
 export function MinifyJSON(arg1:string):Promise<string>;
+
+export function ParseURL(arg1:string):Promise<Record<string, any>>;
 
 export function RemoveConnection(arg1:string):Promise<void>;
 
@@ -121,6 +125,10 @@ export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,a
 export function TimestampToDateTime(arg1:number,arg2:string):Promise<string>;
 
 export function TimestampToDateTimeMs(arg1:number,arg2:string):Promise<string>;
+
+export function URLDecode(arg1:string,arg2:string):Promise<service.URLDecodeResult>;
+
+export function URLEncode(arg1:string,arg2:string):Promise<service.URLEncodeResult>;
 
 export function UpdateConnection(arg1:config.ConnectionConfig):Promise<void>;
 
