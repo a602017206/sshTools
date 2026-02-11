@@ -2,6 +2,7 @@
   import { assetsStore, groupedAssetsStore } from '../stores.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import Dialog from './ui/Dialog.svelte';
+  import InputDialog from './ui/InputDialog.svelte';
 
   export let onConnect;
   export let onAddClick;
@@ -16,8 +17,12 @@
   let showImportConfirm = false;
   let pendingImportPath = '';
   let showExportSelect = false;
-  let exportEncrypt = true;
+  let exportMode = 'machine';
   let selectedExportIds = new Set();
+  let showPassphraseInput = false;
+  let showPassphraseConfirm = false;
+  let passphraseValue = '';
+  let showImportPassphraseInput = false;
 
   // Close dropdown when clicking outside
   function handleClickOutside(event) {
@@ -25,7 +30,7 @@
     event.stopPropagation();
   }
 
-  function openExportSelection(encryptPasswords, event) {
+  function openExportSelection(mode, event) {
     event.stopPropagation();
     showExportMenu = false;
 
@@ -34,44 +39,96 @@
       return;
     }
 
-    exportEncrypt = encryptPasswords;
+    exportMode = mode;
     selectedExportIds = new Set($assetsStore.map(asset => asset.id));
     showExportSelect = true;
   }
 
-  async function handleExportSelected() {
+  async function exportSelected(encryptPasswords, passphrase = '') {
+    const { ExportConnectionsByIDs, ExportConnectionsByIDsWithPassphrase, SaveBinaryFile } = window.wailsBindings;
+
+    if (encryptPasswords === 'passphrase') {
+      if (typeof ExportConnectionsByIDsWithPassphrase !== 'function') {
+        throw new Error('导出功能不可用，请升级应用');
+      }
+      return ExportConnectionsByIDsWithPassphrase(Array.from(selectedExportIds), passphrase)
+        .then(jsonData => SaveBinaryFile('ssh-connections.json', btoa(unescape(encodeURIComponent(jsonData)))));
+    }
+
+    if (typeof ExportConnectionsByIDs !== 'function') {
+      throw new Error('导出功能不可用，请升级应用');
+    }
+
+    const jsonData = await ExportConnectionsByIDs(Array.from(selectedExportIds), encryptPasswords);
+    const base64Data = btoa(unescape(encodeURIComponent(jsonData)));
+    return SaveBinaryFile('ssh-connections.json', base64Data);
+  }
+
+  function handleExportSelected() {
     if (!window.wailsBindings) {
       alert('Wails 绑定未加载，请确保在 wails dev 模式下运行');
       return;
     }
 
-    const selectedIds = Array.from(selectedExportIds);
-    if (selectedIds.length === 0) {
+    if (selectedExportIds.size === 0) {
       alert('请至少选择一个连接');
       return;
     }
 
-    const { ExportConnectionsByIDs, SaveBinaryFile } = window.wailsBindings;
-
-    try {
-      if (typeof ExportConnectionsByIDs !== 'function') {
-        throw new Error('导出功能不可用，请升级应用');
-      }
-
-      const jsonData = await ExportConnectionsByIDs(selectedIds, exportEncrypt);
-
-      // Encode JSON as base64 for SaveBinaryFile
-      const base64Data = btoa(unescape(encodeURIComponent(jsonData)));
-      await SaveBinaryFile('ssh-connections.json', base64Data);
-      showExportSelect = false;
-    } catch (error) {
-      console.error('导出失败:', error);
-      alert('导出失败: ' + error.message);
+    if (exportMode === 'passphrase') {
+      showPassphraseInput = true;
+      return;
     }
+
+    const encryptPasswords = exportMode === 'machine';
+    exportSelected(encryptPasswords)
+      .then(() => {
+        showExportSelect = false;
+      })
+      .catch(error => {
+        console.error('导出失败:', error);
+        alert('导出失败: ' + error.message);
+      });
   }
 
   function cancelExportSelection() {
     showExportSelect = false;
+  }
+
+  function handlePassphraseInputConfirm(value) {
+    passphraseValue = value;
+    showPassphraseInput = false;
+    showPassphraseConfirm = true;
+  }
+
+  function handlePassphraseInputCancel() {
+    passphraseValue = '';
+    showPassphraseInput = false;
+  }
+
+  function handlePassphraseConfirmConfirm(value) {
+    showPassphraseConfirm = false;
+    if (value !== passphraseValue) {
+      alert('两次输入的密码不一致');
+      passphraseValue = '';
+      showPassphraseInput = true;
+      return;
+    }
+
+    exportSelected('passphrase', passphraseValue)
+      .then(() => {
+        showExportSelect = false;
+        passphraseValue = '';
+      })
+      .catch(error => {
+        console.error('导出失败:', error);
+        alert('导出失败: ' + error.message);
+      });
+  }
+
+  function handlePassphraseConfirmCancel() {
+    passphraseValue = '';
+    showPassphraseConfirm = false;
   }
 
   function toggleAssetSelection(id) {
@@ -120,7 +177,6 @@
     }
 
     try {
-      // Use backend method to select file
       const filePath = await window.wailsBindings.SelectImportFile();
 
       if (!filePath) return;
@@ -131,6 +187,87 @@
       console.error('导入失败:', error);
       alert('导入失败: ' + error.message);
     }
+  }
+
+  async function confirmImportConnections() {
+    if (!pendingImportPath) {
+      showImportConfirm = false;
+      return;
+    }
+
+    try {
+      const { ImportConnectionsFromFileWithPassphrase, ImportConnectionsFromFile } = window.wailsBindings;
+      let count = 0;
+
+      if (typeof ImportConnectionsFromFileWithPassphrase === 'function') {
+        try {
+          count = await ImportConnectionsFromFileWithPassphrase(pendingImportPath, '');
+        } catch (error) {
+          const message = error?.message || String(error);
+          if (message.includes('passphrase required') || message.includes('invalid passphrase')) {
+            showImportConfirm = false;
+            showImportPassphraseInput = true;
+            return;
+          }
+          throw error;
+        }
+      } else if (typeof ImportConnectionsFromFile === 'function') {
+        count = await ImportConnectionsFromFile(pendingImportPath);
+      } else {
+        throw new Error('导入功能不可用');
+      }
+
+      alert(`成功导入 ${count} 个连接`);
+
+      window.dispatchEvent(new CustomEvent('assets-changed'));
+    } catch (error) {
+      console.error('导入失败:', error);
+      alert('导入失败: ' + (error?.message || error));
+    } finally {
+      showImportConfirm = false;
+      pendingImportPath = '';
+    }
+  }
+
+  async function handleImportPassphraseConfirm(value) {
+    if (!pendingImportPath) {
+      showImportPassphraseInput = false;
+      return;
+    }
+
+    try {
+      const { ImportConnectionsFromFileWithPassphrase } = window.wailsBindings;
+      if (typeof ImportConnectionsFromFileWithPassphrase !== 'function') {
+        throw new Error('导入功能不可用');
+      }
+
+      const count = await ImportConnectionsFromFileWithPassphrase(pendingImportPath, value);
+      alert(`成功导入 ${count} 个连接`);
+      window.dispatchEvent(new CustomEvent('assets-changed'));
+      showImportPassphraseInput = false;
+      pendingImportPath = '';
+    } catch (error) {
+      const message = error?.message || String(error);
+      if (message.includes('invalid passphrase')) {
+        alert('导入密码不正确，请重试');
+        showImportPassphraseInput = true;
+        return;
+      }
+      console.error('导入失败:', error);
+      alert('导入失败: ' + message);
+      showImportPassphraseInput = false;
+      pendingImportPath = '';
+    }
+  }
+
+  function handleImportPassphraseCancel() {
+    showImportPassphraseInput = false;
+    pendingImportPath = '';
+  }
+
+  function cancelImportConnections() {
+    showImportConfirm = false;
+    pendingImportPath = '';
   }
 
   $: filteredAssets = $assetsStore.filter(asset => {
@@ -194,32 +331,6 @@
     pendingDeleteAsset = null;
   }
 
-  async function confirmImportConnections() {
-    if (!pendingImportPath) {
-      showImportConfirm = false;
-      return;
-    }
-
-    try {
-      const count = await window.wailsBindings.ImportConnectionsFromFile(pendingImportPath);
-      alert(`成功导入 ${count} 个连接`);
-
-      // Reload connections - trigger a custom event for App.svelte to reload
-      window.dispatchEvent(new CustomEvent('assets-changed'));
-    } catch (error) {
-      console.error('导入失败:', error);
-      alert('导入失败: ' + (error?.message || error));
-    } finally {
-      showImportConfirm = false;
-      pendingImportPath = '';
-    }
-  }
-
-  function cancelImportConnections() {
-    showImportConfirm = false;
-    pendingImportPath = '';
-  }
-
   function getAssetIcon(type) {
     switch (type) {
       case 'database':
@@ -263,10 +374,10 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
             </svg>
           </button>
-            {#if showExportMenu}
-            <div class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10 py-1 min-w-[140px]">
+          {#if showExportMenu}
+            <div class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10 py-1 min-w-[160px]">
               <button
-                on:click={(e) => openExportSelection(true, e)}
+                on:click={(e) => openExportSelection('machine', e)}
                 class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
               >
                 <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -275,7 +386,16 @@
                 <span>导出(加密)</span>
               </button>
               <button
-                on:click={(e) => openExportSelection(false, e)}
+                on:click={(e) => openExportSelection('passphrase', e)}
+                class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+              >
+                <svg class="w-4 h-4 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span>导出(跨设备加密)</span>
+              </button>
+              <button
+                on:click={(e) => openExportSelection('plain', e)}
                 class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
               >
                 <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -298,7 +418,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- 搜索框 -->
     <div class="relative">
       <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -418,7 +538,7 @@
 <Dialog
   bind:isOpen={showExportSelect}
   onClose={cancelExportSelection}
-  title={exportEncrypt ? '导出连接（加密）' : '导出连接（明文）'}
+  title={exportMode === 'plain' ? '导出连接（明文）' : exportMode === 'passphrase' ? '导出连接（跨设备加密）' : '导出连接（加密）'}
   size="md"
 >
   <div class="space-y-4">
@@ -487,3 +607,45 @@
     </div>
   </div>
 </Dialog>
+
+<InputDialog
+  bind:isOpen={showPassphraseInput}
+  title="导出加密"
+  message="请输入导出密码（用于跨设备解密）"
+  placeholder="导出密码"
+  inputType="password"
+  allowEmpty={false}
+  trimValue={false}
+  confirmText="下一步"
+  cancelText="取消"
+  onConfirm={handlePassphraseInputConfirm}
+  onCancel={handlePassphraseInputCancel}
+/>
+
+<InputDialog
+  bind:isOpen={showPassphraseConfirm}
+  title="确认导出密码"
+  message="请再次输入导出密码"
+  placeholder="确认导出密码"
+  inputType="password"
+  allowEmpty={false}
+  trimValue={false}
+  confirmText="导出"
+  cancelText="取消"
+  onConfirm={handlePassphraseConfirmConfirm}
+  onCancel={handlePassphraseConfirmCancel}
+/>
+
+<InputDialog
+  bind:isOpen={showImportPassphraseInput}
+  title="导入解密"
+  message="该文件需要导入密码，请输入"
+  placeholder="导入密码"
+  inputType="password"
+  allowEmpty={false}
+  trimValue={false}
+  confirmText="导入"
+  cancelText="取消"
+  onConfirm={handleImportPassphraseConfirm}
+  onCancel={handleImportPassphraseCancel}
+/>

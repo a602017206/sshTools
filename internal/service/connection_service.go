@@ -133,10 +133,10 @@ func (s *ConnectionService) DeletePassword(connectionID string) error {
 	return s.credentialStore.Delete(connectionID)
 }
 
-// StoreEncryptedPassword stores an already-encrypted password without re-encrypting
-func (s *ConnectionService) StoreEncryptedPassword(connectionID, encryptedPassword string) error {
+// StoreEncryptedPassword stores an already-encrypted password
+func (s *ConnectionService) StoreEncryptedPassword(connectionID, encrypted string) error {
 	if s.credentialStore == nil {
 		return fmt.Errorf("credential store not initialized")
 	}
-	return s.credentialStore.StoreEncrypted(connectionID, encryptedPassword)
+	return s.credentialStore.StoreEncrypted(connectionID, encrypted)
 }
