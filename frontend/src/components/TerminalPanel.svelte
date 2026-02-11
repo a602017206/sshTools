@@ -2,6 +2,7 @@
   import { connectionsStore, activeSessionIdStore } from '../stores.js';
   import Terminal from './Terminal.svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
+  import InputDialog from './ui/InputDialog.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
 
@@ -13,6 +14,17 @@
   // Close confirmation dialog state
   let showCloseConfirm = false;
   let sessionToClose = null;
+  let showAuthInput = false;
+  let authInputTitle = '';
+  let authInputMessage = '';
+  let authInputPlaceholder = '';
+  let authInputDefault = '';
+  let authInputType = 'text';
+  let authInputAllowEmpty = false;
+  let authInputTrim = true;
+  let resolveAuthInput = null;
+  let showSavePasswordConfirm = false;
+  let resolveSavePasswordConfirm = null;
 
   // Shell selection dialog state (Windows only)
   let showShellSelect = false;
@@ -50,7 +62,17 @@
 
     if (asset.auth_type === 'key') {
       // 密钥认证：提示输入 passphrase（如果密钥已加密）
-      passphrase = prompt(`连接到 ${asset.name}\n如果 SSH 密钥已加密，请输入 Passphrase（否则留空）：`) || '';
+      passphrase = await requestInput({
+        title: `连接到 ${asset.name}`,
+        message: '如果 SSH 密钥已加密，请输入 Passphrase（否则留空）：',
+        placeholder: 'Passphrase（可留空）',
+        inputType: 'password',
+        allowEmpty: true,
+        trimValue: false
+      });
+      if (passphrase === null) {
+        return;
+      }
       authValue = asset.key_path || '';
     } else {
       // 密码认证：尝试获取保存的密码
@@ -61,9 +83,19 @@
           console.log('Using saved password');
         } else {
           // 没有保存的密码，提示用户输入
-          authValue = prompt(`连接到 ${asset.name}\n请输入密码：`) || '';
+          authValue = await requestInput({
+            title: `连接到 ${asset.name}`,
+            message: '请输入密码：',
+            placeholder: '密码',
+            inputType: 'password',
+            allowEmpty: false,
+            trimValue: false
+          });
+          if (authValue === null) {
+            return;
+          }
           // 询问是否保存密码
-          if (authValue && confirm('是否保存密码以便下次自动连接？') && typeof SavePassword === 'function') {
+          if (authValue && await requestConfirm('保存密码', '是否保存密码以便下次自动连接？', 'warning') && typeof SavePassword === 'function') {
             try {
               await SavePassword(asset.id, authValue);
               console.log('Password saved successfully');
@@ -74,7 +106,17 @@
         }
       } catch (error) {
         console.error('Failed to get saved password:', error);
-        authValue = prompt(`连接到 ${asset.name}\n请输入密码：`) || '';
+        authValue = await requestInput({
+          title: `连接到 ${asset.name}`,
+          message: '请输入密码：',
+          placeholder: '密码',
+          inputType: 'password',
+          allowEmpty: false,
+          trimValue: false
+        });
+        if (authValue === null) {
+          return;
+        }
       }
     }
 
@@ -174,6 +216,66 @@
 
       // 清理失败的会话
       await closeSession(sessionId);
+    }
+  }
+
+  function requestInput({ title, message, placeholder, defaultValue, inputType, allowEmpty, trimValue }) {
+    return new Promise(resolve => {
+      authInputTitle = title || '';
+      authInputMessage = message || '';
+      authInputPlaceholder = placeholder || '';
+      authInputDefault = defaultValue || '';
+      authInputType = inputType || 'text';
+      authInputAllowEmpty = Boolean(allowEmpty);
+      authInputTrim = trimValue !== false;
+      resolveAuthInput = resolve;
+      showAuthInput = true;
+    });
+  }
+
+  function handleAuthInputConfirm(value) {
+    showAuthInput = false;
+    if (resolveAuthInput) {
+      resolveAuthInput(value);
+      resolveAuthInput = null;
+    }
+  }
+
+  function handleAuthInputCancel() {
+    showAuthInput = false;
+    if (resolveAuthInput) {
+      resolveAuthInput(null);
+      resolveAuthInput = null;
+    }
+  }
+
+  function requestConfirm(title, message, type = 'default') {
+    return new Promise(resolve => {
+      confirmTitle = title;
+      confirmMessage = message;
+      confirmType = type;
+      resolveSavePasswordConfirm = resolve;
+      showSavePasswordConfirm = true;
+    });
+  }
+
+  let confirmTitle = '';
+  let confirmMessage = '';
+  let confirmType = 'default';
+
+  function handleSavePasswordConfirm() {
+    showSavePasswordConfirm = false;
+    if (resolveSavePasswordConfirm) {
+      resolveSavePasswordConfirm(true);
+      resolveSavePasswordConfirm = null;
+    }
+  }
+
+  function handleSavePasswordCancel() {
+    showSavePasswordConfirm = false;
+    if (resolveSavePasswordConfirm) {
+      resolveSavePasswordConfirm(false);
+      resolveSavePasswordConfirm = null;
     }
   }
   
@@ -904,6 +1006,32 @@
   cancelText="取消"
   onConfirm={handleConfirmClose}
   onCancel={handleCancelClose}
+/>
+
+<ConfirmDialog
+  bind:isOpen={showSavePasswordConfirm}
+  title={confirmTitle}
+  message={confirmMessage}
+  type={confirmType}
+  confirmText="确定"
+  cancelText="取消"
+  onConfirm={handleSavePasswordConfirm}
+  onCancel={handleSavePasswordCancel}
+/>
+
+<InputDialog
+  bind:isOpen={showAuthInput}
+  title={authInputTitle}
+  message={authInputMessage}
+  placeholder={authInputPlaceholder}
+  defaultValue={authInputDefault}
+  inputType={authInputType}
+  allowEmpty={authInputAllowEmpty}
+  trimValue={authInputTrim}
+  confirmText="确定"
+  cancelText="取消"
+  onConfirm={handleAuthInputConfirm}
+  onCancel={handleAuthInputCancel}
 />
 
 {#if showShellSelect}

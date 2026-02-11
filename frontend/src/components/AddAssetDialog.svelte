@@ -1,5 +1,6 @@
 <script>
   import Dialog from './ui/Dialog.svelte';
+  import { assetsStore } from '../stores.js';
 
   export let isOpen = false;
   export let onAdd = () => {};
@@ -16,6 +17,11 @@
   let editingAssetLoaded = false; // Flag to prevent reloading data
   let wasOpen = false; // Track previous open state
 
+  // Group selector state
+  let showGroupDropdown = false;
+  let groupSearchTerm = '';
+  let selectedGroupIndex = -1;
+
   let formData = {
     id: '',
     name: '',
@@ -30,6 +36,24 @@
     dbType: 'mysql',
     database: '',
   };
+
+  // Extract all unique groups from existing assets
+  $: allGroups = $assetsStore.reduce((groups, asset) => {
+    if (asset.group && !groups.includes(asset.group)) {
+      groups.push(asset.group);
+    }
+    return groups;
+  }, []);
+
+  // Filter groups based on search term
+  $: filteredGroups = allGroups.filter(group =>
+    group.toLowerCase().includes(groupSearchTerm.toLowerCase())
+  );
+
+  // Add custom input as an option if it doesn't match existing groups
+  $: availableGroups = formData.group && !filteredGroups.includes(formData.group)
+    ? [...filteredGroups, formData.group]
+    : filteredGroups;
 
   async function handleTestConnection() {
     if (!window.wailsBindings) {
@@ -191,6 +215,9 @@
     testResult = '';
     showPassword = false;
     showPassphrase = false;
+    showGroupDropdown = false;
+    groupSearchTerm = '';
+    selectedGroupIndex = -1;
   }
 
   $: if (wasOpen && !isOpen) {
@@ -290,6 +317,78 @@
   $: if (!wasOpen && isOpen && editingAsset) {
     // Dialog just opened with editingAsset, ensure we load data
     editingAssetLoaded = false;
+  }
+
+  // Group selector handlers
+  function toggleGroupDropdown() {
+    showGroupDropdown = !showGroupDropdown;
+    if (showGroupDropdown) {
+      groupSearchTerm = formData.group || '';
+      // Find index of selected group
+      selectedGroupIndex = availableGroups.indexOf(formData.group);
+    }
+  }
+
+  function handleGroupSearchInput(e) {
+    groupSearchTerm = e.target.value;
+    formData.group = e.target.value;
+    showGroupDropdown = true;
+    selectedGroupIndex = -1;
+  }
+
+  function selectGroup(group) {
+    formData.group = group;
+    groupSearchTerm = group;
+    showGroupDropdown = false;
+    selectedGroupIndex = availableGroups.indexOf(group);
+  }
+
+  function handleGroupKeydown(e) {
+    const groups = availableGroups;
+    if (!showGroupDropdown) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+        e.preventDefault();
+        showGroupDropdown = true;
+        groupSearchTerm = formData.group || '';
+        selectedGroupIndex = groups.indexOf(formData.group);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        selectedGroupIndex = Math.min(selectedGroupIndex + 1, groups.length - 1);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        selectedGroupIndex = Math.max(selectedGroupIndex - 1, 0);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedGroupIndex >= 0 && selectedGroupIndex < groups.length) {
+          selectGroup(groups[selectedGroupIndex]);
+        } else {
+          showGroupDropdown = false;
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        showGroupDropdown = false;
+        groupSearchTerm = formData.group || '';
+        break;
+      case 'Tab':
+        e.preventDefault();
+        showGroupDropdown = false;
+        break;
+    }
+  }
+
+  // Close dropdown when clicking outside
+  function handleGroupBlur() {
+    setTimeout(() => {
+      showGroupDropdown = false;
+    }, 150);
   }
 </script>
 
@@ -611,17 +710,49 @@
        </div>
       {/if}
 
-     <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-          分组
-        </label>
-        <input
-          type="text"
-          bind:value={formData.group}
-          placeholder="例如：生产环境"
-          class="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-        />
-     </div>
+      <div>
+         <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+           分组
+         </label>
+         <div class="relative">
+           <input
+             type="text"
+             bind:value={groupSearchTerm}
+             on:focus={toggleGroupDropdown}
+             on:input={handleGroupSearchInput}
+             on:keydown={handleGroupKeydown}
+             on:blur={handleGroupBlur}
+             placeholder="例如：生产环境"
+             class={`w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border rounded-md text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 transition-all ${
+               showGroupDropdown
+                 ? 'ring-purple-500 border-purple-500'
+                 : 'border-gray-200 dark:border-gray-600 focus:border-transparent'
+             }`}
+           />
+           {#if showGroupDropdown && filteredGroups.length > 0}
+             <div class="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg max-h-48 overflow-y-auto">
+               {#each availableGroups as group, index (group)}
+                 <div
+                   on:click={() => selectGroup(group)}
+                   on:mouseover={() => selectedGroupIndex = index}
+                   class={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                     selectedGroupIndex === index
+                       ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-200'
+                       : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                   }`}
+                 >
+                   {group}
+                 </div>
+               {/each}
+               {#if availableGroups.length === 0}
+                 <div class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                   没有匹配的分组
+                 </div>
+               {/if}
+             </div>
+           {/if}
+         </div>
+      </div>
 
      <div class="flex gap-2 pt-3">
        <button

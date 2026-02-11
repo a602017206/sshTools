@@ -248,7 +248,7 @@
     }
   }
 
-  onMount(async () => {
+   onMount(async () => {
     const savedTheme = localStorage.getItem('ssh-tools-theme');
     if (!savedTheme) {
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -275,6 +275,9 @@
       cleanupEvents = runtime.EventsOn('app:show-about', () => {
         isAboutDialogOpen = true;
       });
+
+      // Listen for assets changed event (from import)
+      window.addEventListener('assets-changed', loadAssetsFromBackend);
     } catch (error) {
       console.warn('Wails bindings not available yet:', error.message);
     }
@@ -284,6 +287,7 @@
 
     return () => {
       window.removeEventListener('resize', ensureFullHeight);
+      window.removeEventListener('assets-changed', loadAssetsFromBackend);
       if (cleanupEvents) {
         cleanupEvents();
       }
@@ -380,24 +384,6 @@
         onAddClick={() => {
           editingAsset = null;
           isAddDialogOpen = true;
-        }}
-        onDelete={async (asset) => {
-          if (!window.wailsBindings) {
-            assetsStore.update(assets => assets.filter(a => a.id !== asset.id));
-            return;
-          }
-
-          if (!confirm(`确定要删除连接 "${asset.name}" 吗？`)) {
-            return;
-          }
-
-          try {
-            await window.wailsBindings.RemoveConnection(asset.id);
-            assetsStore.update(assets => assets.filter(a => a.id !== asset.id));
-          } catch (error) {
-            console.error('Failed to delete asset:', error);
-            alert('删除连接失败: ' + error);
-          }
         }}
         onEdit={handleEditAsset}
       />

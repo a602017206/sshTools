@@ -82,6 +82,14 @@ export function EscapeJSON(arg1) {
   return window['go']['main']['App']['EscapeJSON'](arg1);
 }
 
+export function ExportConnections(arg1) {
+  return window['go']['main']['App']['ExportConnections'](arg1);
+}
+
+export function ExportConnectionsByIDs(arg1, arg2) {
+  return window['go']['main']['App']['ExportConnectionsByIDs'](arg1, arg2);
+}
+
 export function FormatJSON(arg1) {
   return window['go']['main']['App']['FormatJSON'](arg1);
 }
@@ -146,6 +154,14 @@ export function HasPassword(arg1) {
   return window['go']['main']['App']['HasPassword'](arg1);
 }
 
+export function ImportConnections(arg1) {
+  return window['go']['main']['App']['ImportConnections'](arg1);
+}
+
+export function ImportConnectionsFromFile(arg1) {
+  return window['go']['main']['App']['ImportConnectionsFromFile'](arg1);
+}
+
 export function ListFiles(arg1, arg2) {
   return window['go']['main']['App']['ListFiles'](arg1, arg2);
 }
@@ -192,6 +208,10 @@ export function SearchDirectories(arg1, arg2, arg3, arg4, arg5) {
 
 export function SelectDownloadDirectory() {
   return window['go']['main']['App']['SelectDownloadDirectory']();
+}
+
+export function SelectImportFile() {
+  return window['go']['main']['App']['SelectImportFile']();
 }
 
 export function SelectSSHKeyFile() {

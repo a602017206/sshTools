@@ -44,6 +44,10 @@ export function EncryptText(arg1:string,arg2:string,arg3:string,arg4:string):Pro
 
 export function EscapeJSON(arg1:string):Promise<string>;
 
+export function ExportConnections(arg1:boolean):Promise<string>;
+
+export function ExportConnectionsByIDs(arg1:Array<string>,arg2:boolean):Promise<string>;
+
 export function FormatJSON(arg1:string):Promise<string>;
 
 export function GenerateUUIDv4():Promise<string>;
@@ -76,6 +80,10 @@ export function Greet(arg1:string):Promise<string>;
 
 export function HasPassword(arg1:string):Promise<boolean>;
 
+export function ImportConnections(arg1:string):Promise<number>;
+
+export function ImportConnectionsFromFile(arg1:string):Promise<number>;
+
 export function ListFiles(arg1:string,arg2:string):Promise<Array<ssh.FileInfo>>;
 
 export function ListSSHSessions():Promise<Array<string>>;
@@ -99,6 +107,8 @@ export function SavePassword(arg1:string,arg2:string):Promise<void>;
 export function SearchDirectories(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<Array<ssh.SearchResult>>;
 
 export function SelectDownloadDirectory():Promise<string>;
+
+export function SelectImportFile():Promise<string>;
 
 export function SelectSSHKeyFile():Promise<string>;
 

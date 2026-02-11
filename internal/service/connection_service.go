@@ -109,6 +109,14 @@ func (s *ConnectionService) GetPassword(connectionID string) (string, error) {
 	return s.credentialStore.Get(connectionID)
 }
 
+// GetEncryptedPassword returns the encrypted password without decrypting
+func (s *ConnectionService) GetEncryptedPassword(connectionID string) (string, error) {
+	if s.credentialStore == nil {
+		return "", fmt.Errorf("credential store not initialized")
+	}
+	return s.credentialStore.GetEncrypted(connectionID)
+}
+
 // HasPassword checks if a password is saved for a connection
 func (s *ConnectionService) HasPassword(connectionID string) bool {
 	if s.credentialStore == nil {
@@ -123,4 +131,12 @@ func (s *ConnectionService) DeletePassword(connectionID string) error {
 		return fmt.Errorf("credential store not initialized")
 	}
 	return s.credentialStore.Delete(connectionID)
+}
+
+// StoreEncryptedPassword stores an already-encrypted password without re-encrypting
+func (s *ConnectionService) StoreEncryptedPassword(connectionID, encryptedPassword string) error {
+	if s.credentialStore == nil {
+		return fmt.Errorf("credential store not initialized")
+	}
+	return s.credentialStore.StoreEncrypted(connectionID, encryptedPassword)
 }

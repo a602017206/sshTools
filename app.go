@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"AHaSSHTools/internal/config"
@@ -207,15 +209,25 @@ func (a *App) SendLocalShellDataBinary(sessionID string, data string) error {
 }
 
 // SaveBinaryFile saves base64-encoded file contents to disk
-func (a *App) SaveBinaryFile(filename string, data string) (string, error) {
+func (a *App) SaveBinaryFile(filename, data string) (string, error) {
 	decoded, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
 		return "", err
 	}
 
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "保存文件",
+		Title:           "导出连接配置",
 		DefaultFilename: filename,
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "JSON 文件 (*.json)",
+				Pattern:     "*.json",
+			},
+			{
+				DisplayName: "所有文件 (*.*)",
+				Pattern:     "*.*",
+			},
+		},
 	})
 	if err != nil {
 		return "", err
@@ -562,4 +574,238 @@ func (a *App) ParseURL(input string) (map[string]interface{}, error) {
 // ShowAboutDialog 显示关于对话框
 func (a *App) ShowAboutDialog() {
 	runtime.EventsEmit(a.ctx, "app:show-about")
+}
+
+// ============================================================================
+// Connection Export/Import Methods
+// ============================================================================
+
+// ExportData represents exported connection data
+type ExportData struct {
+	Version     string                    `json:"version"`
+	ExportedAt  string                    `json:"exported_at"`
+	Connections []config.ConnectionConfig `json:"connections"`
+	Passwords   map[string]string         `json:"passwords,omitempty"` // connection_id -> password (encrypted or plaintext)
+}
+
+// ExportConnections exports all connections with passwords to JSON
+func (a *App) ExportConnections(encryptPasswords bool) (string, error) {
+	// Get all connections
+	conns, err := a.connectionService.GetConnections()
+	if err != nil {
+		return "", err
+	}
+
+	exportData := ExportData{
+		Version:     "1.0",
+		ExportedAt:  time.Now().UTC().Format(time.RFC3339),
+		Connections: conns,
+		Passwords:   make(map[string]string),
+	}
+
+	// Include passwords if requested
+	for _, conn := range conns {
+		if encryptPasswords {
+			password, err := a.connectionService.GetEncryptedPassword(conn.ID)
+			if err == nil && password != "" {
+				exportData.Passwords[conn.ID] = "enc:" + password
+			}
+			continue
+		}
+
+		password, err := a.connectionService.GetPassword(conn.ID)
+		if err == nil && password != "" {
+			// Export plaintext
+			exportData.Passwords[conn.ID] = password
+		}
+	}
+
+	// Marshal to JSON
+	data, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal export data: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// ExportConnectionsByIDs exports selected connections to JSON
+func (a *App) ExportConnectionsByIDs(connectionIDs []string, encryptPasswords bool) (string, error) {
+	if len(connectionIDs) == 0 {
+		return "", fmt.Errorf("no connections selected")
+	}
+
+	conns, err := a.connectionService.GetConnections()
+	if err != nil {
+		return "", err
+	}
+
+	selected := make(map[string]struct{}, len(connectionIDs))
+	for _, id := range connectionIDs {
+		if id != "" {
+			selected[id] = struct{}{}
+		}
+	}
+
+	filtered := make([]config.ConnectionConfig, 0, len(selected))
+	for _, conn := range conns {
+		if _, ok := selected[conn.ID]; ok {
+			filtered = append(filtered, conn)
+		}
+	}
+
+	exportData := ExportData{
+		Version:     "1.0",
+		ExportedAt:  time.Now().UTC().Format(time.RFC3339),
+		Connections: filtered,
+		Passwords:   make(map[string]string),
+	}
+
+	for _, conn := range filtered {
+		if encryptPasswords {
+			password, err := a.connectionService.GetEncryptedPassword(conn.ID)
+			if err == nil && password != "" {
+				exportData.Passwords[conn.ID] = "enc:" + password
+			}
+			continue
+		}
+
+		password, err := a.connectionService.GetPassword(conn.ID)
+		if err == nil && password != "" {
+			exportData.Passwords[conn.ID] = password
+		}
+	}
+
+	data, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal export data: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// ImportConnections imports connections from JSON data
+func (a *App) ImportConnections(jsonData string) (int, error) {
+	var exportData ExportData
+
+	// Unmarshal JSON
+	if err := json.Unmarshal([]byte(jsonData), &exportData); err != nil {
+		return 0, fmt.Errorf("failed to parse import data: %w", err)
+	}
+
+	importedCount := 0
+
+	// Import each connection
+	for _, conn := range exportData.Connections {
+		originalID := conn.ID
+
+		// Check if connection ID already exists
+		existingConns, _ := a.connectionService.GetConnections()
+		idExists := false
+		for _, existing := range existingConns {
+			if existing.ID == conn.ID {
+				idExists = true
+				break
+			}
+		}
+
+		// Generate new ID if it already exists
+		if idExists {
+			conn.ID = generateNewID()
+		}
+
+		// Add connection
+		if err := a.connectionService.AddConnection(conn); err != nil {
+			fmt.Printf("Failed to add connection %s: %v\n", conn.ID, err)
+			continue
+		}
+
+		// Import password if available
+		if password, hasPassword := exportData.Passwords[originalID]; hasPassword {
+			if strings.HasPrefix(password, "enc:") {
+				// Already encrypted - store directly without re-encrypting
+				encrypted := strings.TrimPrefix(password, "enc:")
+				if err := a.connectionService.StoreEncryptedPassword(conn.ID, encrypted); err != nil {
+					fmt.Printf("Failed to store encrypted password for %s: %v\n", conn.ID, err)
+				}
+				continue
+			}
+
+			if isEncryptedPassword(password) {
+				// Legacy encrypted export without prefix
+				if err := a.connectionService.StoreEncryptedPassword(conn.ID, password); err != nil {
+					fmt.Printf("Failed to store encrypted password for %s: %v\n", conn.ID, err)
+				}
+				continue
+			}
+
+			// Plaintext password - encrypt with current machine key
+			if err := a.connectionService.SavePassword(conn.ID, password); err != nil {
+				fmt.Printf("Failed to save password for %s: %v\n", conn.ID, err)
+			}
+		}
+
+		importedCount++
+	}
+
+	return importedCount, nil
+}
+
+// isEncryptedPassword checks if a password is in AES-GCM encrypted format
+// AES-GCM encrypted format: base64(nonce + ciphertext + auth_tag)
+// nonce: 12 bytes, auth_tag: 16 bytes, ciphertext: variable length
+// Encrypted passwords will have specific padding when base64 decoded
+func isEncryptedPassword(password string) bool {
+	// Try to decode as base64
+	decoded, err := base64.StdEncoding.DecodeString(password)
+	if err != nil {
+		// Not valid base64 - likely plaintext
+		return false
+	}
+
+	// AES-GCM minimum size: 12 (nonce) + 16 (auth) + at least 1 (ciphertext) = 29 bytes
+	if len(decoded) < 29 {
+		return false
+	}
+
+	return len(decoded) >= 29
+}
+
+// generateNewID generates a unique connection ID
+func generateNewID() string {
+	return fmt.Sprintf("conn-%d", time.Now().UnixNano())
+}
+
+// ImportConnectionsFromFile imports connections from a JSON file
+func (a *App) ImportConnectionsFromFile(filePath string) (int, error) {
+	// Read file content
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	return a.ImportConnections(string(data))
+}
+
+// SelectImportFile opens a file picker for selecting connection import file
+func (a *App) SelectImportFile() (string, error) {
+	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择导入文件",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "JSON 文件 (*.json)",
+				Pattern:     "*.json",
+			},
+			{
+				DisplayName: "所有文件 (*.*)",
+				Pattern:     "*.*",
+			},
+		},
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return filePath, nil
 }
