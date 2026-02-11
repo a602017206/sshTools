@@ -48,6 +48,8 @@ export function ExportConnections(arg1:boolean):Promise<string>;
 
 export function ExportConnectionsByIDs(arg1:Array<string>,arg2:boolean):Promise<string>;
 
+export function ExportConnectionsByIDsWithPassphrase(arg1:Array<string>,arg2:string):Promise<string>;
+
 export function FormatJSON(arg1:string):Promise<string>;
 
 export function GenerateUUIDv4():Promise<string>;
@@ -83,6 +85,10 @@ export function HasPassword(arg1:string):Promise<boolean>;
 export function ImportConnections(arg1:string):Promise<number>;
 
 export function ImportConnectionsFromFile(arg1:string):Promise<number>;
+
+export function ImportConnectionsFromFileWithPassphrase(arg1:string,arg2:string):Promise<number>;
+
+export function ImportConnectionsWithPassphrase(arg1:string,arg2:string):Promise<number>;
 
 export function ListFiles(arg1:string,arg2:string):Promise<Array<ssh.FileInfo>>;
 

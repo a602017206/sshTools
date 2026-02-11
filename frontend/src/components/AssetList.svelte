@@ -24,6 +24,24 @@
   let passphraseValue = '';
   let showImportPassphraseInput = false;
 
+  function showMessage(title, message) {
+    const showDialog = window.wailsBindings?.ShowMessageDialog;
+    if (typeof showDialog === 'function') {
+      showDialog(title, message);
+      return;
+    }
+    alert(message);
+  }
+
+  function showError(title, message) {
+    const showDialog = window.wailsBindings?.ShowErrorDialog;
+    if (typeof showDialog === 'function') {
+      showDialog(title, message);
+      return;
+    }
+    alert(message);
+  }
+
   // Close dropdown when clicking outside
   function handleClickOutside(event) {
     showExportMenu = false;
@@ -195,6 +213,7 @@
       return;
     }
 
+    let keepImportPath = false;
     try {
       const { ImportConnectionsFromFileWithPassphrase, ImportConnectionsFromFile } = window.wailsBindings;
       let count = 0;
@@ -207,6 +226,7 @@
           if (message.includes('passphrase required') || message.includes('invalid passphrase')) {
             showImportConfirm = false;
             showImportPassphraseInput = true;
+            keepImportPath = true;
             return;
           }
           throw error;
@@ -217,15 +237,17 @@
         throw new Error('导入功能不可用');
       }
 
-      alert(`成功导入 ${count} 个连接`);
+      showMessage('导入完成', `成功导入 ${count} 个连接`);
 
       window.dispatchEvent(new CustomEvent('assets-changed'));
     } catch (error) {
       console.error('导入失败:', error);
-      alert('导入失败: ' + (error?.message || error));
+      showError('导入失败', error?.message || error);
     } finally {
       showImportConfirm = false;
-      pendingImportPath = '';
+      if (!keepImportPath) {
+        pendingImportPath = '';
+      }
     }
   }
 
@@ -234,7 +256,6 @@
       showImportPassphraseInput = false;
       return;
     }
-
     try {
       const { ImportConnectionsFromFileWithPassphrase } = window.wailsBindings;
       if (typeof ImportConnectionsFromFileWithPassphrase !== 'function') {
@@ -242,19 +263,19 @@
       }
 
       const count = await ImportConnectionsFromFileWithPassphrase(pendingImportPath, value);
-      alert(`成功导入 ${count} 个连接`);
+      showMessage('导入完成', `成功导入 ${count} 个连接`);
       window.dispatchEvent(new CustomEvent('assets-changed'));
       showImportPassphraseInput = false;
       pendingImportPath = '';
     } catch (error) {
       const message = error?.message || String(error);
       if (message.includes('invalid passphrase')) {
-        alert('导入密码不正确，请重试');
+        showError('导入失败', '导入密码不正确，请重试');
         showImportPassphraseInput = true;
         return;
       }
       console.error('导入失败:', error);
-      alert('导入失败: ' + message);
+      showError('导入失败', message);
       showImportPassphraseInput = false;
       pendingImportPath = '';
     }

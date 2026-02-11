@@ -90,6 +90,10 @@ export function ExportConnectionsByIDs(arg1, arg2) {
   return window['go']['main']['App']['ExportConnectionsByIDs'](arg1, arg2);
 }
 
+export function ExportConnectionsByIDsWithPassphrase(arg1, arg2) {
+  return window['go']['main']['App']['ExportConnectionsByIDsWithPassphrase'](arg1, arg2);
+}
+
 export function FormatJSON(arg1) {
   return window['go']['main']['App']['FormatJSON'](arg1);
 }
@@ -160,6 +164,14 @@ export function ImportConnections(arg1) {
 
 export function ImportConnectionsFromFile(arg1) {
   return window['go']['main']['App']['ImportConnectionsFromFile'](arg1);
+}
+
+export function ImportConnectionsFromFileWithPassphrase(arg1, arg2) {
+  return window['go']['main']['App']['ImportConnectionsFromFileWithPassphrase'](arg1, arg2);
+}
+
+export function ImportConnectionsWithPassphrase(arg1, arg2) {
+  return window['go']['main']['App']['ImportConnectionsWithPassphrase'](arg1, arg2);
 }
 
 export function ListFiles(arg1, arg2) {

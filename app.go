@@ -819,10 +819,6 @@ func (a *App) ImportConnections(jsonData string) (int, error) {
 
 // ImportConnectionsWithPassphrase imports passphrase-encrypted connections
 func (a *App) ImportConnectionsWithPassphrase(jsonData, passphrase string) (int, error) {
-	if strings.TrimSpace(passphrase) == "" {
-		return 0, fmt.Errorf("passphrase required")
-	}
-
 	var exportData ExportData
 	if err := json.Unmarshal([]byte(jsonData), &exportData); err != nil {
 		return 0, fmt.Errorf("failed to parse import data: %w", err)
@@ -830,6 +826,10 @@ func (a *App) ImportConnectionsWithPassphrase(jsonData, passphrase string) (int,
 
 	if exportData.PasswordEncryption == nil || exportData.PasswordEncryption.Mode != "passphrase" {
 		return a.ImportConnections(jsonData)
+	}
+
+	if strings.TrimSpace(passphrase) == "" {
+		return 0, fmt.Errorf("passphrase required")
 	}
 
 	salt, err := base64.StdEncoding.DecodeString(exportData.PasswordEncryption.Salt)
