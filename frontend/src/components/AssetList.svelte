@@ -1,5 +1,8 @@
 <script>
   import { assetsStore, groupedAssetsStore } from '../stores.js';
+  import ConfirmDialog from './ui/ConfirmDialog.svelte';
+  import Dialog from './ui/Dialog.svelte';
+  import InputDialog from './ui/InputDialog.svelte';
 
   export let onConnect;
   export let onAddClick;
@@ -8,6 +11,264 @@
 
   let searchTerm = '';
   let expandedGroups = new Set(['生产环境', '开发环境']);
+  let showExportMenu = false;
+  let showDeleteConfirm = false;
+  let pendingDeleteAsset = null;
+  let showImportConfirm = false;
+  let pendingImportPath = '';
+  let showExportSelect = false;
+  let exportMode = 'machine';
+  let selectedExportIds = new Set();
+  let showPassphraseInput = false;
+  let showPassphraseConfirm = false;
+  let passphraseValue = '';
+  let showImportPassphraseInput = false;
+
+  // Close dropdown when clicking outside
+  function handleClickOutside(event) {
+    showExportMenu = false;
+    event.stopPropagation();
+  }
+
+  function openExportSelection(mode, event) {
+    event.stopPropagation();
+    showExportMenu = false;
+
+    if (!window.wailsBindings) {
+      alert('Wails 绑定未加载，请确保在 wails dev 模式下运行');
+      return;
+    }
+
+    exportMode = mode;
+    selectedExportIds = new Set($assetsStore.map(asset => asset.id));
+    showExportSelect = true;
+  }
+
+  async function exportSelected(encryptPasswords, passphrase = '') {
+    const { ExportConnectionsByIDs, ExportConnectionsByIDsWithPassphrase, SaveBinaryFile } = window.wailsBindings;
+
+    if (encryptPasswords === 'passphrase') {
+      if (typeof ExportConnectionsByIDsWithPassphrase !== 'function') {
+        throw new Error('导出功能不可用，请升级应用');
+      }
+      return ExportConnectionsByIDsWithPassphrase(Array.from(selectedExportIds), passphrase)
+        .then(jsonData => SaveBinaryFile('ssh-connections.json', btoa(unescape(encodeURIComponent(jsonData)))));
+    }
+
+    if (typeof ExportConnectionsByIDs !== 'function') {
+      throw new Error('导出功能不可用，请升级应用');
+    }
+
+    const jsonData = await ExportConnectionsByIDs(Array.from(selectedExportIds), encryptPasswords);
+    const base64Data = btoa(unescape(encodeURIComponent(jsonData)));
+    return SaveBinaryFile('ssh-connections.json', base64Data);
+  }
+
+  function handleExportSelected() {
+    if (!window.wailsBindings) {
+      alert('Wails 绑定未加载，请确保在 wails dev 模式下运行');
+      return;
+    }
+
+    if (selectedExportIds.size === 0) {
+      alert('请至少选择一个连接');
+      return;
+    }
+
+    if (exportMode === 'passphrase') {
+      showPassphraseInput = true;
+      return;
+    }
+
+    const encryptPasswords = exportMode === 'machine';
+    exportSelected(encryptPasswords)
+      .then(() => {
+        showExportSelect = false;
+      })
+      .catch(error => {
+        console.error('导出失败:', error);
+        alert('导出失败: ' + error.message);
+      });
+  }
+
+  function cancelExportSelection() {
+    showExportSelect = false;
+  }
+
+  function handlePassphraseInputConfirm(value) {
+    passphraseValue = value;
+    showPassphraseInput = false;
+    showPassphraseConfirm = true;
+  }
+
+  function handlePassphraseInputCancel() {
+    passphraseValue = '';
+    showPassphraseInput = false;
+  }
+
+  function handlePassphraseConfirmConfirm(value) {
+    showPassphraseConfirm = false;
+    if (value !== passphraseValue) {
+      alert('两次输入的密码不一致');
+      passphraseValue = '';
+      showPassphraseInput = true;
+      return;
+    }
+
+    exportSelected('passphrase', passphraseValue)
+      .then(() => {
+        showExportSelect = false;
+        passphraseValue = '';
+      })
+      .catch(error => {
+        console.error('导出失败:', error);
+        alert('导出失败: ' + error.message);
+      });
+  }
+
+  function handlePassphraseConfirmCancel() {
+    passphraseValue = '';
+    showPassphraseConfirm = false;
+  }
+
+  function toggleAssetSelection(id) {
+    const next = new Set(selectedExportIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    selectedExportIds = next;
+  }
+
+  function toggleGroupSelection(groupAssets) {
+    const next = new Set(selectedExportIds);
+    const allSelected = groupAssets.every(asset => next.has(asset.id));
+
+    if (allSelected) {
+      groupAssets.forEach(asset => next.delete(asset.id));
+    } else {
+      groupAssets.forEach(asset => next.add(asset.id));
+    }
+
+    selectedExportIds = next;
+  }
+
+  function toggleAllSelection() {
+    if (selectedExportIds.size === $assetsStore.length) {
+      selectedExportIds = new Set();
+      return;
+    }
+
+    selectedExportIds = new Set($assetsStore.map(asset => asset.id));
+  }
+
+  function isGroupSelected(groupAssets) {
+    return groupAssets.length > 0 && groupAssets.every(asset => selectedExportIds.has(asset.id));
+  }
+
+  async function handleImport(event) {
+    event.stopPropagation();
+    showExportMenu = false;
+
+    if (!window.wailsBindings) {
+      alert('Wails 绑定未加载，请确保在 wails dev 模式下运行');
+      return;
+    }
+
+    try {
+      const filePath = await window.wailsBindings.SelectImportFile();
+
+      if (!filePath) return;
+
+      pendingImportPath = filePath;
+      showImportConfirm = true;
+    } catch (error) {
+      console.error('导入失败:', error);
+      alert('导入失败: ' + error.message);
+    }
+  }
+
+  async function confirmImportConnections() {
+    if (!pendingImportPath) {
+      showImportConfirm = false;
+      return;
+    }
+
+    try {
+      const { ImportConnectionsFromFileWithPassphrase, ImportConnectionsFromFile } = window.wailsBindings;
+      let count = 0;
+
+      if (typeof ImportConnectionsFromFileWithPassphrase === 'function') {
+        try {
+          count = await ImportConnectionsFromFileWithPassphrase(pendingImportPath, '');
+        } catch (error) {
+          const message = error?.message || String(error);
+          if (message.includes('passphrase required') || message.includes('invalid passphrase')) {
+            showImportConfirm = false;
+            showImportPassphraseInput = true;
+            return;
+          }
+          throw error;
+        }
+      } else if (typeof ImportConnectionsFromFile === 'function') {
+        count = await ImportConnectionsFromFile(pendingImportPath);
+      } else {
+        throw new Error('导入功能不可用');
+      }
+
+      alert(`成功导入 ${count} 个连接`);
+
+      window.dispatchEvent(new CustomEvent('assets-changed'));
+    } catch (error) {
+      console.error('导入失败:', error);
+      alert('导入失败: ' + (error?.message || error));
+    } finally {
+      showImportConfirm = false;
+      pendingImportPath = '';
+    }
+  }
+
+  async function handleImportPassphraseConfirm(value) {
+    if (!pendingImportPath) {
+      showImportPassphraseInput = false;
+      return;
+    }
+
+    try {
+      const { ImportConnectionsFromFileWithPassphrase } = window.wailsBindings;
+      if (typeof ImportConnectionsFromFileWithPassphrase !== 'function') {
+        throw new Error('导入功能不可用');
+      }
+
+      const count = await ImportConnectionsFromFileWithPassphrase(pendingImportPath, value);
+      alert(`成功导入 ${count} 个连接`);
+      window.dispatchEvent(new CustomEvent('assets-changed'));
+      showImportPassphraseInput = false;
+      pendingImportPath = '';
+    } catch (error) {
+      const message = error?.message || String(error);
+      if (message.includes('invalid passphrase')) {
+        alert('导入密码不正确，请重试');
+        showImportPassphraseInput = true;
+        return;
+      }
+      console.error('导入失败:', error);
+      alert('导入失败: ' + message);
+      showImportPassphraseInput = false;
+      pendingImportPath = '';
+    }
+  }
+
+  function handleImportPassphraseCancel() {
+    showImportPassphraseInput = false;
+    pendingImportPath = '';
+  }
+
+  function cancelImportConnections() {
+    showImportConfirm = false;
+    pendingImportPath = '';
+  }
 
   $: filteredAssets = $assetsStore.filter(asset => {
     const searchLower = searchTerm.toLowerCase();
@@ -46,16 +307,28 @@
       return;
     }
 
-    if (!confirm(`确定要删除连接 "${asset.name}" 吗？`)) {
-      return;
-    }
+    pendingDeleteAsset = asset;
+    showDeleteConfirm = true;
+  }
+
+  async function confirmDeleteAsset() {
+    if (!pendingDeleteAsset) return;
 
     try {
-      await window.wailsBindings.RemoveConnection(asset.id);
-      assetsStore.update(assets => assets.filter(a => a.id !== asset.id));
+      await window.wailsBindings.RemoveConnection(pendingDeleteAsset.id);
+      assetsStore.update(assets => assets.filter(a => a.id !== pendingDeleteAsset.id));
     } catch (error) {
       console.error('Failed to delete asset:', error);
+      alert('删除连接失败: ' + (error?.message || error));
+    } finally {
+      showDeleteConfirm = false;
+      pendingDeleteAsset = null;
     }
+  }
+
+  function cancelDeleteAsset() {
+    showDeleteConfirm = false;
+    pendingDeleteAsset = null;
   }
 
   function getAssetIcon(type) {
@@ -76,21 +349,76 @@
   }
 </script>
 
-<div class="h-full flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
+<div class="h-full flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700" on:click={handleClickOutside}>
   <!-- 头部 -->
   <div class="p-4 border-b border-gray-200 dark:border-gray-700">
     <div class="flex items-center justify-between mb-3">
       <h2 class="text-sm font-semibold text-gray-900 dark:text-white">服务器资产</h2>
-      <button 
-        on:click={onAddClick}
-        class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-      >
-        <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-      </button>
+      <div class="flex gap-1">
+        <button
+          on:click={onAddClick}
+          class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          title="添加连接"
+        >
+          <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+        <div class="relative">
+          <button
+            on:click={(e) => { e.stopPropagation(); showExportMenu = !showExportMenu; }}
+            class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            title="导出/导入"
+          >
+            <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+          </button>
+          {#if showExportMenu}
+            <div class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10 py-1 min-w-[160px]">
+              <button
+                on:click={(e) => openExportSelection('machine', e)}
+                class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+              >
+                <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span>导出(加密)</span>
+              </button>
+              <button
+                on:click={(e) => openExportSelection('passphrase', e)}
+                class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+              >
+                <svg class="w-4 h-4 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span>导出(跨设备加密)</span>
+              </button>
+              <button
+                on:click={(e) => openExportSelection('plain', e)}
+                class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+              >
+                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>导出(明文)</span>
+              </button>
+              <div class="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+              <button
+                on:click={handleImport}
+                class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+              >
+                <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>导入连接</span>
+              </button>
+            </div>
+          {/if}
+        </div>
+      </div>
     </div>
-    
+
     <!-- 搜索框 -->
     <div class="relative">
       <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -184,3 +512,140 @@
     {/each}
   </div>
 </div>
+
+<ConfirmDialog
+  bind:isOpen={showDeleteConfirm}
+  title="删除连接"
+  message={pendingDeleteAsset ? `确定要删除连接 "${pendingDeleteAsset.name}" 吗？` : '确定要删除该连接吗？'}
+  type="danger"
+  confirmText="删除"
+  cancelText="取消"
+  onConfirm={confirmDeleteAsset}
+  onCancel={cancelDeleteAsset}
+/>
+
+<ConfirmDialog
+  bind:isOpen={showImportConfirm}
+  title="导入连接"
+  message="确定要导入连接配置吗？导入后会合并到现有连接中。"
+  type="warning"
+  confirmText="导入"
+  cancelText="取消"
+  onConfirm={confirmImportConnections}
+  onCancel={cancelImportConnections}
+/>
+
+<Dialog
+  bind:isOpen={showExportSelect}
+  onClose={cancelExportSelection}
+  title={exportMode === 'plain' ? '导出连接（明文）' : exportMode === 'passphrase' ? '导出连接（跨设备加密）' : '导出连接（加密）'}
+  size="md"
+>
+  <div class="space-y-4">
+    <div class="flex items-center justify-between">
+      <div class="text-xs text-gray-500 dark:text-gray-400">
+        已选 {selectedExportIds.size} / {$assetsStore.length}
+      </div>
+      <button
+        type="button"
+        on:click={toggleAllSelection}
+        class="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+      >
+        {selectedExportIds.size === $assetsStore.length ? '取消全选' : '全选'}
+      </button>
+    </div>
+
+    <div class="max-h-64 overflow-y-auto space-y-2">
+      {#each Object.entries($groupedAssetsStore) as [group, groupAssets]}
+        <div class="rounded-lg border border-gray-200 dark:border-gray-700">
+          <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700/40">
+            <input
+              type="checkbox"
+              checked={isGroupSelected(groupAssets)}
+              on:change={() => toggleGroupSelection(groupAssets)}
+              class="w-4 h-4 text-purple-600"
+            />
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{group}</span>
+            <span class="text-xs text-gray-400 dark:text-gray-500">({groupAssets.length})</span>
+          </div>
+          <div class="px-3 py-2 space-y-1">
+            {#each groupAssets as asset (asset.id)}
+              <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={selectedExportIds.has(asset.id)}
+                  on:change={() => toggleAssetSelection(asset.id)}
+                  class="w-4 h-4 text-purple-600"
+                />
+                <span class="truncate">{asset.name}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500 truncate">
+                  {asset.username}@{asset.host}
+                </span>
+              </label>
+            {/each}
+          </div>
+        </div>
+      {/each}
+    </div>
+
+    <div class="flex gap-2 justify-end">
+      <button
+        type="button"
+        on:click={cancelExportSelection}
+        class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-xs font-medium transition-colors"
+      >
+        取消
+      </button>
+      <button
+        type="button"
+        on:click={handleExportSelected}
+        disabled={selectedExportIds.size === 0}
+        class="px-3 py-1.5 rounded-md text-xs font-medium transition-all shadow-sm bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        导出
+      </button>
+    </div>
+  </div>
+</Dialog>
+
+<InputDialog
+  bind:isOpen={showPassphraseInput}
+  title="导出加密"
+  message="请输入导出密码（用于跨设备解密）"
+  placeholder="导出密码"
+  inputType="password"
+  allowEmpty={false}
+  trimValue={false}
+  confirmText="下一步"
+  cancelText="取消"
+  onConfirm={handlePassphraseInputConfirm}
+  onCancel={handlePassphraseInputCancel}
+/>
+
+<InputDialog
+  bind:isOpen={showPassphraseConfirm}
+  title="确认导出密码"
+  message="请再次输入导出密码"
+  placeholder="确认导出密码"
+  inputType="password"
+  allowEmpty={false}
+  trimValue={false}
+  confirmText="导出"
+  cancelText="取消"
+  onConfirm={handlePassphraseConfirmConfirm}
+  onCancel={handlePassphraseConfirmCancel}
+/>
+
+<InputDialog
+  bind:isOpen={showImportPassphraseInput}
+  title="导入解密"
+  message="该文件需要导入密码，请输入"
+  placeholder="导入密码"
+  inputType="password"
+  allowEmpty={false}
+  trimValue={false}
+  confirmText="导入"
+  cancelText="取消"
+  onConfirm={handleImportPassphraseConfirm}
+  onCancel={handleImportPassphraseCancel}
+/>
