@@ -2,10 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"AHaSSHTools/internal/config"
@@ -14,6 +20,7 @@ import (
 	"AHaSSHTools/internal/store"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/crypto/argon2"
 )
 
 var Version = "dev"
@@ -562,4 +569,424 @@ func (a *App) ParseURL(input string) (map[string]interface{}, error) {
 // ShowAboutDialog 显示关于对话框
 func (a *App) ShowAboutDialog() {
 	runtime.EventsEmit(a.ctx, "app:show-about")
+}
+
+// ============================================================================
+// Connection Export/Import Methods
+// ============================================================================
+
+const (
+	passphrasePrefix = "penc:"
+	passphraseKDF    = "argon2id"
+)
+
+// PasswordEncryption describes how passwords are encrypted in export data
+type PasswordEncryption struct {
+	Mode string `json:"mode"`
+	Salt string `json:"salt"`
+	KDF  string `json:"kdf"`
+}
+
+// ExportData represents exported connection data
+type ExportData struct {
+	Version            string                    `json:"version"`
+	ExportedAt         string                    `json:"exported_at"`
+	Connections        []config.ConnectionConfig `json:"connections"`
+	Passwords          map[string]string         `json:"passwords,omitempty"`
+	PasswordEncryption *PasswordEncryption       `json:"password_encryption,omitempty"`
+}
+
+// ExportConnections exports all connections with passwords to JSON
+func (a *App) ExportConnections(encryptPasswords bool) (string, error) {
+	conns, err := a.connectionService.GetConnections()
+	if err != nil {
+		return "", err
+	}
+
+	exportData := ExportData{
+		Version:     "1.0",
+		ExportedAt:  time.Now().UTC().Format(time.RFC3339),
+		Connections: conns,
+		Passwords:   make(map[string]string),
+	}
+
+	for _, conn := range conns {
+		if encryptPasswords {
+			password, err := a.connectionService.GetEncryptedPassword(conn.ID)
+			if err == nil && password != "" {
+				exportData.Passwords[conn.ID] = "enc:" + password
+			}
+			continue
+		}
+
+		password, err := a.connectionService.GetPassword(conn.ID)
+		if err == nil && password != "" {
+			exportData.Passwords[conn.ID] = password
+		}
+	}
+
+	data, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal export data: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// ExportConnectionsByIDs exports selected connections to JSON
+func (a *App) ExportConnectionsByIDs(connectionIDs []string, encryptPasswords bool) (string, error) {
+	if len(connectionIDs) == 0 {
+		return "", fmt.Errorf("no connections selected")
+	}
+
+	conns, err := a.connectionService.GetConnections()
+	if err != nil {
+		return "", err
+	}
+
+	selected := make(map[string]struct{}, len(connectionIDs))
+	for _, id := range connectionIDs {
+		if id != "" {
+			selected[id] = struct{}{}
+		}
+	}
+
+	filtered := make([]config.ConnectionConfig, 0, len(selected))
+	for _, conn := range conns {
+		if _, ok := selected[conn.ID]; ok {
+			filtered = append(filtered, conn)
+		}
+	}
+
+	exportData := ExportData{
+		Version:     "1.0",
+		ExportedAt:  time.Now().UTC().Format(time.RFC3339),
+		Connections: filtered,
+		Passwords:   make(map[string]string),
+	}
+
+	for _, conn := range filtered {
+		if encryptPasswords {
+			password, err := a.connectionService.GetEncryptedPassword(conn.ID)
+			if err == nil && password != "" {
+				exportData.Passwords[conn.ID] = "enc:" + password
+			}
+			continue
+		}
+
+		password, err := a.connectionService.GetPassword(conn.ID)
+		if err == nil && password != "" {
+			exportData.Passwords[conn.ID] = password
+		}
+	}
+
+	data, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal export data: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// ExportConnectionsByIDsWithPassphrase exports selected connections using passphrase encryption
+func (a *App) ExportConnectionsByIDsWithPassphrase(connectionIDs []string, passphrase string) (string, error) {
+	if len(connectionIDs) == 0 {
+		return "", fmt.Errorf("no connections selected")
+	}
+	if strings.TrimSpace(passphrase) == "" {
+		return "", fmt.Errorf("passphrase required")
+	}
+
+	conns, err := a.connectionService.GetConnections()
+	if err != nil {
+		return "", err
+	}
+
+	selected := make(map[string]struct{}, len(connectionIDs))
+	for _, id := range connectionIDs {
+		if id != "" {
+			selected[id] = struct{}{}
+		}
+	}
+
+	filtered := make([]config.ConnectionConfig, 0, len(selected))
+	for _, conn := range conns {
+		if _, ok := selected[conn.ID]; ok {
+			filtered = append(filtered, conn)
+		}
+	}
+
+	salt := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return "", fmt.Errorf("failed to generate salt: %w", err)
+	}
+
+	key := derivePassphraseKey(passphrase, salt)
+	encodedSalt := base64.StdEncoding.EncodeToString(salt)
+
+	exportData := ExportData{
+		Version:     "1.0",
+		ExportedAt:  time.Now().UTC().Format(time.RFC3339),
+		Connections: filtered,
+		Passwords:   make(map[string]string),
+		PasswordEncryption: &PasswordEncryption{
+			Mode: "passphrase",
+			Salt: encodedSalt,
+			KDF:  passphraseKDF,
+		},
+	}
+
+	for _, conn := range filtered {
+		password, err := a.connectionService.GetPassword(conn.ID)
+		if err != nil || password == "" {
+			continue
+		}
+		ciphertext, err := encryptWithKey(password, key)
+		if err != nil {
+			return "", fmt.Errorf("failed to encrypt password: %w", err)
+		}
+		exportData.Passwords[conn.ID] = passphrasePrefix + ciphertext
+	}
+
+	data, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal export data: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// ImportConnections imports connections from JSON data
+func (a *App) ImportConnections(jsonData string) (int, error) {
+	var exportData ExportData
+
+	if err := json.Unmarshal([]byte(jsonData), &exportData); err != nil {
+		return 0, fmt.Errorf("failed to parse import data: %w", err)
+	}
+
+	if exportData.PasswordEncryption != nil && exportData.PasswordEncryption.Mode == "passphrase" {
+		return 0, fmt.Errorf("passphrase required")
+	}
+
+	importedCount := 0
+
+	for _, conn := range exportData.Connections {
+		originalID := conn.ID
+		existingConns, _ := a.connectionService.GetConnections()
+		idExists := false
+		for _, existing := range existingConns {
+			if existing.ID == conn.ID {
+				idExists = true
+				break
+			}
+		}
+
+		if idExists {
+			conn.ID = generateNewID()
+		}
+
+		if err := a.connectionService.AddConnection(conn); err != nil {
+			fmt.Printf("Failed to add connection %s: %v\n", conn.ID, err)
+			continue
+		}
+
+		if password, hasPassword := exportData.Passwords[originalID]; hasPassword {
+			if strings.HasPrefix(password, "enc:") {
+				encrypted := strings.TrimPrefix(password, "enc:")
+				if err := a.connectionService.StoreEncryptedPassword(conn.ID, encrypted); err != nil {
+					fmt.Printf("Failed to store encrypted password for %s: %v\n", conn.ID, err)
+				}
+				continue
+			}
+
+			if isEncryptedPassword(password) {
+				if err := a.connectionService.StoreEncryptedPassword(conn.ID, password); err != nil {
+					fmt.Printf("Failed to store encrypted password for %s: %v\n", conn.ID, err)
+				}
+				continue
+			}
+
+			if err := a.connectionService.SavePassword(conn.ID, password); err != nil {
+				fmt.Printf("Failed to save password for %s: %v\n", conn.ID, err)
+			}
+		}
+
+		importedCount++
+	}
+
+	return importedCount, nil
+}
+
+// ImportConnectionsWithPassphrase imports passphrase-encrypted connections
+func (a *App) ImportConnectionsWithPassphrase(jsonData, passphrase string) (int, error) {
+	if strings.TrimSpace(passphrase) == "" {
+		return 0, fmt.Errorf("passphrase required")
+	}
+
+	var exportData ExportData
+	if err := json.Unmarshal([]byte(jsonData), &exportData); err != nil {
+		return 0, fmt.Errorf("failed to parse import data: %w", err)
+	}
+
+	if exportData.PasswordEncryption == nil || exportData.PasswordEncryption.Mode != "passphrase" {
+		return a.ImportConnections(jsonData)
+	}
+
+	salt, err := base64.StdEncoding.DecodeString(exportData.PasswordEncryption.Salt)
+	if err != nil {
+		return 0, fmt.Errorf("invalid passphrase salt")
+	}
+
+	key := derivePassphraseKey(passphrase, salt)
+
+	importedCount := 0
+	for _, conn := range exportData.Connections {
+		originalID := conn.ID
+		existingConns, _ := a.connectionService.GetConnections()
+		idExists := false
+		for _, existing := range existingConns {
+			if existing.ID == conn.ID {
+				idExists = true
+				break
+			}
+		}
+
+		if idExists {
+			conn.ID = generateNewID()
+		}
+
+		if err := a.connectionService.AddConnection(conn); err != nil {
+			fmt.Printf("Failed to add connection %s: %v\n", conn.ID, err)
+			continue
+		}
+
+		if password, hasPassword := exportData.Passwords[originalID]; hasPassword {
+			if strings.HasPrefix(password, passphrasePrefix) {
+				ciphertext := strings.TrimPrefix(password, passphrasePrefix)
+				plaintext, err := decryptWithKey(ciphertext, key)
+				if err != nil {
+					return 0, fmt.Errorf("invalid passphrase")
+				}
+				if err := a.connectionService.SavePassword(conn.ID, plaintext); err != nil {
+					fmt.Printf("Failed to save password for %s: %v\n", conn.ID, err)
+				}
+			} else if err := a.connectionService.SavePassword(conn.ID, password); err != nil {
+				fmt.Printf("Failed to save password for %s: %v\n", conn.ID, err)
+			}
+		}
+
+		importedCount++
+	}
+
+	return importedCount, nil
+}
+
+// ImportConnectionsFromFile imports connections from a JSON file
+func (a *App) ImportConnectionsFromFile(filePath string) (int, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read import file: %w", err)
+	}
+
+	return a.ImportConnections(string(data))
+}
+
+// ImportConnectionsFromFileWithPassphrase imports passphrase-encrypted connections from file
+func (a *App) ImportConnectionsFromFileWithPassphrase(filePath, passphrase string) (int, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read import file: %w", err)
+	}
+
+	return a.ImportConnectionsWithPassphrase(string(data), passphrase)
+}
+
+// SelectImportFile opens a file picker for selecting connection import file
+func (a *App) SelectImportFile() (string, error) {
+	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择导入文件",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "JSON 文件 (*.json)",
+				Pattern:     "*.json",
+			},
+			{
+				DisplayName: "所有文件 (*.*)",
+				Pattern:     "*.*",
+			},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return filePath, nil
+}
+
+// isEncryptedPassword checks if a password is in AES-GCM encrypted format
+func isEncryptedPassword(password string) bool {
+	decoded, err := base64.StdEncoding.DecodeString(password)
+	if err != nil {
+		return false
+	}
+
+	return len(decoded) >= 29
+}
+
+func generateNewID() string {
+	return fmt.Sprintf("conn-%d", time.Now().UnixNano())
+}
+
+func derivePassphraseKey(passphrase string, salt []byte) []byte {
+	return argon2.IDKey([]byte(passphrase), salt, 3, 64*1024, 4, 32)
+}
+
+func encryptWithKey(plaintext string, key []byte) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+func decryptWithKey(ciphertext string, key []byte) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(ciphertext)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+
+	nonce, ciphertextBytes := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
 }

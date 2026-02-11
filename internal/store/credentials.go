@@ -92,6 +92,29 @@ func (s *CredentialStore) Get(connectionID string) (string, error) {
 	return password, nil
 }
 
+// GetEncrypted returns the encrypted password without decrypting
+func (s *CredentialStore) GetEncrypted(connectionID string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	encrypted, exists := s.credentials[connectionID]
+	if !exists {
+		return "", fmt.Errorf("credential not found for connection: %s", connectionID)
+	}
+
+	return encrypted, nil
+}
+
+// StoreEncrypted stores an already-encrypted password
+func (s *CredentialStore) StoreEncrypted(connectionID, encrypted string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.credentials[connectionID] = encrypted
+
+	return s.save()
+}
+
 // Delete removes a stored password
 func (s *CredentialStore) Delete(connectionID string) error {
 	s.mu.Lock()
