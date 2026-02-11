@@ -31,3 +31,5 @@ Thumbs.db
 # Config files with sensitive data
 *.env
 config.local.json
+# Git worktrees
+.worktrees/
