@@ -84,6 +84,7 @@ export namespace config {
 	    key_path?: string;
 	    tags?: string[];
 	    metadata?: Record<string, string>;
+	    type?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionConfig(source);
@@ -100,6 +101,7 @@ export namespace config {
 	        this.key_path = source["key_path"];
 	        this.tags = source["tags"];
 	        this.metadata = source["metadata"];
+	        this.type = source["type"];
 	    }
 	}
 

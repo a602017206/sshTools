@@ -18,8 +18,16 @@ export function ChangeDirectory(arg1, arg2) {
   return window['go']['main']['App']['ChangeDirectory'](arg1, arg2);
 }
 
+export function CloseDatabase(arg1) {
+  return window['go']['main']['App']['CloseDatabase'](arg1);
+}
+
 export function CloseSSH(arg1) {
   return window['go']['main']['App']['CloseSSH'](arg1);
+}
+
+export function ConnectDatabase(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['ConnectDatabase'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function ConnectLocalShell(arg1, arg2, arg3, arg4) {
@@ -82,6 +90,10 @@ export function EscapeJSON(arg1) {
   return window['go']['main']['App']['EscapeJSON'](arg1);
 }
 
+export function ExecuteDatabaseQuery(arg1, arg2) {
+  return window['go']['main']['App']['ExecuteDatabaseQuery'](arg1, arg2);
+}
+
 export function ExportConnections(arg1) {
   return window['go']['main']['App']['ExportConnections'](arg1);
 }
@@ -142,6 +154,10 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function GetTableColumns(arg1, arg2) {
+  return window['go']['main']['App']['GetTableColumns'](arg1, arg2);
+}
+
 export function GetTransferStatus(arg1) {
   return window['go']['main']['App']['GetTransferStatus'](arg1);
 }
@@ -172,6 +188,18 @@ export function ImportConnectionsFromFileWithPassphrase(arg1, arg2) {
 
 export function ImportConnectionsWithPassphrase(arg1, arg2) {
   return window['go']['main']['App']['ImportConnectionsWithPassphrase'](arg1, arg2);
+}
+
+export function ListDatabaseTables(arg1) {
+  return window['go']['main']['App']['ListDatabaseTables'](arg1);
+}
+
+export function ListDatabaseTablesInDatabase(arg1, arg2) {
+  return window['go']['main']['App']['ListDatabaseTablesInDatabase'](arg1, arg2);
+}
+
+export function ListDatabases(arg1) {
+  return window['go']['main']['App']['ListDatabases'](arg1);
 }
 
 export function ListFiles(arg1, arg2) {
@@ -268,6 +296,10 @@ export function ShowQuestionDialog(arg1, arg2) {
 
 export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function TestDatabaseConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['TestDatabaseConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function TimestampToDateTime(arg1, arg2) {

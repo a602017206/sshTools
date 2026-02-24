@@ -38,6 +38,7 @@ type App struct {
 	monitorService    *service.MonitorService
 	settingsService   *service.SettingsService
 	devToolsService   *service.DevToolsService
+	databaseService   *service.DatabaseService
 	configManager     *config.ConfigManager
 }
 
@@ -72,6 +73,7 @@ func (a *App) startup(ctx context.Context) {
 	a.monitorService = service.NewMonitorService(sessionManager)
 	a.settingsService = service.NewSettingsService(configManager)
 	a.devToolsService = service.NewDevToolsService()
+	a.databaseService = service.NewDatabaseService(a.configManager)
 }
 
 // Greet returns a greeting for the given name
@@ -921,6 +923,58 @@ func (a *App) SelectImportFile() (string, error) {
 	}
 
 	return filePath, nil
+}
+
+func (a *App) ConnectDatabase(sessionID, host string, port int, user, password, dbType, database string) error {
+	return a.databaseService.ConnectDatabase(sessionID, host, port, user, password, dbType, database)
+}
+
+func (a *App) ExecuteDatabaseQuery(sessionID, query string) (string, error) {
+	result, err := a.databaseService.ExecuteQuery(sessionID, query)
+	if err != nil {
+		return "", err
+	}
+
+	jsonData, err := json.Marshal(result)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal query result: %w", err)
+	}
+
+	return string(jsonData), nil
+}
+
+func (a *App) ListDatabaseTables(sessionID string) ([]string, error) {
+	return a.databaseService.ListTables(sessionID)
+}
+
+func (a *App) ListDatabases(sessionID string) ([]string, error) {
+	return a.databaseService.ListDatabases(sessionID)
+}
+
+func (a *App) ListDatabaseTablesInDatabase(sessionID, database string) ([]string, error) {
+	return a.databaseService.ListTablesInDatabase(sessionID, database)
+}
+
+func (a *App) GetTableColumns(sessionID, table string) ([]string, error) {
+	schema, err := a.databaseService.GetTableSchema(sessionID, table)
+	if err != nil {
+		return nil, err
+	}
+
+	columns := make([]string, 0, len(schema.Columns))
+	for _, col := range schema.Columns {
+		columns = append(columns, col.Name)
+	}
+
+	return columns, nil
+}
+
+func (a *App) CloseDatabase(sessionID string) error {
+	return a.databaseService.CloseDatabase(sessionID)
+}
+
+func (a *App) TestDatabaseConnection(host string, port int, user, password, dbType, database string) error {
+	return a.databaseService.TestConnection(host, port, user, password, dbType, database)
 }
 
 // isEncryptedPassword checks if a password is in AES-GCM encrypted format

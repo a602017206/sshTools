@@ -12,7 +12,11 @@ export function CancelTransfer(arg1:string):Promise<void>;
 
 export function ChangeDirectory(arg1:string,arg2:string):Promise<void>;
 
+export function CloseDatabase(arg1:string):Promise<void>;
+
 export function CloseSSH(arg1:string):Promise<void>;
+
+export function ConnectDatabase(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string):Promise<void>;
 
 export function ConnectLocalShell(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
 
@@ -44,6 +48,8 @@ export function EncryptText(arg1:string,arg2:string,arg3:string,arg4:string):Pro
 
 export function EscapeJSON(arg1:string):Promise<string>;
 
+export function ExecuteDatabaseQuery(arg1:string,arg2:string):Promise<string>;
+
 export function ExportConnections(arg1:boolean):Promise<string>;
 
 export function ExportConnectionsByIDs(arg1:Array<string>,arg2:boolean):Promise<string>;
@@ -74,6 +80,8 @@ export function GetPassword(arg1:string):Promise<string>;
 
 export function GetSettings():Promise<config.AppSettings>;
 
+export function GetTableColumns(arg1:string,arg2:string):Promise<Array<string>>;
+
 export function GetTransferStatus(arg1:string):Promise<ssh.TransferProgress>;
 
 export function GetVersion():Promise<string>;
@@ -89,6 +97,12 @@ export function ImportConnectionsFromFile(arg1:string):Promise<number>;
 export function ImportConnectionsFromFileWithPassphrase(arg1:string,arg2:string):Promise<number>;
 
 export function ImportConnectionsWithPassphrase(arg1:string,arg2:string):Promise<number>;
+
+export function ListDatabaseTables(arg1:string):Promise<Array<string>>;
+
+export function ListDatabaseTablesInDatabase(arg1:string,arg2:string):Promise<Array<string>>;
+
+export function ListDatabases(arg1:string):Promise<Array<string>>;
 
 export function ListFiles(arg1:string,arg2:string):Promise<Array<ssh.FileInfo>>;
 
@@ -137,6 +151,8 @@ export function ShowMessageDialog(arg1:string,arg2:string):Promise<void>;
 export function ShowQuestionDialog(arg1:string,arg2:string):Promise<boolean>;
 
 export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
+
+export function TestDatabaseConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function TimestampToDateTime(arg1:number,arg2:string):Promise<string>;
 
