@@ -24,6 +24,15 @@
   let passphraseValue = '';
   let showImportPassphraseInput = false;
 
+  let expandedDatabaseAssets = new Set();
+  let expandedDatabaseNames = {};
+  let databaseLists = {};
+  let tableLists = {};
+  let pendingExpandAssetId = null;
+  let showDbContextMenu = false;
+  let dbContextMenuAsset = null;
+  let dbContextMenuPosition = { x: 0, y: 0 };
+
   function showMessage(title, message) {
     const showDialog = window.wailsBindings?.ShowMessageDialog;
     if (typeof showDialog === 'function') {
@@ -45,7 +54,191 @@
   // Close dropdown when clicking outside
   function handleClickOutside(event) {
     showExportMenu = false;
+    showDbContextMenu = false;
     event.stopPropagation();
+  }
+
+  function openDbContextMenu(asset, event) {
+    if (asset.type !== 'database') return;
+    event.preventDefault();
+    event.stopPropagation();
+    dbContextMenuAsset = asset;
+    dbContextMenuPosition = { x: event.clientX, y: event.clientY };
+    showDbContextMenu = true;
+  }
+
+  async function handleDisconnectDatabase() {
+    if (!dbContextMenuAsset || !dbContextMenuAsset.dbSessionId) {
+      showDbContextMenu = false;
+      return;
+    }
+
+    if (!window.wailsBindings || typeof window.wailsBindings.CloseDatabase !== 'function') {
+      showError('断开失败', '断开数据库功能不可用');
+      showDbContextMenu = false;
+      return;
+    }
+
+    try {
+      await window.wailsBindings.CloseDatabase(dbContextMenuAsset.dbSessionId);
+      assetsStore.update(items => items.map(item => {
+        if (item.id === dbContextMenuAsset.id) {
+          return {
+            ...item,
+            dbConnected: false,
+            dbSessionId: null
+          };
+        }
+        return item;
+      }));
+
+      expandedDatabaseAssets.delete(dbContextMenuAsset.id);
+      expandedDatabaseAssets = new Set(expandedDatabaseAssets);
+      delete databaseLists[dbContextMenuAsset.id];
+      Object.keys(tableLists).forEach(key => {
+        if (key.startsWith(`${dbContextMenuAsset.id}:`)) {
+          delete tableLists[key];
+        }
+      });
+      expandedDatabaseNames = { ...expandedDatabaseNames, [dbContextMenuAsset.id]: new Set() };
+    } catch (error) {
+      showError('断开失败', error.message || '断开数据库失败');
+    } finally {
+      showDbContextMenu = false;
+    }
+  }
+
+  function dispatchDatabaseConnect(asset, openPanel) {
+    window.dispatchEvent(new CustomEvent('database:connect', {
+      detail: { asset, openPanel }
+    }));
+  }
+
+  $: if (pendingExpandAssetId) {
+    const pendingAsset = $assetsStore.find(asset => asset.id === pendingExpandAssetId);
+    if (pendingAsset?.dbConnected) {
+      toggleDatabaseAsset(pendingAsset);
+      pendingExpandAssetId = null;
+    }
+  }
+
+  function toggleDatabaseAsset(asset) {
+    if (!asset.dbConnected) {
+      pendingExpandAssetId = asset.id;
+      dispatchDatabaseConnect(asset, false);
+      return;
+    }
+
+    if (expandedDatabaseAssets.has(asset.id)) {
+      expandedDatabaseAssets.delete(asset.id);
+    } else {
+      expandedDatabaseAssets.add(asset.id);
+      loadDatabases(asset, false);
+    }
+    expandedDatabaseAssets = new Set(expandedDatabaseAssets);
+  }
+
+  async function loadDatabases(asset, force) {
+    if (!window.wailsBindings || !asset.dbSessionId) return;
+
+    if (!force && databaseLists[asset.id]?.items) return;
+
+    databaseLists = {
+      ...databaseLists,
+      [asset.id]: {
+        items: databaseLists[asset.id]?.items || [],
+        loading: true,
+        error: ''
+      }
+    };
+
+    try {
+      const { ListDatabases } = window.wailsBindings;
+      if (typeof ListDatabases !== 'function') {
+        throw new Error('数据库列表接口不可用');
+      }
+      const result = await ListDatabases(asset.dbSessionId);
+      databaseLists = {
+        ...databaseLists,
+        [asset.id]: {
+          items: (result || []).slice().sort(),
+          loading: false,
+          error: ''
+        }
+      };
+    } catch (error) {
+      databaseLists = {
+        ...databaseLists,
+        [asset.id]: {
+          items: databaseLists[asset.id]?.items || [],
+          loading: false,
+          error: error.message || '加载失败'
+        }
+      };
+    }
+  }
+
+  function toggleDatabaseName(asset, databaseName) {
+    if (!expandedDatabaseNames[asset.id]) {
+      expandedDatabaseNames = { ...expandedDatabaseNames, [asset.id]: new Set() };
+    }
+
+    const current = expandedDatabaseNames[asset.id];
+    if (current.has(databaseName)) {
+      current.delete(databaseName);
+    } else {
+      current.add(databaseName);
+      loadTables(asset, databaseName, false);
+    }
+
+    expandedDatabaseNames = { ...expandedDatabaseNames, [asset.id]: new Set(current) };
+  }
+
+  async function loadTables(asset, databaseName, force) {
+    if (!window.wailsBindings || !asset.dbSessionId) return;
+
+    const key = `${asset.id}:${databaseName}`;
+    if (!force && tableLists[key]?.items) return;
+
+    tableLists = {
+      ...tableLists,
+      [key]: {
+        items: tableLists[key]?.items || [],
+        loading: true,
+        error: ''
+      }
+    };
+
+    try {
+      const { ListDatabaseTablesInDatabase } = window.wailsBindings;
+      if (typeof ListDatabaseTablesInDatabase !== 'function') {
+        throw new Error('表列表接口不可用');
+      }
+      const result = await ListDatabaseTablesInDatabase(asset.dbSessionId, databaseName);
+      tableLists = {
+        ...tableLists,
+        [key]: {
+          items: (result || []).slice().sort(),
+          loading: false,
+          error: ''
+        }
+      };
+    } catch (error) {
+      tableLists = {
+        ...tableLists,
+        [key]: {
+          items: tableLists[key]?.items || [],
+          loading: false,
+          error: error.message || '加载失败'
+        }
+      };
+    }
+  }
+
+  function handleTableSelect(asset, databaseName, tableName) {
+    window.dispatchEvent(new CustomEvent('database:table-select', {
+      detail: { sessionId: asset.dbSessionId, databaseName, tableName }
+    }));
   }
 
   function openExportSelection(mode, event) {
@@ -483,48 +676,142 @@
         {#if expandedGroups.has(group)}
           <div class="ml-4">
             {#each groupAssets as asset (asset.id)}
-              <div
-                on:click={() => onConnect(asset)}
-                class="group flex items-center gap-2 px-3 py-2.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg mx-2 cursor-pointer transition-all"
-              >
-                <div class="flex-shrink-0">
-                  {@html getAssetIcon(asset.type)}
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{asset.name}</span>
-                    <div class={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      asset.status === 'online' ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-                    }`} />
+              <div>
+                <div
+                  on:click={() => onConnect(asset)}
+                  on:contextmenu={(event) => openDbContextMenu(asset, event)}
+                  class="group relative flex items-center gap-2 px-3 py-2.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg mx-2 cursor-pointer transition-all"
+                >
+                  {#if asset.type === 'database'}
+                    <button
+                      type="button"
+                      class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100 dark:hover:bg-gray-700"
+                      on:click|stopPropagation={() => toggleDatabaseAsset(asset)}
+                      title={asset.dbConnected ? '展开数据库' : '连接后展开'}
+                    >
+                      {#if expandedDatabaseAssets.has(asset.id)}
+                        <svg class="w-3 h-3 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      {:else}
+                        <svg class="w-3 h-3 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                      {/if}
+                    </button>
+                  {/if}
+                  <div class="flex-shrink-0">
+                    {@html getAssetIcon(asset.type)}
                   </div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {asset.username}@{asset.host}:{asset.port}
-                    {#if asset.type === 'database' && asset.dbType}
-                      • {asset.dbType.toUpperCase()}
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{asset.name}</span>
+                      <div class={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        asset.status === 'online' ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+                      }`} />
+                      {#if asset.type === 'database'}
+                        <span class={`text-[10px] px-1.5 py-0.5 rounded ${asset.dbConnected ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'}`}>
+                          {asset.dbConnected ? '已连接' : '未连接'}
+                        </span>
+                      {/if}
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      {asset.username}@{asset.host}:{asset.port}
+                      {#if asset.type === 'database' && asset.dbType}
+                        • {asset.dbType.toUpperCase()}
+                      {/if}
+                    </div>
+                  </div>
+                  <div class="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+                    <button
+                      class="p-1 hover:bg-green-100 dark:hover:bg-green-800 rounded"
+                      on:click|stopPropagation={() => onConnect(asset)}
+                      title="连接"
+                    >
+                      <svg class="w-3 h-3 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </button>
+                    <button class="p-1 hover:bg-purple-100 dark:hover:bg-purple-800 rounded" on:click|stopPropagation={() => onEdit(asset)}>
+                      <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button class="p-1 hover:bg-red-100 dark:hover:bg-red-800 rounded" on:click={(e) => handleDelete(asset, e)}>
+                      <svg class="w-3 h-3 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {#if asset.type === 'database' && expandedDatabaseAssets.has(asset.id)}
+                  <div class="ml-8 mr-2 mb-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-2">
+                    <div class="flex items-center justify-between text-xs text-gray-600 dark:text-gray-300 mb-2">
+                      <span>数据库</span>
+                      <button
+                        type="button"
+                        class="px-2 py-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+                        on:click|stopPropagation={() => loadDatabases(asset, true)}
+                      >
+                        刷新
+                      </button>
+                    </div>
+
+                    {#if databaseLists[asset.id]?.loading}
+                      <div class="text-xs text-gray-400">加载中...</div>
+                    {:else if databaseLists[asset.id]?.error}
+                      <div class="text-xs text-red-500">{databaseLists[asset.id].error}</div>
+                    {:else if databaseLists[asset.id]?.items?.length}
+                      <div class="space-y-1">
+                        {#each databaseLists[asset.id].items as dbName}
+                          <div>
+                            <button
+                              type="button"
+                              class="w-full flex items-center gap-2 text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                              on:click|stopPropagation={() => toggleDatabaseName(asset, dbName)}
+                            >
+                              {#if expandedDatabaseNames[asset.id]?.has(dbName)}
+                                <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              {:else}
+                                <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                </svg>
+                              {/if}
+                              <span class="flex-1 text-left truncate">{dbName}</span>
+                            </button>
+
+                            {#if expandedDatabaseNames[asset.id]?.has(dbName)}
+                              <div class="ml-5 mt-1 space-y-1">
+                                {#if tableLists[`${asset.id}:${dbName}`]?.loading}
+                                  <div class="text-xs text-gray-400">加载表中...</div>
+                                {:else if tableLists[`${asset.id}:${dbName}`]?.error}
+                                  <div class="text-xs text-red-500">{tableLists[`${asset.id}:${dbName}`].error}</div>
+                                {:else if tableLists[`${asset.id}:${dbName}`]?.items?.length}
+                                  {#each tableLists[`${asset.id}:${dbName}`].items as tableName}
+                                    <button
+                                      type="button"
+                                      class="w-full text-left text-xs px-2 py-1 rounded hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                                      on:click|stopPropagation={() => handleTableSelect(asset, dbName, tableName)}
+                                    >
+                                      {tableName}
+                                    </button>
+                                  {/each}
+                                {:else}
+                                  <div class="text-xs text-gray-400">暂无表</div>
+                                {/if}
+                              </div>
+                            {/if}
+                          </div>
+                        {/each}
+                      </div>
+                    {:else}
+                      <div class="text-xs text-gray-400">暂无数据库</div>
                     {/if}
                   </div>
-                </div>
-                <div class="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-                  <button
-                    class="p-1 hover:bg-green-100 dark:hover:bg-green-800 rounded"
-                    on:click|stopPropagation={() => onConnect(asset)}
-                    title="连接"
-                  >
-                    <svg class="w-3 h-3 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  </button>
-                  <button class="p-1 hover:bg-purple-100 dark:hover:bg-purple-800 rounded" on:click|stopPropagation={() => onEdit(asset)}>
-                    <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                  <button class="p-1 hover:bg-red-100 dark:hover:bg-red-800 rounded" on:click={(e) => handleDelete(asset, e)}>
-                    <svg class="w-3 h-3 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
+                {/if}
               </div>
             {/each}
           </div>
@@ -533,6 +820,24 @@
     {/each}
   </div>
 </div>
+
+{#if showDbContextMenu && dbContextMenuAsset}
+  <div
+    class="fixed z-[120] w-40 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
+    style={`top: ${dbContextMenuPosition.y}px; left: ${dbContextMenuPosition.x}px;`}
+  >
+    <button
+      type="button"
+      class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+      on:click={handleDisconnectDatabase}
+    >
+      <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+      <span>断开连接</span>
+    </button>
+  </div>
+{/if}
 
 <ConfirmDialog
   bind:isOpen={showDeleteConfirm}
