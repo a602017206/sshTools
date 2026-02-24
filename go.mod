@@ -3,10 +3,13 @@ module AHaSSHTools
 go 1.24.0
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/creack/pty v1.1.24
 	github.com/gin-gonic/gin v1.11.0
+	github.com/go-sql-driver/mysql v1.7.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/lib/pq v1.10.9
 	github.com/pkg/sftp v1.13.10
 	github.com/tjfoc/gmsm v1.4.1
 	github.com/wailsapp/wails/v2 v2.11.0
