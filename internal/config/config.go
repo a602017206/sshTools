@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-// ConnectionConfig represents a saved SSH connection
+// ConnectionConfig represents a saved connection (SSH, Database, Docker)
 type ConnectionConfig struct {
 	ID       string            `json:"id"`
 	Name     string            `json:"name"`
@@ -18,6 +18,7 @@ type ConnectionConfig struct {
 	KeyPath  string            `json:"key_path,omitempty"`
 	Tags     []string          `json:"tags,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+	Type     string            `json:"type,omitempty"` // "ssh", "database", "docker"
 }
 
 // AppConfig represents application configuration
