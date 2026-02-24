@@ -7,6 +7,9 @@
   import DevToolsPanel from './components/DevToolsPanel.svelte';
   import AddAssetDialog from './components/AddAssetDialog.svelte';
   import AboutDialog from './components/AboutDialog.svelte';
+  import DatabasePanel from './components/DatabasePanel.svelte';
+  import InputDialog from './components/ui/InputDialog.svelte';
+  import ConfirmDialog from './components/ui/ConfirmDialog.svelte';
   import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme } from './stores.js';
   import { uploadStore, activeTransfers, completedTransfers } from './stores/uploadStore.js';
   import { formatFileSize, formatSpeed, getTransferPercentage } from './stores/uploadStore.js';
@@ -19,6 +22,26 @@
   let isRightPanelCollapsed = false;
   let editingAsset = null;
   let terminalPanelRef;
+
+  let showDatabasePanel = false;
+  let databaseSessionId = null;
+  let databaseAsset = null;
+
+  let showDbAuthInput = false;
+  let dbAuthInputTitle = '';
+  let dbAuthInputMessage = '';
+  let dbAuthInputPlaceholder = '';
+  let dbAuthInputDefault = '';
+  let dbAuthInputType = 'text';
+  let dbAuthInputAllowEmpty = false;
+  let dbAuthInputTrim = true;
+  let resolveDbAuthInput = null;
+
+  let showDbSavePasswordConfirm = false;
+  let dbSavePasswordTitle = '';
+  let dbSavePasswordMessage = '';
+  let dbSavePasswordType = 'warning';
+  let resolveDbSavePasswordConfirm = null;
 
   $: connectionsArray = $connectionsStore ? Array.from($connectionsStore.values()) : [];
   $: themeClass = $themeStore === 'dark' ? 'dark' : '';
@@ -130,13 +153,202 @@
     document.removeEventListener('mouseup', stopFileManagerResize);
   }
 
-  // 连接处理 - 转发给 TerminalPanel
+  // 连接处理 - 检查类型并路由到对应面板
   function handleConnect(asset) {
+    if (asset.type === 'database') {
+      handleDatabaseConnect({ asset, openPanel: true });
+      return;
+    }
+
     if (terminalPanelRef && typeof terminalPanelRef.handleConnect === 'function') {
       terminalPanelRef.handleConnect(asset);
     } else {
       console.error('TerminalPanel not available');
       alert('终端面板未初始化');
+    }
+  }
+
+  async function handleDatabaseConnect(payload) {
+    const asset = payload?.asset || payload;
+    const openPanel = payload?.openPanel !== false;
+
+    if (!asset) {
+      return;
+    }
+
+    if (asset.dbConnected && asset.dbSessionId && openPanel) {
+      databaseAsset = asset;
+      databaseSessionId = asset.dbSessionId;
+      showDatabasePanel = true;
+      return;
+    }
+
+    if (!window.wailsBindings) {
+      console.error('Wails bindings not loaded');
+      alert('Wails 绑定未加载');
+      return;
+    }
+
+    try {
+      const { ConnectDatabase, TestDatabaseConnection, HasPassword, GetPassword, SavePassword } = window.wailsBindings;
+      const sessionId = asset.dbSessionId || `db-${asset.id}`;
+      const host = asset.host;
+      const port = asset.port;
+      const user = asset.username;
+      const dbType = asset.metadata?.db_type || asset.dbType || 'mysql';
+      const database = asset.metadata?.database || '';
+
+      let password = '';
+      try {
+        const hasSaved = typeof HasPassword === 'function' && await HasPassword(asset.id);
+        if (hasSaved) {
+          password = await GetPassword(asset.id);
+        } else {
+          password = await requestDbInput({
+            title: `连接到 ${asset.name}`,
+            message: '请输入数据库密码：',
+            placeholder: '密码',
+            inputType: 'password',
+            allowEmpty: false,
+            trimValue: false
+          });
+          if (password === null) {
+            return;
+          }
+
+          if (password && await requestDbConfirm('保存密码', '是否保存密码以便下次自动连接？', 'warning') && typeof SavePassword === 'function') {
+            await SavePassword(asset.id, password);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to get saved password:', error);
+        password = await requestDbInput({
+          title: `连接到 ${asset.name}`,
+          message: '请输入数据库密码：',
+          placeholder: '密码',
+          inputType: 'password',
+          allowEmpty: false,
+          trimValue: false
+        });
+        if (password === null) {
+          return;
+        }
+      }
+
+      if (!password) {
+        console.log('Database connection cancelled - no password provided');
+        return;
+      }
+
+      console.log('Connecting to database:', { sessionId, host, port, user, dbType, database });
+
+      if (typeof TestDatabaseConnection === 'function') {
+        await TestDatabaseConnection(host, port, user, password, dbType, database);
+      }
+
+      await ConnectDatabase(sessionId, host, port, user, password, dbType, database);
+
+      assetsStore.update(items => items.map(item => {
+        if (item.id === asset.id) {
+          return {
+            ...item,
+            dbConnected: true,
+            dbSessionId: sessionId
+          };
+        }
+        return item;
+      }));
+
+      if (openPanel) {
+        databaseAsset = asset;
+        databaseSessionId = sessionId;
+        showDatabasePanel = true;
+      }
+    } catch (error) {
+      console.error('Database connection failed:', error);
+      alert(`数据库连接失败: ${error.message || error}`);
+    }
+  }
+
+  async function closeDatabasePanel() {
+    if (window.wailsBindings && typeof window.wailsBindings.CloseDatabase === 'function' && databaseSessionId) {
+      try {
+        await window.wailsBindings.CloseDatabase(databaseSessionId);
+      } catch (error) {
+        console.error('Failed to close database session:', error);
+      }
+    }
+
+    if (databaseAsset?.id) {
+      assetsStore.update(items => items.map(item => {
+        if (item.id === databaseAsset.id) {
+          return {
+            ...item,
+            dbConnected: false,
+            dbSessionId: null
+          };
+        }
+        return item;
+      }));
+    }
+    showDatabasePanel = false;
+    databaseSessionId = null;
+    databaseAsset = null;
+  }
+
+  function requestDbInput({ title, message, placeholder, inputType = 'text', defaultValue = '', allowEmpty = false, trimValue = true }) {
+    return new Promise(resolve => {
+      dbAuthInputTitle = title;
+      dbAuthInputMessage = message;
+      dbAuthInputPlaceholder = placeholder;
+      dbAuthInputDefault = defaultValue;
+      dbAuthInputType = inputType;
+      dbAuthInputAllowEmpty = allowEmpty;
+      dbAuthInputTrim = trimValue;
+      resolveDbAuthInput = resolve;
+      showDbAuthInput = true;
+    });
+  }
+
+  function handleDbAuthInputConfirm(value) {
+    showDbAuthInput = false;
+    if (resolveDbAuthInput) {
+      resolveDbAuthInput(value);
+      resolveDbAuthInput = null;
+    }
+  }
+
+  function handleDbAuthInputCancel() {
+    showDbAuthInput = false;
+    if (resolveDbAuthInput) {
+      resolveDbAuthInput(null);
+      resolveDbAuthInput = null;
+    }
+  }
+
+  function requestDbConfirm(title, message, type = 'warning') {
+    return new Promise(resolve => {
+      dbSavePasswordTitle = title;
+      dbSavePasswordMessage = message;
+      dbSavePasswordType = type;
+      resolveDbSavePasswordConfirm = resolve;
+      showDbSavePasswordConfirm = true;
+    });
+  }
+
+  function handleDbSavePasswordConfirm() {
+    showDbSavePasswordConfirm = false;
+    if (resolveDbSavePasswordConfirm) {
+      resolveDbSavePasswordConfirm(true);
+      resolveDbSavePasswordConfirm = null;
+    }
+  }
+
+  function handleDbSavePasswordCancel() {
+    showDbSavePasswordConfirm = false;
+    if (resolveDbSavePasswordConfirm) {
+      resolveDbSavePasswordConfirm(false);
+      resolveDbSavePasswordConfirm = null;
     }
   }
 
@@ -160,7 +372,11 @@
         type: connectionData.type || 'ssh',
         auth_type: connectionData.auth_type,
         key_path: connectionData.key_path,
-        tags: connectionData.tags || []
+        tags: connectionData.tags || [],
+        metadata: connectionData.metadata || {},
+        dbType: connectionData.metadata?.db_type,
+        dbConnected: false,
+        dbSessionId: null
       };
 
       assetsStore.update(assets => [...assets, asset]);
@@ -198,7 +414,11 @@
               type: connectionData.type || 'ssh',
               auth_type: connectionData.auth_type,
               key_path: connectionData.key_path,
-              tags: connectionData.tags || []
+              tags: connectionData.tags || [],
+              metadata: connectionData.metadata || {},
+              dbType: connectionData.metadata?.db_type,
+              dbConnected: false,
+              dbSessionId: null
             };
           }
           return asset;
@@ -228,10 +448,14 @@
         username: conn.user,
         group: conn.tags?.[0] || '默认分组',
         status: 'online',
-        type: 'ssh',
+        type: conn.type || 'ssh',
         auth_type: conn.auth_type,
         key_path: conn.key_path,
-        tags: conn.tags || []
+        tags: conn.tags || [],
+        metadata: conn.metadata || {},
+        dbType: conn.metadata?.db_type,
+        dbConnected: false,
+        dbSessionId: null
       }));
 
       assetsStore.set(assets);
@@ -260,6 +484,7 @@
     }
 
     let cleanupEvents = null;
+    let handleDatabaseConnectEvent = null;
 
     try {
       const wails = await import('../wailsjs/go/main/App.js');
@@ -269,6 +494,12 @@
       }));
 
       await loadAssetsFromBackend();
+
+      handleDatabaseConnectEvent = (event) => {
+        handleDatabaseConnect(event.detail);
+      };
+
+      window.addEventListener('database:connect', handleDatabaseConnectEvent);
 
       // Listen for about dialog event from backend
       const runtime = await import('../wailsjs/runtime/runtime.js');
@@ -288,6 +519,9 @@
     return () => {
       window.removeEventListener('resize', ensureFullHeight);
       window.removeEventListener('assets-changed', loadAssetsFromBackend);
+      if (handleDatabaseConnectEvent) {
+        window.removeEventListener('database:connect', handleDatabaseConnectEvent);
+      }
       if (cleanupEvents) {
         cleanupEvents();
       }
@@ -499,6 +733,71 @@
     onClose={() => isAboutDialogOpen = false}
     themeStore={themeStore}
   />
+
+  <InputDialog
+    bind:isOpen={showDbAuthInput}
+    title={dbAuthInputTitle}
+    message={dbAuthInputMessage}
+    placeholder={dbAuthInputPlaceholder}
+    defaultValue={dbAuthInputDefault}
+    inputType={dbAuthInputType}
+    allowEmpty={dbAuthInputAllowEmpty}
+    trimValue={dbAuthInputTrim}
+    confirmText="确定"
+    cancelText="取消"
+    onConfirm={handleDbAuthInputConfirm}
+    onCancel={handleDbAuthInputCancel}
+  />
+
+  <ConfirmDialog
+    bind:isOpen={showDbSavePasswordConfirm}
+    title={dbSavePasswordTitle}
+    message={dbSavePasswordMessage}
+    type={dbSavePasswordType}
+    confirmText="确定"
+    cancelText="取消"
+    onConfirm={handleDbSavePasswordConfirm}
+    onCancel={handleDbSavePasswordCancel}
+  />
+
+  {#if showDatabasePanel && databaseSessionId}
+  <div class="fixed inset-0 z-[100] flex items-center justify-center {$themeStore === 'dark' ? 'bg-black/50' : 'bg-black/30'}">
+    <div class="relative w-[90vw] h-[80vh] max-w-7xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-6 py-4 border-b {$themeStore === 'dark' ? 'border-gray-700' : 'border-gray-200'}">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
+            </svg>
+            <div>
+              <h2 class="text-lg font-semibold {$themeStore === 'dark' ? 'text-white' : 'text-gray-900'}">
+                {databaseAsset?.name || '数据库查询'}
+              </h2>
+              <div class="text-xs {$themeStore === 'dark' ? 'text-gray-400' : 'text-gray-500'}">
+                {databaseAsset?.username}@{databaseAsset?.host}:{databaseAsset?.port} - {databaseAsset?.metadata?.database || 'N/A'}
+              </div>
+            </div>
+          </div>
+        </div>
+        <button
+          on:click={closeDatabasePanel}
+          class="p-2 rounded-lg transition-colors {$themeStore === 'dark' ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}"
+          title="关闭"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="flex-1 overflow-hidden">
+        <DatabasePanel
+          sessionId={databaseSessionId}
+          dbConfig={databaseAsset}
+        />
+      </div>
+    </div>
+  </div>
+  {/if}
 
   {#if $uploadStore.isPanelOpen}
     <div
