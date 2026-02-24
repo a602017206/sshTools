@@ -76,6 +76,7 @@
       return;
     }
 
+
     if (authType === 'key' && !formData.keyPath) {
       testResult = '请选择 SSH 密钥文件';
       return;
@@ -85,15 +86,26 @@
     testResult = '';
 
     try {
-      const authValue = authType === 'key' ? formData.keyPath : formData.password;
-      await window.wailsBindings.TestConnection(
-        formData.host,
-        parseInt(formData.port),
-        formData.username,
-        authType,
-        authValue,
-        formData.passphrase || ''
-      );
+      if (assetType === 'database') {
+        await window.wailsBindings.TestDatabaseConnection(
+          formData.host,
+          parseInt(formData.port),
+          formData.username,
+          formData.password,
+          formData.dbType,
+          formData.database
+        );
+      } else {
+        const authValue = authType === 'key' ? formData.keyPath : formData.password;
+        await window.wailsBindings.TestConnection(
+          formData.host,
+          parseInt(formData.port),
+          formData.username,
+          authType,
+          authValue,
+          formData.passphrase || ''
+        );
+      }
       testResult = '✓ 连接成功';
     } catch (error) {
       console.error('Connection test failed:', error);
@@ -146,6 +158,7 @@
       return;
     }
 
+
     savingConnection = true;
 
     try {
@@ -161,7 +174,8 @@
         tags: [formData.group || '默认分组'],
         type: assetType,
         metadata: {
-          database: formData.database || undefined
+          database: formData.database || undefined,
+          db_type: formData.dbType
         }
       };
 
@@ -241,8 +255,6 @@
         switch (formData.dbType) {
           case 'mysql': return '3306';
           case 'postgresql': return '5432';
-          case 'mongodb': return '27017';
-          case 'redis': return '6379';
           default: return '';
         }
       default: return '';
@@ -280,7 +292,7 @@
           keyPath: conn.key_path || '',
           passphrase: '',
           group: conn.tags?.[0] || '',
-          dbType: 'mysql',
+          dbType: conn.metadata?.db_type || 'mysql',
           database: conn.metadata?.database || '',
         };
         assetType = conn.type || 'ssh';
@@ -600,10 +612,8 @@
            bind:value={formData.dbType}
            class="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
          >
-           <option value="mysql">MySQL</option>
-           <option value="postgresql">PostgreSQL</option>
-           <option value="mongodb">MongoDB</option>
-           <option value="redis">Redis</option>
+            <option value="mysql">MySQL</option>
+            <option value="postgresql">PostgreSQL</option>
          </select>
        </div>
      {/if}
