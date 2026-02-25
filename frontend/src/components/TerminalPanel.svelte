@@ -1,6 +1,8 @@
 <script>
-  import { connectionsStore, activeSessionIdStore } from '../stores.js';
+  import { assetsStore, connectionsStore, activeSessionIdStore } from '../stores.js';
   import Terminal from './Terminal.svelte';
+  import DatabaseListPanel from './DatabaseListPanel.svelte';
+  import DatabaseTablePanel from './DatabaseTablePanel.svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
@@ -10,6 +12,7 @@
   let sessionsList = [];
   let sessionUnsubscribers = new Map();
   let osc7PendingBuffers = new Map();
+  let handleDatabaseTableSelectEvent = null;
 
   // Close confirmation dialog state
   let showCloseConfirm = false;
@@ -31,6 +34,91 @@
   let selectedShell = 'powershell';
 
   $: sessionsList = $connectionsStore ? Array.from($connectionsStore.values()) : [];
+
+  function buildDbListSession(asset, sessionId) {
+    return {
+      sessionId,
+      connection: asset,
+      connected: true,
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      type: 'database',
+      panelType: 'database-list',
+      dbSessionId: sessionId,
+      tabName: `${asset.name} · 数据库`
+    };
+  }
+
+  function buildDbTablePanelId(dbSessionId, databaseName, tableName) {
+    const dbPart = databaseName || '__default__';
+    return `dbtable_${dbSessionId}_${dbPart}_${tableName}`;
+  }
+
+  function updateAssetDbStateBySession(sessionId, connected) {
+    if (!sessionId) return;
+    assetsStore.update(items => items.map(item => {
+      if (item.dbSessionId === sessionId) {
+        return {
+          ...item,
+          dbConnected: connected,
+          dbSessionId: connected ? sessionId : null
+        };
+      }
+      return item;
+    }));
+  }
+
+  export function openDatabaseSession({ asset, sessionId }) {
+    if (!asset || !sessionId) return;
+
+    const existing = $connectionsStore.get(sessionId);
+    if (existing) {
+      activeSessionIdStore.set(sessionId);
+      return;
+    }
+
+    const newSession = buildDbListSession(asset, sessionId);
+    connectionsStore.update(conns => {
+      conns.set(sessionId, newSession);
+      return conns;
+    });
+    activeSessionIdStore.set(sessionId);
+  }
+
+  function openDatabaseTablePanel({ sessionId, databaseName, tableName }) {
+    if (!sessionId || !tableName) return;
+
+    const parentSession = $connectionsStore.get(sessionId);
+    if (!parentSession) return;
+
+    const panelId = buildDbTablePanelId(sessionId, databaseName, tableName);
+    const existing = $connectionsStore.get(panelId);
+    if (existing) {
+      activeSessionIdStore.set(panelId);
+      return;
+    }
+
+    const dbLabel = databaseName ? `${databaseName}.` : '';
+    const tableSession = {
+      sessionId: panelId,
+      connection: parentSession.connection,
+      connected: true,
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      type: 'database',
+      panelType: 'database-table',
+      dbSessionId: sessionId,
+      databaseName,
+      tableName,
+      tabName: `${dbLabel}${tableName}`
+    };
+
+    connectionsStore.update(conns => {
+      conns.set(panelId, tableSession);
+      return conns;
+    });
+    activeSessionIdStore.set(panelId);
+  }
 
   // 当会话列表更新时，更新全局 terminalRefs
   $: if (window.terminalRefs !== undefined) {
@@ -280,6 +368,10 @@
   }
   
   async function closeSession(sessionId) {
+    const session = $connectionsStore.get(sessionId);
+    const isDatabaseListPanel = session?.type === 'database' && session?.panelType === 'database-list';
+    const isDatabaseTablePanel = session?.type === 'database' && session?.panelType === 'database-table';
+
     // 取消订阅
     const unsubscribe = sessionUnsubscribers.get(sessionId);
     if (unsubscribe) {
@@ -290,19 +382,37 @@
     // 释放终端引用
     delete terminalRefs[sessionId];
 
-    // 关闭后端会话
-    const { CloseSSH } = window.wailsBindings || {};
-    if (typeof CloseSSH === 'function') {
-      try {
-        await CloseSSH(sessionId);
-      } catch (error) {
-        console.error('Failed to close session:', error);
+    if (isDatabaseListPanel) {
+      const { CloseDatabase } = window.wailsBindings || {};
+      if (typeof CloseDatabase === 'function') {
+        try {
+          await CloseDatabase(sessionId);
+        } catch (error) {
+          console.error('Failed to close database session:', error);
+        }
+      }
+      updateAssetDbStateBySession(sessionId, false);
+    } else if (!isDatabaseTablePanel) {
+      const { CloseSSH } = window.wailsBindings || {};
+      if (typeof CloseSSH === 'function') {
+        try {
+          await CloseSSH(sessionId);
+        } catch (error) {
+          console.error('Failed to close session:', error);
+        }
       }
     }
 
-    // 从状态中移除
     connectionsStore.update(conns => {
       conns.delete(sessionId);
+
+      if (isDatabaseListPanel) {
+        const relatedPanels = Array.from(conns.entries())
+          .filter(([_, value]) => value?.type === 'database' && value?.dbSessionId === sessionId)
+          .map(([key]) => key);
+        relatedPanels.forEach(key => conns.delete(key));
+      }
+
       return conns;
     });
 
@@ -343,7 +453,7 @@
     if (!session) return;
 
     // 如果已连接，显示确认对话框
-    if (session.connected) {
+    if (session.type !== 'database' && session.connected) {
       sessionToClose = sessionId;
       showCloseConfirm = true;
     } else {
@@ -833,6 +943,10 @@
     sessionUnsubscribers.forEach(unsubscribe => {
       unsubscribe();
     });
+
+    if (handleDatabaseTableSelectEvent) {
+      window.removeEventListener('database:table-select', handleDatabaseTableSelectEvent);
+    }
   });
 
   onMount(async () => {
@@ -850,6 +964,13 @@
     }
 
     console.log('TerminalPanel mounted, subscribing to events for sessions:', sessionsList);
+
+    handleDatabaseTableSelectEvent = (event) => {
+      const detail = event?.detail;
+      if (!detail) return;
+      openDatabaseTablePanel(detail);
+    };
+    window.addEventListener('database:table-select', handleDatabaseTableSelectEvent);
 
     // 聚焦当前活动的终端
     await tick();
@@ -871,7 +992,7 @@
         <div
           class="group flex items-center gap-2 px-4 py-2.5 border-r border-gray-200 dark:border-gray-700 cursor-pointer transition-all min-w-[180px] {
             $activeSessionIdStore === session.sessionId
-              ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-b-2 border-b-purple-600'
+              ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-b-2 accent-border'
               : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
           }"
           role="button"
@@ -939,6 +1060,10 @@
             <div class="text-sm text-gray-600 dark:text-gray-400 font-mono">
               {#if session.type === 'local'}
                 本地终端{session.connection.name !== 'Local Shell' ? ` (${session.connection.name})` : ''}
+              {:else if session.type === 'database' && session.panelType === 'database-list'}
+                数据库列表 · {session.connection.name}
+              {:else if session.type === 'database' && session.panelType === 'database-table'}
+                表数据 · {session.databaseName ? `${session.databaseName}.` : ''}{session.tableName}
               {:else}
                 {session.connection.username}@{session.connection.host}:{session.connection.port}
               {/if}
@@ -976,13 +1101,24 @@
 
           <!-- 终端窗口 -->
           <div class="flex-1 overflow-hidden">
-            <Terminal
-              bind:this={terminalRefs[session.sessionId]}
-              sessionId={session.sessionId}
-              onData={handleTerminalData}
-              onResize={handleTerminalResize}
-              onZModemTransfer={handleZModemTransfer}
-            />
+            {#if session.type === 'database' && session.panelType === 'database-list'}
+              <DatabaseListPanel sessionId={session.sessionId} dbConfig={session.connection} />
+            {:else if session.type === 'database' && session.panelType === 'database-table'}
+              <DatabaseTablePanel
+                sessionId={session.dbSessionId}
+                dbConfig={session.connection}
+                databaseName={session.databaseName}
+                tableName={session.tableName}
+              />
+            {:else}
+              <Terminal
+                bind:this={terminalRefs[session.sessionId]}
+                sessionId={session.sessionId}
+                onData={handleTerminalData}
+                onResize={handleTerminalResize}
+                onZModemTransfer={handleZModemTransfer}
+              />
+            {/if}
           </div>
         </div>
       {/each}
@@ -1048,7 +1184,7 @@
             type="radio"
             bind:group={selectedShell}
             value="powershell"
-            class="w-4 h-4 text-purple-600"
+            class="w-4 h-4 accent-text"
           />
           <div>
             <div class="font-medium text-gray-900 dark:text-white">PowerShell</div>
@@ -1061,7 +1197,7 @@
             type="radio"
             bind:group={selectedShell}
             value="cmd"
-            class="w-4 h-4 text-purple-600"
+            class="w-4 h-4 accent-text"
           />
           <div>
             <div class="font-medium text-gray-900 dark:text-white">CMD</div>
@@ -1079,7 +1215,7 @@
         </button>
         <button
           on:click={handleShellSelectConfirm}
-          class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium"
+          class="px-4 py-2 accent-bg accent-bg-hover text-white rounded-lg transition-colors font-medium focus-visible:outline-none focus-visible:ring-2"
         >
           确定
         </button>

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // ConnectionConfig represents a saved connection (SSH, Database, Docker)
@@ -29,11 +30,18 @@ type AppConfig struct {
 
 // AppSettings represents application settings
 type AppSettings struct {
-	Theme         string `json:"theme"` // "light" or "dark"
-	FontFamily    string `json:"font_family"`
-	FontSize      int    `json:"font_size"`
-	TerminalTheme string `json:"terminal_theme"`
-	SidebarWidth  int    `json:"sidebar_width"` // Sidebar width in pixels
+	Theme              string `json:"theme"`
+	ThemeMode          string `json:"theme_mode"`
+	UseSystemTheme     bool   `json:"use_system_theme"`
+	AccentColor        string `json:"accent_color"`
+	FontFamily         string `json:"font_family"`
+	FontSize           int    `json:"font_size"`
+	TerminalTheme      string `json:"terminal_theme"`
+	TerminalFontFamily string `json:"terminal_font_family"`
+	TerminalFontSize   int    `json:"terminal_font_size"`
+	CompactMode        bool   `json:"compact_mode"`
+	ReducedMotion      bool   `json:"reduced_motion"`
+	SidebarWidth       int    `json:"sidebar_width"`
 
 	// Monitor panel settings
 	MonitorCollapsed       bool `json:"monitor_collapsed"`
@@ -61,9 +69,16 @@ type FileManagerSettings struct {
 func DefaultSettings() AppSettings {
 	return AppSettings{
 		Theme:                  "dark",
-		FontFamily:             "monospace",
+		ThemeMode:              "system",
+		UseSystemTheme:         true,
+		AccentColor:            "teal",
+		FontFamily:             "\"Avenir Next\", \"SF Pro Text\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
 		FontSize:               14,
 		TerminalTheme:          "default",
+		TerminalFontFamily:     "Menlo, Monaco, \"Courier New\", monospace",
+		TerminalFontSize:       14,
+		CompactMode:            false,
+		ReducedMotion:          false,
 		SidebarWidth:           300,
 		MonitorCollapsed:       true,
 		MonitorWidth:           350,
@@ -205,6 +220,15 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	if theme, ok := updates["theme"].(string); ok {
 		cm.config.Settings.Theme = theme
 	}
+	if themeMode, ok := updates["theme_mode"].(string); ok {
+		cm.config.Settings.ThemeMode = themeMode
+	}
+	if useSystemTheme, ok := updates["use_system_theme"].(bool); ok {
+		cm.config.Settings.UseSystemTheme = useSystemTheme
+	}
+	if accentColor, ok := updates["accent_color"].(string); ok {
+		cm.config.Settings.AccentColor = accentColor
+	}
 	if sidebarWidth, ok := updates["sidebar_width"].(float64); ok {
 		cm.config.Settings.SidebarWidth = int(sidebarWidth)
 	}
@@ -214,8 +238,30 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	if fontSize, ok := updates["font_size"].(float64); ok {
 		cm.config.Settings.FontSize = int(fontSize)
 	}
+	if fontSize, ok := updates["font_size"].(string); ok {
+		if parsed, err := strconv.Atoi(fontSize); err == nil {
+			cm.config.Settings.FontSize = parsed
+		}
+	}
 	if terminalTheme, ok := updates["terminal_theme"].(string); ok {
 		cm.config.Settings.TerminalTheme = terminalTheme
+	}
+	if terminalFontFamily, ok := updates["terminal_font_family"].(string); ok {
+		cm.config.Settings.TerminalFontFamily = terminalFontFamily
+	}
+	if terminalFontSize, ok := updates["terminal_font_size"].(float64); ok {
+		cm.config.Settings.TerminalFontSize = int(terminalFontSize)
+	}
+	if terminalFontSize, ok := updates["terminal_font_size"].(string); ok {
+		if parsed, err := strconv.Atoi(terminalFontSize); err == nil {
+			cm.config.Settings.TerminalFontSize = parsed
+		}
+	}
+	if compactMode, ok := updates["compact_mode"].(bool); ok {
+		cm.config.Settings.CompactMode = compactMode
+	}
+	if reducedMotion, ok := updates["reduced_motion"].(bool); ok {
+		cm.config.Settings.ReducedMotion = reducedMotion
 	}
 
 	// Monitor panel settings

@@ -57,7 +57,7 @@
 >
   <div class="space-y-4">
     {#if message}
-      <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+      <p class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
         {message}
       </p>
     {/if}
@@ -69,7 +69,7 @@
         bind:value={inputValue}
         {placeholder}
         on:keydown={handleKeydown}
-        class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+        class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus:border-transparent transition-all"
       />
     {:else}
       <input
@@ -78,7 +78,7 @@
         bind:value={inputValue}
         {placeholder}
         on:keydown={handleKeydown}
-        class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+        class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus:border-transparent transition-all"
       />
     {/if}
 
@@ -86,7 +86,7 @@
       <button
         type="button"
         on:click={onCancel}
-        class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-xs font-medium transition-colors"
+        class="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2"
       >
         {cancelText}
       </button>
@@ -94,7 +94,7 @@
         type="button"
         on:click={handleConfirm}
         disabled={!allowEmpty && !inputValue.trim()}
-        class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-xs font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        class="px-3 py-1.5 accent-bg accent-bg-hover text-white rounded-md text-xs font-medium transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {confirmText}
       </button>

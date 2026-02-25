@@ -18,7 +18,7 @@
   size="sm"
 >
   <div class="space-y-4">
-    <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+    <p class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
       {message}
     </p>
 
@@ -26,7 +26,7 @@
       <button
         type="button"
         on:click={onCancel}
-        class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-md text-xs font-medium transition-colors"
+        class="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2"
       >
         {cancelText}
       </button>
@@ -35,10 +35,10 @@
         on:click={onConfirm}
         class="px-3 py-1.5 rounded-md text-xs font-medium transition-all shadow-sm {
           type === 'danger'
-            ? 'bg-red-600 hover:bg-red-700 text-white'
+            ? 'bg-rose-600 hover:bg-rose-700 text-white'
             : type === 'warning'
-            ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-            : 'bg-purple-600 hover:bg-purple-700 text-white'
+            ? 'bg-amber-500 hover:bg-amber-600 text-white'
+            : 'accent-bg accent-bg-hover text-white'
         }"
       >
         {confirmText}

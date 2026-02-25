@@ -29,6 +29,7 @@
   let zmodemDownloadError = null;
   let zmodemDownloadSavedPath = null;
   let zmodemTransferModal = null;
+  let handleAppearanceUpdated = null;
   // 从 themeStore 获取初始主题值
   let currentTheme = get(themeStore);
 
@@ -91,11 +92,41 @@
     }
   });
 
+  function readTerminalTypography() {
+    if (typeof document === 'undefined') {
+      return {
+        fontSize: 14,
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace'
+      };
+    }
+
+    const rootStyles = getComputedStyle(document.documentElement);
+    const fontSizeValue = Number.parseInt(rootStyles.getPropertyValue('--terminal-font-size'), 10);
+    const fontFamilyValue = rootStyles.getPropertyValue('--terminal-font-family').trim();
+
+    return {
+      fontSize: Number.isFinite(fontSizeValue) ? fontSizeValue : 14,
+      fontFamily: fontFamilyValue || 'Menlo, Monaco, "Courier New", monospace'
+    };
+  }
+
+  function applyTerminalTypography() {
+    if (!terminal) {
+      return;
+    }
+    const typography = readTerminalTypography();
+    terminal.options.fontSize = typography.fontSize;
+    terminal.options.fontFamily = typography.fontFamily;
+    fitAddon?.fit();
+  }
+
   onMount(async () => {
+    const typography = readTerminalTypography();
+
     terminal = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontSize: typography.fontSize,
+      fontFamily: typography.fontFamily,
       theme: currentTheme === 'light' ? lightTheme : darkTheme,
       allowProposedApi: true,
       scrollback: 1000,
@@ -255,8 +286,16 @@
     });
     resizeObserver.observe(terminalElement);
 
+    handleAppearanceUpdated = () => {
+      applyTerminalTypography();
+    };
+    window.addEventListener('app:appearance-updated', handleAppearanceUpdated);
+
     return () => {
       resizeObserver.disconnect();
+      if (handleAppearanceUpdated) {
+        window.removeEventListener('app:appearance-updated', handleAppearanceUpdated);
+      }
     };
   });
 

@@ -20,9 +20,16 @@ export namespace config {
 	}
 	export class AppSettings {
 	    theme: string;
+	    theme_mode: string;
+	    use_system_theme: boolean;
+	    accent_color: string;
 	    font_family: string;
 	    font_size: number;
 	    terminal_theme: string;
+	    terminal_font_family: string;
+	    terminal_font_size: number;
+	    compact_mode: boolean;
+	    reduced_motion: boolean;
 	    sidebar_width: number;
 	    monitor_collapsed: boolean;
 	    monitor_width: number;
@@ -41,9 +48,16 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.theme = source["theme"];
+	        this.theme_mode = source["theme_mode"];
+	        this.use_system_theme = source["use_system_theme"];
+	        this.accent_color = source["accent_color"];
 	        this.font_family = source["font_family"];
 	        this.font_size = source["font_size"];
 	        this.terminal_theme = source["terminal_theme"];
+	        this.terminal_font_family = source["terminal_font_family"];
+	        this.terminal_font_size = source["terminal_font_size"];
+	        this.compact_mode = source["compact_mode"];
+	        this.reduced_motion = source["reduced_motion"];
 	        this.sidebar_width = source["sidebar_width"];
 	        this.monitor_collapsed = source["monitor_collapsed"];
 	        this.monitor_width = source["monitor_width"];

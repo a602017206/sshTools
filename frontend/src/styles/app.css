@@ -2,27 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CSS 变量 */
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f9fafb;
-  --bg-hover: #f3f4f6;
-  --text-primary: #111827;
-  --text-secondary: #6b7280;
-  --border-primary: #e5e7eb;
-  --accent-primary: #8b5cf6;
-  --accent-hover: #7c3aed;
+  --app-font-family: 'Avenir Next', 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --app-font-size: 14px;
+  --terminal-font-family: Menlo, Monaco, 'Courier New', monospace;
+  --terminal-font-size: 14px;
+  --bg-glow-1: rgba(20, 184, 166, 0.08);
+  --bg-glow-2: rgba(56, 189, 248, 0.08);
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-hover: #eef2f7;
+  --bg-elevated: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #64748b;
+  --border-primary: #dbe3ee;
+  --accent-primary: #0f766e;
+  --accent-hover: #115e59;
+  --accent-soft: #ccfbf1;
+  --focus-ring: #14b8a6;
 }
 
 .dark {
-  --bg-primary: #1f2937;
-  --bg-secondary: #111827;
-  --bg-hover: #374151;
-  --text-primary: #f9fafb;
-  --text-secondary: #9ca3af;
-  --border-primary: #374151;
-  --accent-primary: #a78bfa;
-  --accent-hover: #8b5cf6;
+  --bg-primary: #0b1220;
+  --bg-secondary: #111b2e;
+  --bg-hover: #1a263c;
+  --bg-elevated: #152238;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #7b8aa0;
+  --border-primary: #25324a;
+  --accent-primary: #14b8a6;
+  --accent-hover: #2dd4bf;
+  --accent-soft: #123a3a;
+  --focus-ring: #2dd4bf;
 }
 
 /* 自定义样式 */
@@ -31,11 +44,83 @@
     margin: 0;
     padding: 0;
     font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: var(--app-font-family);
+    font-size: var(--app-font-size);
+    color: var(--text-primary);
+    background:
+      radial-gradient(1200px 500px at 12% -10%, var(--bg-glow-1), transparent 55%),
+      radial-gradient(1000px 400px at 95% -20%, var(--bg-glow-2), transparent 50%),
+      var(--bg-primary);
+    text-rendering: optimizeLegibility;
   }
+
+  :global(*) {
+    scrollbar-color: rgba(100, 116, 139, 0.35) transparent;
+  }
+
+  :global(button),
+  :global([role='button']),
+  :global(input),
+  :global(select),
+  :global(textarea) {
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  }
+
+  :global(button:focus-visible),
+  :global([role='button']:focus-visible),
+  :global(input:focus-visible),
+  :global(select:focus-visible),
+  :global(textarea:focus-visible) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+:root[data-reduced-motion='true'] *,
+:root[data-reduced-motion='true'] *::before,
+:root[data-reduced-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
 
 /* 满动条样式 */
 @layer utilities {
+  .accent-text {
+    color: var(--accent-primary);
+  }
+
+  .accent-border {
+    border-color: var(--accent-primary);
+  }
+
+  .accent-bg {
+    background-color: var(--accent-primary);
+  }
+
+  .accent-bg-hover:hover {
+    background-color: var(--accent-hover);
+  }
+
+  .accent-soft-hover:hover {
+    background-color: var(--accent-soft);
+  }
+
+  .accent-gradient {
+    background-image: linear-gradient(90deg, var(--accent-primary), var(--accent-hover));
+    color: #ffffff;
+  }
+
+  .accent-gradient-135 {
+    background-image: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
+    color: #ffffff;
+  }
+
+  .accent-control {
+    accent-color: var(--accent-primary);
+  }
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;

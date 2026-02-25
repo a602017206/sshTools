@@ -69,7 +69,7 @@
       <div class="w-72 bg-gradient-to-b from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-900/80 dark:to-slate-950 border-r border-slate-200/70 dark:border-slate-800/80 p-5 flex flex-col">
         <div class="flex items-center justify-between mb-6">
           <div>
-            <h3 class="text-lg font-semibold tracking-tight bg-gradient-to-r from-slate-800 to-cyan-600 dark:from-slate-100 dark:to-cyan-300 bg-clip-text text-transparent">开发工具</h3>
+            <h3 class="text-lg font-semibold tracking-tight bg-clip-text text-transparent" style="background-image: linear-gradient(90deg, var(--text-primary), var(--accent-primary));">开发工具</h3>
             <div class="text-[11px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mt-1">Toolkit</div>
           </div>
           <button
@@ -94,7 +94,7 @@
               }"
             >
               {#if activeToolId === tool.id}
-                <span class="absolute left-2 top-2 bottom-2 w-1 rounded-full bg-gradient-to-b from-cyan-400 via-sky-500 to-indigo-500" />
+                <span class="absolute left-2 top-2 bottom-2 w-1 rounded-full" style="background: linear-gradient(180deg, var(--accent-primary), var(--accent-hover));" />
               {/if}
               <span class={`text-2xl ${tool.color}`}>{tool.icon}</span>
               <span class={`text-sm font-semibold transition-colors ${

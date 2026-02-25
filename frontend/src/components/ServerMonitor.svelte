@@ -420,7 +420,7 @@
     </div>
 
      <!-- 内存使用率 -->
-     <div class="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl p-3 shadow-sm border border-emerald-100 dark:border-emerald-800">
+     <div class="rounded-xl p-3 shadow-sm border border-emerald-100 dark:border-emerald-800" style="background: linear-gradient(135deg, var(--accent-soft), transparent);">
        <div class="flex items-center justify-between mb-2">
          <div class="flex items-center gap-2">
            <div class="p-1.5 bg-emerald-100 dark:bg-emerald-900 rounded-lg">

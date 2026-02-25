@@ -7,25 +7,23 @@
   import DevToolsPanel from './components/DevToolsPanel.svelte';
   import AddAssetDialog from './components/AddAssetDialog.svelte';
   import AboutDialog from './components/AboutDialog.svelte';
-  import DatabasePanel from './components/DatabasePanel.svelte';
+  import GlobalSettingsDialog from './components/GlobalSettingsDialog.svelte';
   import InputDialog from './components/ui/InputDialog.svelte';
   import ConfirmDialog from './components/ui/ConfirmDialog.svelte';
   import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme } from './stores.js';
   import { uploadStore, activeTransfers, completedTransfers } from './stores/uploadStore.js';
   import { formatFileSize, formatSpeed, getTransferPercentage } from './stores/uploadStore.js';
   import { CancelTransfer } from '../wailsjs/go/main/App.js';
+  import { applyAppearanceSettings, getDefaultAppSettings, resolveTheme } from './settings/appearance.js';
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
   let isAboutDialogOpen = false;
+  let isGlobalSettingsOpen = false;
   let isSidebarCollapsed = false;
-  let isRightPanelCollapsed = false;
+  let isRightPanelCollapsed = true;
   let editingAsset = null;
   let terminalPanelRef;
-
-  let showDatabasePanel = false;
-  let databaseSessionId = null;
-  let databaseAsset = null;
 
   let showDbAuthInput = false;
   let dbAuthInputTitle = '';
@@ -42,9 +40,16 @@
   let dbSavePasswordMessage = '';
   let dbSavePasswordType = 'warning';
   let resolveDbSavePasswordConfirm = null;
+  let appSettings = getDefaultAppSettings();
+  let settingsDraftSnapshot = null;
 
   $: connectionsArray = $connectionsStore ? Array.from($connectionsStore.values()) : [];
+  $: hasActiveServerSession = connectionsArray.some(session => session?.connection?.type === 'ssh');
   $: themeClass = $themeStore === 'dark' ? 'dark' : '';
+
+  $: if (!hasActiveServerSession) {
+    isRightPanelCollapsed = true;
+  }
 
   // 从 store 获取面板尺寸
   $: sidebarWidth = $uiStore.sidebarWidth;
@@ -56,9 +61,99 @@
   let isResizingRightPanel = false;
   let isResizingFileManager = false;
 
-  function toggleTheme() {
-    const newTheme = $themeStore === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
+  function applyAndSyncSettings(nextSettings) {
+    const resolvedTheme = resolveTheme(nextSettings.theme_mode, nextSettings.theme);
+    setTheme(resolvedTheme);
+    appSettings = {
+      ...appSettings,
+      ...nextSettings,
+      theme: resolvedTheme,
+      use_system_theme: nextSettings.theme_mode === 'system'
+    };
+    applyAppearanceSettings(appSettings);
+  }
+
+  async function loadAppSettings() {
+    if (!window.wailsBindings || typeof window.wailsBindings.GetSettings !== 'function') {
+      applyAndSyncSettings({
+        ...appSettings,
+        theme_mode: 'system'
+      });
+      return;
+    }
+
+    try {
+      const settings = await window.wailsBindings.GetSettings();
+      const merged = {
+        ...getDefaultAppSettings(),
+        ...settings,
+        theme_mode: settings?.theme_mode || (settings?.use_system_theme ? 'system' : settings?.theme || 'dark')
+      };
+      applyAndSyncSettings(merged);
+      if (merged.sidebar_width) {
+        setSidebarWidth(merged.sidebar_width);
+      }
+    } catch (error) {
+      console.error('Failed to load app settings:', error);
+      applyAndSyncSettings({ ...getDefaultAppSettings(), theme_mode: 'system' });
+    }
+  }
+
+  async function handleSaveGlobalSettings(nextSettings) {
+    applyAndSyncSettings(nextSettings);
+    settingsDraftSnapshot = null;
+    isGlobalSettingsOpen = false;
+
+    if (!window.wailsBindings || typeof window.wailsBindings.UpdateSettings !== 'function') {
+      return;
+    }
+
+    const updates = {
+      theme: appSettings.theme,
+      theme_mode: appSettings.theme_mode,
+      use_system_theme: appSettings.use_system_theme,
+      font_family: appSettings.font_family,
+      font_size: appSettings.font_size,
+      accent_color: appSettings.accent_color,
+      terminal_font_family: appSettings.terminal_font_family,
+      terminal_font_size: appSettings.terminal_font_size,
+      compact_mode: appSettings.compact_mode,
+      reduced_motion: appSettings.reduced_motion,
+      sidebar_width: $uiStore.sidebarWidth
+    };
+
+    try {
+      await window.wailsBindings.UpdateSettings(updates);
+    } catch (error) {
+      console.error('Failed to update app settings:', error);
+    }
+  }
+
+  function handlePreviewGlobalSettings(nextSettings) {
+    const preview = {
+      ...appSettings,
+      ...nextSettings
+    };
+    const resolvedTheme = resolveTheme(preview.theme_mode, preview.theme);
+    setTheme(resolvedTheme);
+    applyAppearanceSettings({
+      ...preview,
+      theme: resolvedTheme,
+      use_system_theme: preview.theme_mode === 'system'
+    });
+  }
+
+  function openGlobalSettings() {
+    settingsDraftSnapshot = { ...appSettings };
+    isGlobalSettingsOpen = true;
+  }
+
+  function handleCancelGlobalSettings() {
+    isGlobalSettingsOpen = false;
+    if (settingsDraftSnapshot) {
+      applyAndSyncSettings(settingsDraftSnapshot);
+      settingsDraftSnapshot = null;
+    }
   }
 
   function toggleDevTools() {
@@ -156,8 +251,15 @@
   // 连接处理 - 检查类型并路由到对应面板
   function handleConnect(asset) {
     if (asset.type === 'database') {
+      isRightPanelCollapsed = true;
       handleDatabaseConnect({ asset, openPanel: true });
       return;
+    }
+
+    if (asset.type === 'ssh') {
+      isRightPanelCollapsed = false;
+    } else {
+      isRightPanelCollapsed = true;
     }
 
     if (terminalPanelRef && typeof terminalPanelRef.handleConnect === 'function') {
@@ -166,6 +268,16 @@
       console.error('TerminalPanel not available');
       alert('终端面板未初始化');
     }
+  }
+
+  function openDatabaseListPanel(asset, sessionId) {
+    if (terminalPanelRef && typeof terminalPanelRef.openDatabaseSession === 'function') {
+      terminalPanelRef.openDatabaseSession({ asset, sessionId });
+      return;
+    }
+
+    console.error('TerminalPanel database session API not available');
+    alert('数据库面板未初始化');
   }
 
   async function handleDatabaseConnect(payload) {
@@ -177,9 +289,7 @@
     }
 
     if (asset.dbConnected && asset.dbSessionId && openPanel) {
-      databaseAsset = asset;
-      databaseSessionId = asset.dbSessionId;
-      showDatabasePanel = true;
+      openDatabaseListPanel(asset, asset.dbSessionId);
       return;
     }
 
@@ -260,40 +370,12 @@
       }));
 
       if (openPanel) {
-        databaseAsset = asset;
-        databaseSessionId = sessionId;
-        showDatabasePanel = true;
+        openDatabaseListPanel(asset, sessionId);
       }
     } catch (error) {
       console.error('Database connection failed:', error);
       alert(`数据库连接失败: ${error.message || error}`);
     }
-  }
-
-  async function closeDatabasePanel() {
-    if (window.wailsBindings && typeof window.wailsBindings.CloseDatabase === 'function' && databaseSessionId) {
-      try {
-        await window.wailsBindings.CloseDatabase(databaseSessionId);
-      } catch (error) {
-        console.error('Failed to close database session:', error);
-      }
-    }
-
-    if (databaseAsset?.id) {
-      assetsStore.update(items => items.map(item => {
-        if (item.id === databaseAsset.id) {
-          return {
-            ...item,
-            dbConnected: false,
-            dbSessionId: null
-          };
-        }
-        return item;
-      }));
-    }
-    showDatabasePanel = false;
-    databaseSessionId = null;
-    databaseAsset = null;
   }
 
   function requestDbInput({ title, message, placeholder, inputType = 'text', defaultValue = '', allowEmpty = false, trimValue = true }) {
@@ -473,15 +555,6 @@
   }
 
    onMount(async () => {
-    const savedTheme = localStorage.getItem('ssh-tools-theme');
-    if (!savedTheme) {
-      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      if (prefersDark) {
-        setTheme('dark');
-      }
-    } else {
-      setTheme(savedTheme);
-    }
 
     let cleanupEvents = null;
     let handleDatabaseConnectEvent = null;
@@ -492,6 +565,8 @@
       window.dispatchEvent(new CustomEvent('wails-bindings-loaded', {
         detail: Object.keys(wails.default || wails).join(', ')
       }));
+
+      await loadAppSettings();
 
       await loadAssetsFromBackend();
 
@@ -511,6 +586,7 @@
       window.addEventListener('assets-changed', loadAssetsFromBackend);
     } catch (error) {
       console.warn('Wails bindings not available yet:', error.message);
+      applyAndSyncSettings({ ...getDefaultAppSettings(), theme_mode: 'system' });
     }
 
     ensureFullHeight();
@@ -533,7 +609,7 @@
   <!-- 顶部标题栏 -->
   <header class="h-14 flex-shrink-0 {$themeStore === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b flex items-center px-6 shadow-sm" style="pointer-events: {isAddDialogOpen ? 'none' : 'auto'};">
     <div class="flex items-center gap-3">
-      <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center font-bold text-sm text-white shadow-md">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm text-white shadow-md" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));">
         哈
       </div>
       <div>
@@ -560,28 +636,24 @@
         {/if}
       </div>
 
-      <!-- 主题切换按钮 -->
       <button
-        on:click={toggleTheme}
+        on:click={openGlobalSettings}
         disabled={isAddDialogOpen}
-        class="flex items-center justify-center w-9 h-9 rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-yellow-400' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
-        title={$themeStore === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
+        class="flex items-center justify-center w-9 h-9 rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}"
+        style="color: var(--accent-primary);"
+        title="全局设置"
       >
-        {#if $themeStore === 'dark'}
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
-          </svg>
-        {:else}
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
-          </svg>
-        {/if}
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+        </svg>
       </button>
 
       <button
         on:click={toggleDevTools}
         disabled={isAddDialogOpen}
-        class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        class="flex items-center gap-2 px-4 py-2 text-white rounded-lg font-medium transition-all shadow-sm hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        style="background: linear-gradient(90deg, var(--accent-primary), var(--accent-hover));"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
@@ -734,6 +806,14 @@
     themeStore={themeStore}
   />
 
+  <GlobalSettingsDialog
+    bind:isOpen={isGlobalSettingsOpen}
+    value={appSettings}
+    onPreview={handlePreviewGlobalSettings}
+    onSave={handleSaveGlobalSettings}
+    onCancel={handleCancelGlobalSettings}
+  />
+
   <InputDialog
     bind:isOpen={showDbAuthInput}
     title={dbAuthInputTitle}
@@ -759,45 +839,6 @@
     onConfirm={handleDbSavePasswordConfirm}
     onCancel={handleDbSavePasswordCancel}
   />
-
-  {#if showDatabasePanel && databaseSessionId}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center {$themeStore === 'dark' ? 'bg-black/50' : 'bg-black/30'}">
-    <div class="relative w-[90vw] h-[80vh] max-w-7xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl flex flex-col overflow-hidden">
-      <div class="flex items-center justify-between px-6 py-4 border-b {$themeStore === 'dark' ? 'border-gray-700' : 'border-gray-200'}">
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
-            </svg>
-            <div>
-              <h2 class="text-lg font-semibold {$themeStore === 'dark' ? 'text-white' : 'text-gray-900'}">
-                {databaseAsset?.name || '数据库查询'}
-              </h2>
-              <div class="text-xs {$themeStore === 'dark' ? 'text-gray-400' : 'text-gray-500'}">
-                {databaseAsset?.username}@{databaseAsset?.host}:{databaseAsset?.port} - {databaseAsset?.metadata?.database || 'N/A'}
-              </div>
-            </div>
-          </div>
-        </div>
-        <button
-          on:click={closeDatabasePanel}
-          class="p-2 rounded-lg transition-colors {$themeStore === 'dark' ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}"
-          title="关闭"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-      <div class="flex-1 overflow-hidden">
-        <DatabasePanel
-          sessionId={databaseSessionId}
-          dbConfig={databaseAsset}
-        />
-      </div>
-    </div>
-  </div>
-  {/if}
 
   {#if $uploadStore.isPanelOpen}
     <div

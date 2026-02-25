@@ -173,7 +173,7 @@
     <button
       on:click={handleAction}
       disabled={isLoading || !inputText.trim()}
-      class="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl"
+      class="flex items-center justify-center gap-2 px-6 py-3 accent-gradient hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl"
     >
       {#if isLoading}
         <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">

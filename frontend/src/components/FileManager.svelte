@@ -1194,7 +1194,7 @@
                 </svg>
               </div>
               <div>
-                <h3 class="text-lg font-semibold tracking-tight bg-gradient-to-r from-slate-800 to-cyan-600 dark:from-slate-100 dark:to-cyan-300 bg-clip-text text-transparent">文件管理设置</h3>
+                <h3 class="text-lg font-semibold tracking-tight bg-clip-text text-transparent" style="background-image: linear-gradient(90deg, var(--text-primary), var(--accent-primary));">文件管理设置</h3>
                 <div class="text-[11px] uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mt-0.5">Preferences</div>
               </div>
             </div>
@@ -1284,7 +1284,7 @@
                   handleSaveSettings();
                 }}
                 class={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 ${
-                  fileManagerConfig.historyEnabled ? 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/30' : 'bg-slate-200 dark:bg-slate-600'
+                  fileManagerConfig.historyEnabled ? 'accent-gradient shadow-lg' : 'bg-slate-200 dark:bg-slate-600'
                 }`}
               >
                 <span
