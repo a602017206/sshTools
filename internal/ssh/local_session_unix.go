@@ -1,3 +1,6 @@
+//go:build !windows
+// +build !windows
+
 package ssh
 
 import (
@@ -25,13 +28,6 @@ func NewLocalSession(shellType string) (*LocalSession, error) {
 
 	// Determine shell command based on platform and requested shell type
 	switch runtime.GOOS {
-	case "windows":
-		if shellType == "cmd" {
-			cmd = exec.Command("cmd.exe")
-		} else {
-			// Default to PowerShell on Windows
-			cmd = exec.Command("powershell.exe", "-NoExit", "-NoLogo")
-		}
 	case "darwin":
 		// macOS: default to zsh
 		if shellType == "bash" {

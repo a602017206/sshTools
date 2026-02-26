@@ -722,6 +722,19 @@ func (sm *SessionManager) StartLocalShell(sessionID string, cols, rows int, onOu
 		}
 	}()
 
+	// For Windows local shells (pipe mode), send an initial newline to trigger the prompt
+	// This is necessary because PowerShell/CMD in pipe mode don't output prompt automatically
+	if managed.Type == SessionTypeLocal {
+		go func() {
+			// Small delay to ensure the output goroutine is ready
+			time.Sleep(100 * time.Millisecond)
+			// Send a newline to trigger the prompt
+			if _, err := managed.Local.Write([]byte("\r\n")); err != nil {
+				fmt.Printf("Failed to send initial newline: %v\n", err)
+			}
+		}()
+	}
+
 	return nil
 }
 

@@ -29,10 +29,6 @@
   let showSavePasswordConfirm = false;
   let resolveSavePasswordConfirm = null;
 
-  // Shell selection dialog state (Windows only)
-  let showShellSelect = false;
-  let selectedShell = 'powershell';
-
   $: sessionsList = $connectionsStore ? Array.from($connectionsStore.values()) : [];
 
   function buildDbListSession(asset, sessionId) {
@@ -525,16 +521,7 @@
       return;
     }
 
-    const { ConnectLocalShell, SendSSHData, ResizeSSH } = window.wailsBindings;
-
-    // Detect platform and show shell selection for Windows
-    const platform = navigator.platform.toLowerCase();
-    if (platform.includes('win')) {
-      showShellSelect = true;
-      return;
-    }
-
-    // For macOS/Linux, use default shell (no dialog)
+    // Open local terminal directly (PowerShell on Windows, default shell on Unix)
     await openLocalTerminal('');
   }
 
@@ -625,15 +612,6 @@
       // Clean up failed session
       await closeSession(sessionId);
     }
-  }
-
-  function handleShellSelectConfirm() {
-    showShellSelect = false;
-    openLocalTerminal(selectedShell);
-  }
-
-  function handleShellSelectCancel() {
-    showShellSelect = false;
   }
 
   // Subscribe to local output events
@@ -1169,60 +1147,6 @@
   onConfirm={handleAuthInputConfirm}
   onCancel={handleAuthInputCancel}
 />
-
-{#if showShellSelect}
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
-      <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">选择 Shell</h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">选择要打开的本地终端类型</p>
-      </div>
-
-      <div class="px-6 py-4 space-y-3">
-        <label class="flex items-center space-x-3 cursor-pointer">
-          <input
-            type="radio"
-            bind:group={selectedShell}
-            value="powershell"
-            class="w-4 h-4 accent-text"
-          />
-          <div>
-            <div class="font-medium text-gray-900 dark:text-white">PowerShell</div>
-            <div class="text-sm text-gray-500 dark:text-gray-400">推荐：更强大的命令行体验</div>
-          </div>
-        </label>
-
-        <label class="flex items-center space-x-3 cursor-pointer">
-          <input
-            type="radio"
-            bind:group={selectedShell}
-            value="cmd"
-            class="w-4 h-4 accent-text"
-          />
-          <div>
-            <div class="font-medium text-gray-900 dark:text-white">CMD</div>
-            <div class="text-sm text-gray-500 dark:text-gray-400">传统命令提示符</div>
-          </div>
-        </label>
-      </div>
-
-      <div class="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
-        <button
-          on:click={handleShellSelectCancel}
-          class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-        >
-          取消
-        </button>
-        <button
-          on:click={handleShellSelectConfirm}
-          class="px-4 py-2 accent-bg accent-bg-hover text-white rounded-lg transition-colors font-medium focus-visible:outline-none focus-visible:ring-2"
-        >
-          确定
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
 
 <style>
   .terminal-content-area {
