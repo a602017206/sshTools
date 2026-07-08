@@ -617,7 +617,7 @@ wails dev
 
 ## 贡献
 
-欢迎提交 Issue！
+欢迎提交 Issue1！
 
 ## License
 
