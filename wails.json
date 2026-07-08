@@ -1,0 +1,23 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "AHaSSHTools",
+  "outputfilename": "AHaSSHTools",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "haha",
+    "email": "602017206@qq.com"
+  },
+  "info": {
+    "companyName": "AHaSSHTools",
+    "productName": "AHaSSHTools",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright © 2026",
+    "comments": "Cross-platform SSH desktop client"
+  },
+  "nsisType": "multiple",
+  "obfuscated": false,
+  "garbleargs": ""
+}
