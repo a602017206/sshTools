@@ -1018,19 +1018,20 @@
   });
 </script>
 
-<div class="h-full flex flex-col bg-white dark:bg-gray-800">
+<div class="h-full flex flex-col ops-panel">
   <!-- 标签栏 -->
-  <div class="flex items-center bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+  <div class="flex items-center border-b overflow-x-auto" style="background: var(--bg-secondary); border-color: var(--border-primary);">
     {#if sessionsList.length === 0}
-      <div class="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400">没有活动连接</div>
+      <div class="px-4 py-2 text-xs ops-muted">没有活动连接</div>
     {:else}
       {#each sessionsList as session (session.sessionId)}
         <div
-          class="group flex items-center gap-2 px-4 py-2.5 border-r border-gray-200 dark:border-gray-700 cursor-pointer transition-all min-w-[180px] {
+          class="group flex items-center gap-2 px-3 py-2 border-r cursor-pointer transition-all min-w-[168px] {
             $activeSessionIdStore === session.sessionId
-              ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-b-2 accent-border'
-              : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+              ? 'text-gray-900 dark:text-white border-b-2 accent-border'
+              : 'text-gray-600 dark:text-gray-300'
           }"
+          style="background: {$activeSessionIdStore === session.sessionId ? 'var(--bg-secondary)' : 'var(--bg-tertiary)'}; border-color: var(--border-primary);"
           role="button"
           tabindex="0"
           on:click={() => handleTabChange(session.sessionId)}
@@ -1056,7 +1057,7 @@
               focus
             />
           {:else}
-            <span class="text-sm font-medium truncate flex-1">{session.tabName || session.connection.name}</span>
+            <span class="text-xs font-medium truncate flex-1">{session.tabName || session.connection.name}</span>
           {/if}
 
           <button
@@ -1073,7 +1074,7 @@
 
     <button
       on:click={handleNewLocalTerminal}
-      class="flex items-center gap-2 px-4 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors min-w-[50px]"
+      class="ops-icon-button flex items-center gap-2 px-3 py-2 transition-colors min-w-[44px]"
       title="打开本地终端"
     >
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1092,8 +1093,8 @@
           }"
         >
           <!-- 工具栏 -->
-          <div class="flex items-center justify-between px-4 py-2.5 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-600 dark:text-gray-400 font-mono">
+          <div class="flex items-center justify-between px-4 py-2 border-b" style="background: var(--bg-secondary); border-color: var(--border-primary);">
+            <div class="text-xs ops-muted font-mono">
               {#if session.type === 'local'}
                 本地终端{session.connection.name !== 'Local Shell' ? ` (${session.connection.name})` : ''}
               {:else if session.type === 'database' && session.panelType === 'database-list'}
@@ -1105,25 +1106,25 @@
               {/if}
             </div>
             <div class="flex items-center gap-1">
-              <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title="复制">
+              <button class="ops-icon-button p-1.5 rounded-md transition-colors" title="复制">
                 <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
-              <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title="粘贴">
+              <button class="ops-icon-button p-1.5 rounded-md transition-colors" title="粘贴">
                 <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                   <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" stroke-linecap="round" stroke-linejoin="round"/>
                   <rect x="8" y="2" width="8" height="4" rx="1" ry="1" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
-              <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title="最小化">
+              <button class="ops-icon-button p-1.5 rounded-md transition-colors" title="最小化">
                 <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
                   <line x1="8" y1="12" x2="16" y2="12" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
-              <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title="最大化">
+              <button class="ops-icon-button p-1.5 rounded-md transition-colors" title="最大化">
                 <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
                   <path d="M8 3v3a2 2 0 0 1-2 2H3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1136,7 +1137,7 @@
           </div>
 
           <!-- 终端窗口 -->
-          <div class="flex-1 overflow-hidden">
+          <div class="flex-1 overflow-hidden ops-terminal-surface border-t">
             {#if session.type === 'database' && session.panelType === 'database-list'}
               <DatabaseListPanel sessionId={session.sessionId} dbConfig={session.connection} />
             {:else if session.type === 'database' && session.panelType === 'database-table'}
@@ -1160,10 +1161,10 @@
       {/each}
     </div>
   {:else}
-    <div class="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800">
+    <div class="flex-1 flex items-center justify-center ops-muted" style="background: var(--bg-secondary);">
       <div class="text-center">
-        <div class="text-lg font-medium mb-2 text-gray-700 dark:text-gray-300">未选择连接</div>
-        <div class="text-sm text-gray-500 dark:text-gray-400">从左侧资产列表选择一个服务器开始连接</div>
+        <div class="text-base font-medium mb-2" style="color: var(--text-primary);">未选择连接</div>
+        <div class="text-xs">从左侧资产列表选择一个服务器开始连接</div>
       </div>
     </div>
   {/if}

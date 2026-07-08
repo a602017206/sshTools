@@ -43,15 +43,22 @@
   }
 
   function getPresetMainColor(id) {
-    const preset = ACCENT_PRESETS[id] || ACCENT_PRESETS.teal;
+    const preset = ACCENT_PRESETS[id] || ACCENT_PRESETS.blue;
     const darkTheme = getEffectiveMode() === 'dark';
     return darkTheme ? preset.dark.accentPrimary : preset.light.accentPrimary;
   }
 
   function getPresetHoverColor(id) {
-    const preset = ACCENT_PRESETS[id] || ACCENT_PRESETS.teal;
+    const preset = ACCENT_PRESETS[id] || ACCENT_PRESETS.blue;
     const darkTheme = getEffectiveMode() === 'dark';
     return darkTheme ? preset.dark.accentHover : preset.light.accentHover;
+  }
+
+  function getPresetSecondaryColor(id) {
+    const preset = ACCENT_PRESETS[id] || ACCENT_PRESETS.blue;
+    const darkTheme = getEffectiveMode() === 'dark';
+    const colors = darkTheme ? preset.dark : preset.light;
+    return colors.accentSecondary || colors.accentHover;
   }
 
   function triggerPreview() {
@@ -79,7 +86,7 @@
           <button
             type="button"
             class="px-3 py-2 rounded-lg text-white text-xs font-medium shadow-sm"
-            style={`background: linear-gradient(135deg, ${getPresetMainColor(draft.accent_color)}, ${getPresetHoverColor(draft.accent_color)});`}
+            style={`background: linear-gradient(135deg, ${getPresetMainColor(draft.accent_color)}, ${getPresetSecondaryColor(draft.accent_color)});`}
           >
             预览按钮
           </button>
@@ -91,24 +98,24 @@
       <div class="space-y-2">
         <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">主题模式</div>
         <div class="grid grid-cols-3 gap-2">
-          <button type="button" class="px-3 py-2 rounded-lg text-xs font-medium transition-colors {draft.theme_mode === 'light' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.theme_mode === 'light' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-hover));' : ''} on:click={() => { draft.theme_mode = 'light'; triggerPreview(); }}>浅色</button>
-          <button type="button" class="px-3 py-2 rounded-lg text-xs font-medium transition-colors {draft.theme_mode === 'dark' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.theme_mode === 'dark' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-hover));' : ''} on:click={() => { draft.theme_mode = 'dark'; triggerPreview(); }}>深色</button>
-          <button type="button" class="px-3 py-2 rounded-lg text-xs font-medium transition-colors {draft.theme_mode === 'system' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.theme_mode === 'system' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-hover));' : ''} on:click={() => { draft.theme_mode = 'system'; triggerPreview(); }}>跟随系统</button>
+          <button type="button" class="px-3 py-2 rounded-lg text-xs font-medium transition-colors {draft.theme_mode === 'light' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.theme_mode === 'light' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));' : ''} on:click={() => { draft.theme_mode = 'light'; triggerPreview(); }}>浅色</button>
+          <button type="button" class="px-3 py-2 rounded-lg text-xs font-medium transition-colors {draft.theme_mode === 'dark' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.theme_mode === 'dark' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));' : ''} on:click={() => { draft.theme_mode = 'dark'; triggerPreview(); }}>深色</button>
+          <button type="button" class="px-3 py-2 rounded-lg text-xs font-medium transition-colors {draft.theme_mode === 'system' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.theme_mode === 'system' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));' : ''} on:click={() => { draft.theme_mode = 'system'; triggerPreview(); }}>跟随系统</button>
         </div>
       </div>
 
       <div class="space-y-2">
         <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">主题色</div>
-        <div class="grid grid-cols-4 gap-2">
+        <div class="grid grid-cols-5 gap-2">
           {#each Object.entries(ACCENT_PRESETS) as [id, preset]}
             <button
               type="button"
               class="px-2 py-2 rounded-lg border text-xs transition-colors {draft.accent_color === id ? 'text-white shadow-md' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}"
-              style={draft.accent_color === id ? `background: linear-gradient(90deg, ${getPresetMainColor(id)}, ${getPresetHoverColor(id)}); border-color: ${getPresetMainColor(id)};` : `border-color: ${getPresetMainColor(id)}66;`}
+              style={draft.accent_color === id ? `background: linear-gradient(90deg, ${getPresetMainColor(id)}, ${getPresetSecondaryColor(id)}); border-color: ${getPresetMainColor(id)};` : `border-color: ${getPresetMainColor(id)}66;`}
               on:click={() => { draft.accent_color = id; triggerPreview(); }}
             >
               <span class="inline-flex items-center gap-1.5">
-                <span class="w-2.5 h-2.5 rounded-full border border-white/30" style={`background: ${getPresetMainColor(id)};`}></span>
+                <span class="w-2.5 h-2.5 rounded-full border border-white/30" style={`background: linear-gradient(135deg, ${getPresetMainColor(id)}, ${getPresetSecondaryColor(id)});`}></span>
                 {preset.label}
               </span>
             </button>
@@ -171,7 +178,7 @@
       <button type="button" on:click={handleReset} class="px-3 py-2 text-xs rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">恢复默认</button>
       <div class="flex gap-2">
         <button type="button" on:click={onCancel} class="px-3 py-2 text-xs rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">取消</button>
-        <button type="button" on:click={handleSave} class="px-3 py-2 text-xs rounded-lg text-white" style="background: linear-gradient(90deg, var(--accent-primary), var(--accent-hover));">保存设置</button>
+        <button type="button" on:click={handleSave} class="px-3 py-2 text-xs rounded-lg text-white" style="background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));">保存设置</button>
       </div>
     </div>
   </div>

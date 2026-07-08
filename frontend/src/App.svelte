@@ -47,6 +47,8 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
   $: connectionsArray = $connectionsStore ? Array.from($connectionsStore.values()) : [];
   $: hasActiveServerSession = connectionsArray.some(session => session?.connection?.type === 'ssh');
   $: themeClass = $themeStore === 'dark' ? 'dark' : '';
+  $: isDarkTheme = $themeStore === 'dark';
+  $: themeToggleTitle = isDarkTheme ? '切换到亮色模式' : '切换到暗色模式';
 
   $: if (!hasActiveServerSession) {
     isRightPanelCollapsed = true;
@@ -79,6 +81,32 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
     applyAppearanceSettings(appSettings);
   }
 
+  async function persistAppSettings(settings) {
+    if (!window.wailsBindings || typeof window.wailsBindings.UpdateSettings !== 'function') {
+      return;
+    }
+
+    const updates = {
+      theme: settings.theme,
+      theme_mode: settings.theme_mode,
+      use_system_theme: settings.use_system_theme,
+      font_family: settings.font_family,
+      font_size: settings.font_size,
+      accent_color: settings.accent_color,
+      terminal_font_family: settings.terminal_font_family,
+      terminal_font_size: settings.terminal_font_size,
+      compact_mode: settings.compact_mode,
+      reduced_motion: settings.reduced_motion,
+      sidebar_width: $uiStore.sidebarWidth
+    };
+
+    try {
+      await window.wailsBindings.UpdateSettings(updates);
+    } catch (error) {
+      console.error('Failed to update app settings:', error);
+    }
+  }
+
   async function loadAppSettings() {
     if (!window.wailsBindings || typeof window.wailsBindings.GetSettings !== 'function') {
       applyAndSyncSettings({
@@ -109,30 +137,20 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
     applyAndSyncSettings(nextSettings);
     settingsDraftSnapshot = null;
     isGlobalSettingsOpen = false;
+    await persistAppSettings(appSettings);
+  }
 
-    if (!window.wailsBindings || typeof window.wailsBindings.UpdateSettings !== 'function') {
-      return;
-    }
-
-    const updates = {
-      theme: appSettings.theme,
-      theme_mode: appSettings.theme_mode,
-      use_system_theme: appSettings.use_system_theme,
-      font_family: appSettings.font_family,
-      font_size: appSettings.font_size,
-      accent_color: appSettings.accent_color,
-      terminal_font_family: appSettings.terminal_font_family,
-      terminal_font_size: appSettings.terminal_font_size,
-      compact_mode: appSettings.compact_mode,
-      reduced_motion: appSettings.reduced_motion,
-      sidebar_width: $uiStore.sidebarWidth
+  async function toggleThemeMode() {
+    if (isAddDialogOpen) return;
+    const nextThemeMode = isDarkTheme ? 'light' : 'dark';
+    const nextSettings = {
+      ...appSettings,
+      theme_mode: nextThemeMode,
+      theme: nextThemeMode,
+      use_system_theme: false
     };
-
-    try {
-      await window.wailsBindings.UpdateSettings(updates);
-    } catch (error) {
-      console.error('Failed to update app settings:', error);
-    }
+    applyAndSyncSettings(nextSettings);
+    await persistAppSettings(nextSettings);
   }
 
   function handlePreviewGlobalSettings(nextSettings) {
@@ -263,7 +281,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
     }
 
     if (asset.type === 'ssh') {
-      isRightPanelCollapsed = false;
+      isRightPanelCollapsed = true;
     } else {
       isRightPanelCollapsed = true;
     }
@@ -611,24 +629,24 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
   });
 </script>
 
-<div class="h-screen w-full flex flex-col {themeClass} {$themeStore === 'dark' ? 'bg-gray-900 text-gray-100' : 'bg-gray-50 text-gray-900'}">
+<div class="h-screen w-full flex flex-col {themeClass} ops-shell">
   <!-- 顶部标题栏 -->
-  <header class="h-14 flex-shrink-0 {$themeStore === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b flex items-center px-6 shadow-sm" style="pointer-events: {isAddDialogOpen ? 'none' : 'auto'};">
+  <header class="h-12 flex-shrink-0 ops-topbar border-b flex items-center px-4" style="pointer-events: {isAddDialogOpen ? 'none' : 'auto'};">
     <div class="flex items-center gap-3">
-      <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm text-white shadow-md" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));">
-        哈
+      <div class="w-7 h-7 rounded-md flex items-center justify-center font-bold text-xs text-white shadow-sm" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));">
+        SSH
       </div>
       <div>
-        <div class="font-semibold text-sm {$themeStore === 'dark' ? 'text-white' : 'text-gray-900'} header-title">啊哈 SSH 连接工具</div>
-        <div class="text-xs {$themeStore === 'dark' ? 'text-gray-400' : 'text-gray-500'} header-title">AHa SSH Manager</div>
+        <div class="font-semibold text-sm header-title" style="color: var(--text-primary);">AHa SSH</div>
+        <div class="text-[11px] header-title" style="color: var(--text-secondary);">运维工作台</div>
       </div>
     </div>
 
-    <div class="ml-auto flex items-center gap-3">
+    <div class="ml-auto flex items-center gap-2">
       <div class="relative">
         <button
           on:click={() => uploadStore.togglePanel()}
-          class="flex items-center justify-center w-9 h-9 rounded-lg transition-all shadow-sm {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-blue-400' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
+          class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all"
           title="上传任务"
         >
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -643,10 +661,28 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
       </div>
 
       <button
+        on:click={toggleThemeMode}
+        disabled={isAddDialogOpen}
+        class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        title={themeToggleTitle}
+        aria-label={themeToggleTitle}
+      >
+        {#if isDarkTheme}
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364-6.364-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0-1.414-1.414M7.05 7.05 5.636 5.636"></path>
+            <circle cx="12" cy="12" r="4" stroke-width="2"></circle>
+          </svg>
+        {:else}
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A8.5 8.5 0 1111.21 3 6.6 6.6 0 0021 12.79z"></path>
+          </svg>
+        {/if}
+      </button>
+
+      <button
         on:click={openGlobalSettings}
         disabled={isAddDialogOpen}
-        class="flex items-center justify-center w-9 h-9 rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}"
-        style="color: var(--accent-primary);"
+        class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         title="全局设置"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -658,13 +694,13 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
       <button
         on:click={toggleDevTools}
         disabled={isAddDialogOpen}
-        class="flex items-center gap-2 px-4 py-2 text-white rounded-lg font-medium transition-all shadow-sm hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        style="background: linear-gradient(90deg, var(--accent-primary), var(--accent-hover));"
+        class="flex items-center gap-2 px-3 py-1.5 text-white rounded-md font-medium transition-all shadow-sm hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        style="background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
         </svg>
-        <span class="text-sm">开发工具</span>
+        <span class="text-xs">开发工具</span>
       </button>
     </div>
   </header>
@@ -687,7 +723,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
 
     <!-- 左侧：资产列表 -->
     <div
-      class="flex-shrink-0 transition-all duration-200 {$themeStore === 'dark' ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'} border-r overflow-hidden"
+      class="flex-shrink-0 transition-all duration-200 ops-sidebar border-r overflow-hidden"
       class:collapsed={isSidebarCollapsed}
       style="width: {isSidebarCollapsed ? '0' : sidebarWidth}px; min-width: {isSidebarCollapsed ? '0' : sidebarWidth}px;"
     >
@@ -714,7 +750,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
       <button
         on:click={toggleSidebar}
         disabled={isAddDialogOpen}
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100 {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ops-icon-button flex items-center justify-center w-7 h-7 rounded-md transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100"
         title="折叠资产列表"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -725,7 +761,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
     {/if}
 
     <!-- 中间：终端面板 -->
-    <div class="flex-1 min-w-0 min-h-0 flex flex-col {$themeStore === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}">
+    <div class="flex-1 min-w-0 min-h-0 flex flex-col" style="background: var(--bg-primary);">
       <TerminalPanel bind:this={terminalPanelRef} />
     </div>
 
@@ -742,7 +778,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
       <button
         on:click={toggleRightPanel}
         disabled={isAddDialogOpen}
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100 {$themeStore === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}"
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ops-icon-button flex items-center justify-center w-7 h-7 rounded-md transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100"
         title="折叠右侧面板"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -755,7 +791,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
     <!-- 右侧：文件管理和服务器监控 -->
     <div
       data-right-panel="true"
-      class="flex-shrink-0 flex flex-col overflow-hidden {$themeStore === 'dark' ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'} border-l shadow-sm"
+      class="flex-shrink-0 flex flex-col overflow-hidden ops-panel border-l shadow-sm"
       class:collapsed={isRightPanelCollapsed}
       style="width: {isRightPanelCollapsed ? '0' : rightPanelWidth}px; min-width: {isRightPanelCollapsed ? '0' : '300px'}; max-width: 600px;"
     >
@@ -791,18 +827,31 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
       {/if}
     </div>
 
-    <!-- 右侧展开按钮（折叠时显示） -->
+    <!-- 右侧工具轨（折叠时显示） -->
     {#if isRightPanelCollapsed}
-    <button
-      on:click={toggleRightPanel}
-      disabled={isAddDialogOpen}
-      class="absolute right-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-12 rounded-l-lg transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 hover:opacity-100 {$themeStore === 'dark' ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700' : 'bg-white hover:bg-gray-100 text-gray-600 border border-gray-200'}"
-      title="展开右侧面板"
-    >
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-      </svg>
-    </button>
+    <div class="ops-rail flex-shrink-0 flex flex-col items-center py-2 gap-2">
+      <button
+        on:click={toggleRightPanel}
+        disabled={isAddDialogOpen || !hasActiveServerSession}
+        class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        title="SFTP / 监控"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h5l2 2h11v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"></path>
+        </svg>
+      </button>
+      <button
+        on:click={toggleRightPanel}
+        disabled={isAddDialogOpen || !hasActiveServerSession}
+        class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        title="服务器监控"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19V5m4 14v-7m4 7V8m4 11v-4m4 4V9"></path>
+        </svg>
+      </button>
+      <div class="mt-auto text-[10px] rotate-90 whitespace-nowrap ops-muted">TOOLS</div>
+    </div>
     {/if}
   </div>
 

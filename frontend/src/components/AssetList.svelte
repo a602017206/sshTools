@@ -563,15 +563,18 @@
   }
 </script>
 
-<div class="h-full flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700" on:click={handleClickOutside}>
+<div class="h-full flex flex-col ops-sidebar" on:click={handleClickOutside}>
   <!-- 头部 -->
-  <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-sm font-semibold text-gray-900 dark:text-white">服务器资产</h2>
+  <div class="px-3 py-3 border-b" style="border-color: var(--border-primary);">
+    <div class="flex items-center justify-between mb-2">
+      <div>
+        <h2 class="text-sm font-semibold" style="color: var(--text-primary);">连接</h2>
+        <div class="text-[11px]" style="color: var(--text-secondary);">资产树</div>
+      </div>
       <div class="flex gap-1">
         <button
           on:click={onAddClick}
-          class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          class="ops-icon-button p-1.5 rounded-md transition-colors"
           title="添加连接"
         >
           <svg class="w-4 h-4 accent-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -581,7 +584,7 @@
         <div class="relative">
           <button
             on:click={(e) => { e.stopPropagation(); showExportMenu = !showExportMenu; }}
-            class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            class="ops-icon-button p-1.5 rounded-md transition-colors"
             title="导出/导入"
           >
             <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -642,19 +645,20 @@
         type="text"
         placeholder="搜索服务器..."
         bind:value={searchTerm}
-        class="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus-visible:ring-2 focus:border-transparent transition-all"
+        class="ops-search w-full pl-8 pr-3 py-1.5 border rounded-md text-xs focus:outline-none focus-visible:ring-2 focus:border-transparent transition-all"
       />
     </div>
   </div>
 
   <!-- 资产列表 -->
-  <div class="flex-1 overflow-y-auto scrollbar-thin">
+  <div class="flex-1 overflow-y-auto scrollbar-thin py-2">
     {#each Object.entries(groupedFilteredAssets) as [group, groupAssets]}
-      <div class="mb-1">
+      <div class="mb-2">
         <!-- 分组头部 -->
-        <div
+        <button
+          type="button"
           on:click={() => toggleGroup(group)}
-          class="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+          class="ops-group-row w-[calc(100%-1rem)] flex items-center gap-2 px-3 py-1.5 mx-2 rounded-md cursor-pointer transition-colors text-left"
         >
           {#if expandedGroups.has(group)}
             <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -668,24 +672,33 @@
           <svg class="w-4 h-4 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
             <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
-          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{group}</span>
-          <span class="ml-auto text-xs text-gray-400 dark:text-gray-500">({groupAssets.length})</span>
-        </div>
+          <span class="text-[11px] font-semibold uppercase tracking-wide">{group}</span>
+          <span class="ml-auto text-[10px] opacity-70">{groupAssets.length}</span>
+        </button>
 
         <!-- 分组内的服务器 -->
         {#if expandedGroups.has(group)}
-          <div class="ml-4">
+          <div class="ml-2 mr-2 space-y-0.5">
             {#each groupAssets as asset (asset.id)}
               <div>
                 <div
                   on:click={() => onConnect(asset)}
                   on:contextmenu={(event) => openDbContextMenu(asset, event)}
-                  class="group relative flex items-center gap-2 px-3 py-2.5 accent-soft-hover rounded-lg mx-2 cursor-pointer transition-all"
+                  class="ops-asset-row group relative flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer transition-all"
+                  role="button"
+                  tabindex="0"
+                  title={`${asset.username}@${asset.host}:${asset.port}`}
+                  on:keydown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onConnect(asset);
+                    }
+                  }}
                 >
                   {#if asset.type === 'database'}
                     <button
                       type="button"
-                      class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100 dark:hover:bg-gray-700"
+                      class="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100 dark:hover:bg-gray-700"
                       on:click|stopPropagation={() => toggleDatabaseAsset(asset)}
                       title={asset.dbConnected ? '展开数据库' : '连接后展开'}
                     >
@@ -705,21 +718,10 @@
                   </div>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
-                      <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{asset.name}</span>
-                      <div class={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      <span class="text-xs font-medium truncate" style="color: var(--text-primary);">{asset.name}</span>
+                      <div class={`ops-status-dot w-2 h-2 rounded-full flex-shrink-0 ${
                         asset.status === 'online' ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
                       }`} />
-                      {#if asset.type === 'database'}
-                        <span class={`text-[10px] px-1.5 py-0.5 rounded ${asset.dbConnected ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'}`}>
-                          {asset.dbConnected ? '已连接' : '未连接'}
-                        </span>
-                      {/if}
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
-                      {asset.username}@{asset.host}:{asset.port}
-                      {#if asset.type === 'database' && asset.dbType}
-                        • {asset.dbType.toUpperCase()}
-                      {/if}
                     </div>
                   </div>
                   <div class="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
@@ -732,12 +734,12 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     </button>
-                    <button class="p-1 accent-soft-hover rounded" on:click|stopPropagation={() => onEdit(asset)}>
+                    <button class="p-1 accent-soft-hover rounded" on:click|stopPropagation={() => onEdit(asset)} title="编辑">
                       <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                     </button>
-                    <button class="p-1 hover:bg-red-100 dark:hover:bg-red-800 rounded" on:click={(e) => handleDelete(asset, e)}>
+                    <button class="p-1 hover:bg-red-100 dark:hover:bg-red-800 rounded" on:click={(e) => handleDelete(asset, e)} title="删除">
                       <svg class="w-3 h-3 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>

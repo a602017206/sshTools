@@ -35,9 +35,9 @@
 
   // 深色主题配置
   const darkTheme = {
-    background: '#1e1e1e',
-    foreground: '#d4d4d4',
-    cursor: '#d4d4d4',
+    background: '#050914',
+    foreground: '#d8e1ef',
+    cursor: '#60a5fa',
     black: '#000000',
     red: '#cd3131',
     green: '#0dbc79',
@@ -53,16 +53,16 @@
     brightBlue: '#3b8eea',
     brightMagenta: '#d670d6',
     brightCyan: '#29b8db',
-    selectionBackground: 'rgba(2, 136, 209, 0.3)',
+    selectionBackground: 'rgba(96, 165, 250, 0.28)',
     selectionForeground: undefined,
-    selectionInactiveBackground: 'rgba(2, 136, 209, 0.15)',
+    selectionInactiveBackground: 'rgba(96, 165, 250, 0.14)',
   };
 
   // 浅色主题配置
   const lightTheme = {
-    background: '#ffffff',
-    foreground: '#333333',
-    cursor: '#333333',
+    background: '#fbfdff',
+    foreground: '#1f2937',
+    cursor: '#2563eb',
     black: '#000000',
     red: '#cd3131',
     green: '#00bc00',
@@ -79,9 +79,9 @@
     brightMagenta: '#bc05bc',
     brightCyan: '#0598bc',
     brightWhite: '#a5a5a5',
-    selectionBackground: 'rgba(225, 245, 254, 0.8)',
+    selectionBackground: 'rgba(37, 99, 235, 0.16)',
     selectionForeground: undefined,
-    selectionInactiveBackground: 'rgba(225, 245, 254, 0.5)',
+    selectionInactiveBackground: 'rgba(37, 99, 235, 0.08)',
   };
 
   // 订阅主题变化
