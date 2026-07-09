@@ -17,10 +17,7 @@ public class HealthServiceImpl extends JdbcAgentGrpc.JdbcAgentImplBase {
 
     @Override
     public void health(HealthRequest request, StreamObserver<HealthResponse> responseObserver) {
-        if (!token.equals(request.getToken())) {
-            responseObserver.onError(Status.UNAUTHENTICATED
-                    .withDescription("invalid token")
-                    .asRuntimeException());
+        if (!isAuthorized(request.getToken(), responseObserver)) {
             return;
         }
 
@@ -30,5 +27,15 @@ public class HealthServiceImpl extends JdbcAgentGrpc.JdbcAgentImplBase {
                 .setJavaVersion(System.getProperty("java.version", "unknown"))
                 .build());
         responseObserver.onCompleted();
+    }
+
+    protected boolean isAuthorized(String requestToken, StreamObserver<?> responseObserver) {
+        if (token.equals(requestToken)) {
+            return true;
+        }
+        responseObserver.onError(Status.UNAUTHENTICATED
+                .withDescription("invalid token")
+                .asRuntimeException());
+        return false;
     }
 }

@@ -18,7 +18,7 @@ public final class JdbcAgentApplication {
         }
 
         Server server = ServerBuilder.forPort(port)
-                .addService(new HealthServiceImpl(token))
+                .addService(new QueryServiceImpl(token, new ConnectionRegistry(), new DriverLoader()))
                 .build()
                 .start();
 

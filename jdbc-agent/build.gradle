@@ -26,6 +26,7 @@ dependencies {
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
     testImplementation 'io.grpc:grpc-testing:1.68.1'
+    testImplementation 'com.h2database:h2:2.2.224'
 }
 
 protobuf {
