@@ -5,6 +5,7 @@ package sshtools.jdbc;
 option java_multiple_files = true;
 option java_package = "com.sshtools.jdbcagent.proto";
 option java_outer_classname = "JdbcAgentProto";
+option go_package = "AHaSSHTools/internal/service/jdbcproto;jdbcproto";
 
 service JdbcAgent {
   rpc Health(HealthRequest) returns (HealthResponse);
