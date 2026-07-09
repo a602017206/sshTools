@@ -1,35 +1,35 @@
-# Documentation Map
+# 文档地图
 
-This directory separates active planning, design, implementation notes, audits, change records, and historical archives.
+本目录用于分离活跃计划、设计、实现记录、审计、变更记录和历史归档。
 
-## Active Directories
+## 活跃目录
 
-- `audits/` - codebase scans, review reports, issue inventories, and verification summaries.
-- `changes/features/` - requirement and feature change records.
-- `changes/bugs/` - bug fix change records.
-- `changes/process/` - repository, documentation, workflow, and process change records.
-- `designs/` - design proposals, trade-offs, architecture decisions, and UX/system design notes.
-- `development/` - implementation notes, execution summaries, rollout notes, and follow-up engineering details.
-- `plans/` - step-by-step implementation plans.
-- `superpowers/specs/` - validated brainstorming specs produced before implementation planning.
-- `archive/` - historical one-off summaries, temporary debugging notes, and superseded reports.
+- `audits/`：代码库扫描、评审报告、问题清单、验证总结。
+- `changes/features/`：需求和功能变更记录。
+- `changes/bugs/`：缺陷修复记录。
+- `changes/process/`：仓库、文档、工作流、流程变更记录。
+- `designs/`：设计提案、取舍分析、架构决策、UX 或系统设计记录。
+- `development/`：实现说明、执行总结、发布说明、后续工程记录。
+- `plans/`：分步骤实现计划。
+- `superpowers/specs/`：brainstorming 流程确认后、进入实现计划前的设计规格文档。
+- `archive/`：历史一次性总结、临时调试记录、已废弃报告。
 
-## Change Documentation Rules
+## 变更文档规则
 
-Every modification must have a corresponding change document under `docs/changes/`.
+每次代码、配置、构建或文档修改，都必须在 `docs/changes/` 下有对应变更文档。
 
-Use `features/` for new behavior or changed requirements. Use `bugs/` for defects and regressions. Use `process/` for documentation structure, workflow, build process, or repository governance.
+功能或需求变化使用 `features/`。缺陷和回归修复使用 `bugs/`。文档结构、工作流、构建流程、仓库治理变化使用 `process/`。
 
-Each change document should include:
+每份变更文档必须包含：
 
-- Background
-- Scope
-- Modified files
-- Verification
-- Residual risks
+- 背景
+- 范围
+- 修改文件
+- 验证
+- 剩余风险
 
-Design and development must stay separate. Put proposed architecture and trade-offs in `docs/designs/`; put implementation details and execution notes in `docs/development/`.
+设计和开发记录必须分离。设计提案、架构取舍和决策放到 `docs/designs/`；实现细节、执行记录和发布说明放到 `docs/development/`。
 
-## Root Documentation Policy
+## 根目录文档策略
 
-Keep root-level Markdown limited to active entry points and long-lived guides. Archive temporary reports and completed implementation summaries instead of leaving them in the root.
+根目录 Markdown 只保留活跃入口和长期指南。临时报告和已完成实现总结应归档，不要长期留在根目录。

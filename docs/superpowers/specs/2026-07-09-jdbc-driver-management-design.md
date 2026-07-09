@@ -1,31 +1,31 @@
-# JDBC Driver Management Design
+# JDBC 驱动管理设计
 
-Date: 2026-07-09
+日期：2026-07-09
 
-## Background
+## 背景
 
-The current database module connects through Go `database/sql` and registers only MySQL and PostgreSQL drivers. Adding every known Go database driver to the main app would increase binary size, force releases for driver changes, and still leave weak coverage for enterprise and domestic database vendors.
+当前数据库模块通过 Go `database/sql` 连接数据库，只注册了 MySQL 和 PostgreSQL 驱动。如果把所有已知 Go 数据库驱动都编译进主程序，会增加二进制体积；驱动变更也必须跟随应用发版；同时对企业级数据库和国产数据库的覆盖仍然有限。
 
-The target direction is an all-JDBC architecture: the Go/Wails app owns product state, credentials, installation, and process lifecycle; a Java JDBC agent owns driver loading, database sessions, SQL execution, and metadata access. This gives the product a DBeaver/DBX-like driver model where drivers and Java runtime can be installed only when needed.
+目标方向是全部 JDBC 化：Go/Wails 应用负责产品状态、凭据、安装、进程生命周期；Java JDBC agent 负责驱动加载、数据库会话、SQL 执行、元数据访问。这样可以形成类似 DBeaver/DBX 的驱动模型：驱动和 Java 运行时只在需要时安装。
 
-## Goals
+## 目标
 
-- Support many database types without compiling every driver into the Go binary.
-- Use JDBC as the only database execution path for the database module.
-- Provide first-class online and offline installation flows for JRE and JDBC drivers.
-- Keep ordinary connection creation simple: users choose database type, not driver internals.
-- Preserve advanced overrides for driver class, JDBC URL template, version, Maven coordinates, and extra jars.
-- Keep the existing Wails API surface conceptually stable for frontend database panels.
+- 支持更多数据库类型，不把所有驱动编译进 Go 主程序。
+- 数据库模块统一通过 JDBC 执行，不再维护 Go 原生和 JDBC 两套连接路径。
+- JRE 和 JDBC 驱动同时支持在线安装和离线导入。
+- 普通用户创建连接时只需选择数据库类型，不需要理解驱动细节。
+- 高级用户可以覆盖 driver class、JDBC URL template、版本、Maven 坐标和额外 jar。
+- 尽量保持现有 Wails 数据库 API 的概念稳定，减少前端数据库面板的改动范围。
 
-## Non-Goals
+## 非目标
 
-- Data editing, import/export, schema diff, ER diagrams, and migration tooling are outside the first version.
-- Go-native database drivers are not part of this design, except as existing code to be replaced or bypassed.
-- Public network access to the JDBC agent is not supported.
+- 数据编辑、导入导出、结构对比、ER 图、迁移工具不进入首版范围。
+- Go 原生数据库驱动不进入本设计，现有 Go `database/sql` 路径后续应替换或旁路。
+- JDBC agent 不支持公网访问。
 
-## Recommended Architecture
+## 推荐架构
 
-The application should use an all-JDBC agent model.
+应用采用全部 JDBC agent 模型。
 
 ```text
 Svelte UI
@@ -37,42 +37,42 @@ Svelte UI
   -> Database
 ```
 
-The Go app remains the product shell and source of truth for settings. The Java agent is a local worker process launched by Go. Go and the Java agent communicate through gRPC bound to `127.0.0.1`.
+Go 应用仍是产品外壳和设置源。Java agent 是由 Go 启动的本地工作进程。Go 与 Java agent 通过绑定到 `127.0.0.1` 的 gRPC 通信。
 
-Runtime strategy:
+运行时策略：
 
-- Default: automatically download and install a managed JRE on first use.
-- Offline: import a JRE package from disk.
-- Advanced: point to a system Java installation.
-- Lifecycle: start the agent on demand, allow a setting to keep it resident, and shut it down after an idle timeout.
+- 默认：首次使用数据库功能时自动下载并安装托管 JRE。
+- 离线：允许从本地导入 JRE 包。
+- 高级：允许指定系统 Java。
+- 生命周期：默认按需启动 agent；设置里允许常驻；空闲超时后自动退出。
 
-Driver strategy:
+驱动策略：
 
-- Official driver manifest is the primary source.
-- Custom Maven coordinates and manually imported jars are advanced options.
-- All official downloads and offline packages require checksum validation.
-- Drivers and runtimes are stored under `~/.sshtools/`.
+- 官方驱动清单是主要来源。
+- 自定义 Maven 坐标和手动导入 jar 是高级能力。
+- 官方下载包和离线包都必须做 checksum 校验。
+- 驱动和运行时存储在 `~/.sshtools/` 下。
 
-Initial JDBC database set:
+首批 JDBC 数据库：
 
 - MySQL
 - PostgreSQL
 - SQLite
 - Oracle
 - SQL Server
-- DM
-- Kingbase
+- 达梦 DM
+- 人大金仓 Kingbase
 - openGauss
 
-Initial database capabilities:
+首版数据库能力：
 
-- Test connection
-- Open and close session
-- Execute SQL
-- Return query result columns, rows, and affected count
-- List catalogs/databases, schemas, tables, and columns
+- 测试连接
+- 打开和关闭会话
+- 执行 SQL
+- 返回查询列、行、影响行数
+- 列出 catalog/database、schema、table、column
 
-## Filesystem Layout
+## 文件系统布局
 
 ```text
 ~/.sshtools/
@@ -98,9 +98,9 @@ Initial database capabilities:
     runtime-install.log
 ```
 
-## Driver Package Format
+## 驱动离线包格式
 
-Offline driver packages use a zip layout:
+离线驱动包使用 zip 格式：
 
 ```text
 driver-package.zip
@@ -110,7 +110,7 @@ driver-package.zip
   licenses/*
 ```
 
-Example `package.json`:
+`package.json` 示例：
 
 ```json
 {
@@ -125,198 +125,198 @@ Example `package.json`:
 }
 ```
 
-## Go Module Boundaries
+## Go 模块边界
 
 `DriverCatalogService`
 
-- Reads official manifest.
-- Reads local installed manifest.
-- Reads user-defined custom profiles.
-- Answers which drivers exist, which versions are recommended, and which are installed.
+- 读取官方 manifest。
+- 读取本地已安装 manifest。
+- 读取用户自定义 profile。
+- 回答有哪些驱动、推荐哪些版本、哪些版本已安装。
 
 `DriverInstallService`
 
-- Downloads official driver packages.
-- Imports offline packages.
-- Validates checksums.
-- Installs, uninstalls, exports, and rolls back driver files.
-- Emits install task status.
+- 下载官方驱动包。
+- 导入离线包。
+- 校验 checksum。
+- 安装、卸载、导出、回滚驱动文件。
+- 发出安装任务状态。
 
 `RuntimeService`
 
-- Detects managed JRE, imported JRE, and system Java.
-- Selects active runtime.
-- Installs and uninstalls managed runtime files.
-- Validates Java version compatibility.
+- 检测托管 JRE、导入 JRE、系统 Java。
+- 选择当前运行时。
+- 安装和卸载托管运行时文件。
+- 校验 Java 版本兼容性。
 
 `AgentProcessManager`
 
-- Starts the Java agent on demand.
-- Passes local gRPC port and token.
-- Performs health checks.
-- Restarts or stops the agent.
-- Applies idle shutdown and resident mode settings.
+- 按需启动 Java agent。
+- 传递本地 gRPC 端口和 token。
+- 执行健康检查。
+- 重启或停止 agent。
+- 应用空闲退出和常驻设置。
 
 `JdbcGatewayService`
 
-- Keeps the Wails-facing database API stable.
-- Converts connect, query, metadata, and close calls into gRPC requests.
-- Maps gRPC/agent errors into UI-friendly database error categories.
+- 保持面向 Wails 的数据库 API 稳定。
+- 把连接、查询、元数据、关闭调用转换成 gRPC 请求。
+- 把 gRPC/agent 错误映射成前端可处理的数据库错误分类。
 
 `DatabaseProfileService`
 
-- Renders JDBC URL templates.
-- Supplies default ports, driver classes, and connection properties.
-- Supports advanced user overrides.
+- 渲染 JDBC URL template。
+- 提供默认端口、driver class、连接属性。
+- 支持高级用户覆盖配置。
 
-## Java Agent Module Boundaries
+## Java Agent 模块边界
 
 `DriverLoader`
 
-- Creates an isolated classloader per driver profile.
-- Loads JDBC driver jars.
-- Avoids dependency conflicts between vendors.
+- 为每个 driver profile 创建隔离 classloader。
+- 加载 JDBC driver jar。
+- 避免不同厂商驱动依赖冲突。
 
 `ConnectionRegistry`
 
-- Maps `sessionID` to JDBC `Connection`.
-- Owns connection close and cleanup.
+- 维护 `sessionID` 到 JDBC `Connection` 的映射。
+- 负责连接关闭和清理。
 
 `QueryService`
 
-- Executes SQL.
-- Distinguishes result-set queries from update statements.
-- Returns columns, rows, and affected count.
+- 执行 SQL。
+- 区分返回结果集的查询和更新语句。
+- 返回列、行、影响行数。
 
 `MetadataService`
 
-- Uses `DatabaseMetaData` to list catalogs, schemas, tables, and columns.
-- Allows database-specific adjustments where JDBC metadata is incomplete.
+- 使用 `DatabaseMetaData` 列出 catalog、schema、table、column。
+- 对 JDBC 元数据不完整的数据库保留专用适配空间。
 
 `HealthService`
 
-- Reports agent version, runtime version, installed driver visibility, and active sessions.
+- 返回 agent 版本、运行时版本、已安装驱动可见性、活跃会话。
 
-## Driver Management UI
+## 驱动管理界面
 
-Use a two-column driver manager page.
+使用双栏驱动管理页。
 
-Left column:
+左栏：
 
-- Search input.
-- Filters: installed, available, update available, offline packages, custom JDBC.
-- Database list with compact status badges: not installed, installed, update available, validation failed, missing dependency.
+- 搜索框。
+- 过滤项：已安装、可安装、可更新、离线包、自定义 JDBC。
+- 数据库列表，每项显示紧凑状态：未安装、已安装、可更新、校验失败、缺依赖。
 
-Right column:
+右栏：
 
-- Header with database name, recommended version, install status, license, package size, and source.
-- Version section with recommended version, installed version, historical versions, switch, and rollback.
-- File section with jars, checksums, install path, and dependency jars.
-- Advanced section with driver class, URL template, default port, connection properties, Maven coordinates, and extra jars.
-- Actions: install, reinstall, uninstall, import offline package, export offline package, validate, test driver.
-- Bottom task strip showing download, extract, checksum, install, retry, and failure state.
+- 顶部显示数据库名、推荐版本、安装状态、license、包大小、来源。
+- 版本区显示推荐版本、已安装版本、历史版本、切换、回退。
+- 文件区显示 jar、checksum、安装路径、依赖 jar。
+- 高级区显示 driver class、URL template、默认端口、连接属性、Maven 坐标、额外 jar。
+- 操作区提供安装、重新安装、卸载、导入离线包、导出离线包、校验、测试驱动。
+- 底部任务条显示下载、解压、checksum、安装、重试、失败状态。
 
-JRE management should appear in the same driver manager area, either as a top band or a settings subsection. It includes managed JRE, system Java, offline import, version detection, switch, and uninstall.
+JRE 管理放在同一个驱动管理区域，可以作为顶部状态条或设置子区。内容包括托管 JRE、系统 Java、离线导入、版本检测、切换、卸载。
 
-Primary user path:
-
-```text
-Open Driver Manager -> select database -> install recommended driver -> create connection -> test -> connect
-```
-
-Advanced user path:
+普通用户路径：
 
 ```text
-Open Driver Manager -> add custom JDBC profile -> import jars or Maven coordinates -> validate -> create connection with profile override
+打开驱动管理 -> 选择数据库 -> 安装推荐驱动 -> 新建连接 -> 测试 -> 连接
 ```
 
-## Connection Configuration
+高级用户路径：
 
-Connection profiles should store:
+```text
+打开驱动管理 -> 新增自定义 JDBC profile -> 导入 jar 或填写 Maven 坐标 -> 校验 -> 创建连接并覆盖 profile
+```
+
+## 连接配置
+
+连接 profile 存储：
 
 - `db_type`
-- host
-- port
-- database/service name
-- user
-- encrypted password reference
-- optional `driver_profile_id`
-- optional connection properties
+- 主机
+- 端口
+- 数据库名或服务名
+- 用户名
+- 加密密码引用
+- 可选 `driver_profile_id`
+- 可选连接属性
 
-Ordinary users choose only the database type. The app binds each database type to a recommended driver profile. Advanced settings allow users to override profile, version, class, URL template, and jars.
+普通用户只选择数据库类型。应用把每种数据库类型绑定到推荐 driver profile。高级设置允许覆盖 profile、版本、class、URL template、jar。
 
-## Error Handling
+## 错误处理
 
-Errors should be categorized and paired with actionable UI buttons.
+错误需要分类，并在前端提供对应行动按钮。
 
-- `RUNTIME_MISSING`: no valid JRE. Actions: install managed JRE, import offline JRE, choose system Java.
-- `DRIVER_MISSING`: driver not installed. Actions: install recommended driver, import offline package.
-- `DRIVER_INVALID`: missing jar, checksum mismatch, class loading failure. Actions: reinstall, view files, delete.
-- `AGENT_UNAVAILABLE`: startup failure, gRPC unavailable, version mismatch. Actions: restart agent, view logs.
-- `DB_CONNECT_FAILED`: authentication, network, URL, or database rejection. Actions: edit connection, test network, view original error.
+- `RUNTIME_MISSING`：无可用 JRE。操作：安装托管 JRE、导入离线 JRE、选择系统 Java。
+- `DRIVER_MISSING`：驱动未安装。操作：安装推荐驱动、导入离线包。
+- `DRIVER_INVALID`：jar 缺失、checksum 不匹配、class 加载失败。操作：重新安装、查看文件、删除。
+- `AGENT_UNAVAILABLE`：启动失败、gRPC 不可用、版本不兼容。操作：重启 agent、查看日志。
+- `DB_CONNECT_FAILED`：认证、网络、URL、数据库拒绝。操作：编辑连接、测试网络、查看原始错误。
 
-SQL errors should preserve vendor messages, but passwords, tokens, and full JDBC URLs must be redacted.
+SQL 错误保留数据库厂商原始 message，但密码、token、完整 JDBC URL 必须脱敏。
 
-## Security
+## 安全
 
-- The agent listens only on `127.0.0.1`.
-- Go generates a per-agent startup token; every gRPC request must include it.
-- The Java agent does not read `credentials.enc`, SSH keys, or app config directly.
-- Go decrypts credentials and sends only the needed password to the agent for session creation.
-- Passwords live only in memory inside the agent session.
-- Official package installs require checksum validation.
-- Offline packages require checksum validation.
-- Custom Maven coordinates are marked as unverified and should not auto-update by default.
-- Uninstalling a driver checks whether connection profiles depend on it and shows the impact list.
+- agent 只监听 `127.0.0.1`。
+- Go 每次启动 agent 时生成一次性 token；每个 gRPC 请求都必须携带 token。
+- Java agent 不直接读取 `credentials.enc`、SSH key、应用配置。
+- Go 解密凭据后，只把创建会话所需的密码发送给 agent。
+- 密码只在 agent 会话内存中存在。
+- 官方包安装必须 checksum 校验。
+- 离线包导入必须 checksum 校验。
+- 自定义 Maven 坐标标记为未验证来源，默认不自动更新。
+- 卸载驱动前检查连接 profile 依赖，并展示影响列表。
 
-## Testing Strategy
+## 测试策略
 
-Go unit tests:
+Go 单元测试：
 
-- Manifest parsing.
-- Version selection.
-- Checksum validation.
-- Driver path calculation.
-- Offline package import rollback.
-- Runtime selection priority.
-- Agent start, health check, idle stop, and restart behavior.
-- gRPC error mapping in `JdbcGatewayService`.
+- manifest 解析。
+- 版本选择。
+- checksum 校验。
+- 驱动路径计算。
+- 离线包导入失败回滚。
+- 运行时选择优先级。
+- agent 启动、健康检查、空闲停止、重启。
+- `JdbcGatewayService` 的 gRPC 错误映射。
 
-Java agent unit tests:
+Java agent 单元测试：
 
-- Classloader isolation.
-- JDBC URL template rendering.
-- Query result mapping for select and update statements.
-- Metadata listing using H2 or SQLite JDBC.
+- classloader 隔离。
+- JDBC URL template 渲染。
+- select 和 update 的查询结果映射。
+- 使用 H2 或 SQLite JDBC 测试元数据列表。
 
-Integration tests:
+集成测试：
 
-- Use H2 or SQLite JDBC as no-external-service test database.
-- Start Java agent from Go.
-- Install local test driver package.
-- Connect, query, list tables, list columns, and close session.
-- Kill agent and confirm Go marks sessions disconnected and reports a reconnect action.
+- 使用 H2 或 SQLite JDBC 作为无外部服务依赖的测试数据库。
+- Go 启动 Java agent。
+- 安装本地测试驱动包。
+- 连接、查询、列表、列字段、关闭会话。
+- 杀掉 agent 后，Go 能标记会话断开并返回重连操作。
 
-Manual acceptance:
+手工验收：
 
-- First database use on a machine without Java prompts managed JRE install.
-- Offline machine can import JRE package and driver package.
-- Oracle, SQL Server, DM, Kingbase, and openGauss can run connection test and simple query.
+- 无 Java 环境的机器首次使用数据库功能时，能引导安装托管 JRE。
+- 离线机器能导入 JRE 包和 driver-package.zip。
+- Oracle、SQL Server、达梦 DM、人大金仓 Kingbase、openGauss 至少能完成连接测试和简单查询。
 
-## Rollout Plan
+## 推进计划
 
-1. Introduce driver/runtime metadata models and local manifest storage.
-2. Build Java agent with gRPC health, connect, query, metadata, and close methods.
-3. Add Go agent process manager and gateway service.
-4. Replace current Go `database/sql` database calls with gateway calls.
-5. Add driver manager UI and JRE management.
-6. Add offline import/export flows.
-7. Validate against the initial database set.
+1. 引入驱动和运行时元数据模型、本地 manifest 存储。
+2. 构建 Java agent，提供 gRPC health、connect、query、metadata、close 方法。
+3. 增加 Go agent 进程管理器和 gateway service。
+4. 用 gateway 调用替换当前 Go `database/sql` 数据库调用。
+5. 增加驱动管理界面和 JRE 管理。
+6. 增加离线导入和导出流程。
+7. 对首批数据库做验证。
 
-## Residual Risks
+## 剩余风险
 
-- JDBC metadata behavior varies by vendor and may need per-database adapters.
-- Some vendor drivers have license restrictions that prevent bundled redistribution.
-- Java runtime downloads introduce supply-chain and mirror availability concerns.
-- gRPC process management adds cross-platform lifecycle complexity.
-- Agent crashes invalidate active sessions; users must reconnect.
+- JDBC 元数据行为因厂商而异，可能需要数据库专用适配器。
+- 部分厂商驱动有 license 限制，可能不能随应用分发。
+- Java runtime 下载引入供应链和镜像可用性风险。
+- gRPC 进程管理增加跨平台生命周期复杂度。
+- agent 崩溃会让活跃 session 失效，用户需要重连。

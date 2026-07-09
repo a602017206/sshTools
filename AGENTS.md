@@ -1,152 +1,154 @@
 # CODEBUDDY.md
-This file provides guidance to CodeBuddy when working with code in this repository.
 
-## Common Development Commands
+本文件为 CodeBuddy 在本仓库工作时提供指导。
 
-### Application Development
-- `go install github.com/wailsapp/wails/v2/cmd/wails@latest` - Install Wails CLI (required for building the desktop app)
-- `cd frontend && npm install` - Install Svelte frontend dependencies
-- `wails dev` - Run desktop app in development mode with hot reload
-- `wails build` - Build production binary to `build/bin/`
-- `wails build -platform darwin/arm64` - Build for macOS Apple Silicon; swap target for other platforms
+## 常用开发命令
 
-### Backend Testing
-- `go test ./...` - Run all Go tests
-- `go test -v ./internal/service` - Run service tests with verbose output
-- `go test -v ./internal/service -run TestFormatJSON` - Run specific test function
-- `go test ./internal/service -cover` - Run tests with coverage report
+### 应用开发
+- `go install github.com/wailsapp/wails/v2/cmd/wails@latest` - 安装 Wails CLI，构建桌面应用时需要。
+- `cd frontend && npm install` - 安装 Svelte 前端依赖。
+- `wails dev` - 以开发模式运行桌面应用，支持热更新。
+- `wails build` - 构建生产二进制到 `build/bin/`。
+- `wails build -platform darwin/arm64` - 构建 macOS Apple Silicon 版本；其他平台按需替换目标。
 
-### Go Utilities
-- `go fmt ./...` - Format Go code using gofmt
-- `go vet ./...` - Run Go vet for code analysis
-- `go mod tidy` - Clean up Go module dependencies
+### 后端测试
+- `go test ./...` - 运行全部 Go 测试。
+- `go test -v ./internal/service` - 以详细模式运行 service 测试。
+- `go test -v ./internal/service -run TestFormatJSON` - 运行指定测试函数。
+- `go test ./internal/service -cover` - 运行测试并输出覆盖率。
 
-### macOS Distribution
-- `./scripts/build-mac.sh` - Build with ad-hoc signing for distribution (removes quarantine attributes)
+### Go 工具
+- `go fmt ./...` - 使用 gofmt 格式化 Go 代码。
+- `go vet ./...` - 运行 Go vet 做代码分析。
+- `go mod tidy` - 清理 Go module 依赖。
 
-### Flutter Client
-- `cd flutter_ui && flutter pub get` - Install Flutter dependencies
-- `cd flutter_ui && flutter run -d macos` - Run Flutter app on macOS (change device as needed)
-- `cd flutter_ui && flutter test` - Run Flutter tests
+### macOS 分发
+- `./scripts/build-mac.sh` - 构建用于分发的 macOS 包，使用 ad-hoc 签名并移除 quarantine 属性。
 
-## Architecture Overview
+### Flutter 客户端
+- `cd flutter_ui && flutter pub get` - 安装 Flutter 依赖。
+- `cd flutter_ui && flutter run -d macos` - 在 macOS 上运行 Flutter 应用；其他设备按需替换。
+- `cd flutter_ui && flutter test` - 运行 Flutter 测试。
 
-This is a cross-platform SSH desktop client built with Go backend and Wails framework. The app combines SSH terminal emulation, SFTP file management, system monitoring, and an extensible developer tools toolkit in a unified UI.
+## 架构概览
 
-### Backend Architecture (`internal/`)
+这是一个跨平台 SSH 桌面客户端，后端使用 Go，桌面框架使用 Wails。应用把 SSH 终端仿真、SFTP 文件管理、系统监控和可扩展开发者工具集整合到统一 UI 中。
 
-**SSH Core (`ssh/`)**: Handles all SSH protocol operations
-- `client.go` - SSH client with connection management and auth (password, keyboard-interactive, key)
-- `session.go` - PTY session handling, terminal I/O, and bidirectional communication
-- `manager.go` - Manages multiple SSH sessions concurrently
-- `sftp.go` - SFTP client for file operations (upload, download, delete, rename, mkdir)
-- `transfer.go` - File transfer task management with progress tracking and cancellation
-- `monitor.go` - Real-time system performance monitoring (CPU, memory, disk, network)
+### 后端架构（`internal/`）
 
-**Service Layer (`service/`)**: Business logic exposed to frontend
-- `devtools_service.go` - Developer toolkit backend with JSON formatting/validation/minification/escaping
-- `devtools_service_test.go` - 24 unit tests for devtools functions
+**SSH 核心（`ssh/`）**：处理所有 SSH 协议操作。
+- `client.go` - SSH 客户端，负责连接管理和认证（密码、keyboard-interactive、密钥）。
+- `session.go` - PTY 会话处理、终端 I/O、双向通信。
+- `manager.go` - 并发管理多个 SSH 会话。
+- `sftp.go` - SFTP 客户端，负责上传、下载、删除、重命名、创建目录等文件操作。
+- `transfer.go` - 文件传输任务管理，包含进度追踪和取消。
+- `monitor.go` - 实时系统性能监控，包括 CPU、内存、磁盘、网络。
 
-**Configuration & Storage**:
-- `config/` - Manages connection configs and app settings, persists to `~/.sshtools/config.json`
-- `store/` - In-memory credential storage; passwords encrypted with AES-256-GCM, stored at `~/.sshtools/credentials.enc`
-- `crypto/` - Cryptographic operations (AES-GCM encryption, key derivation from machine features)
+**服务层（`service/`）**：暴露给前端的业务逻辑。
+- `devtools_service.go` - 开发者工具后端，支持 JSON 格式化、校验、压缩、转义。
+- `devtools_service_test.go` - devtools 功能的 24 个单元测试。
 
-**Terminal (`terminal/`)**: Terminal emulation layer for xterm.js integration
+**配置与存储**：
+- `config/` - 管理连接配置和应用设置，持久化到 `~/.sshtools/config.json`。
+- `store/` - 内存凭据存储；密码使用 AES-256-GCM 加密，存储在 `~/.sshtools/credentials.enc`。
+- `crypto/` - 加密操作，包括 AES-GCM 加密和基于机器特征的密钥派生。
 
-### Frontend Architecture (`frontend/src/`)
+**终端（`terminal/`）**：用于 xterm.js 集成的终端仿真层。
 
-Built with Svelte + Vite, communicating with Go backend via Wails bindings.
+### 前端架构（`frontend/src/`）
 
-**Component Structure**:
-- `App.svelte` - Main layout orchestrating tabs, connection sidebar, and right-side panels
-- `TabBar.svelte` - Browser-style horizontal tab bar with renaming, close confirmations, auto-switching
-- `Terminal.svelte` - xterm.js terminal emulator with PTY support and real-time output
-- `ConnectionManager.svelte` - SSH connection CRUD operations with test/save/delete
-- `FileManager.svelte` - Collapsible right-side SFTP panel with breadcrumb nav, file operations, transfer progress
-- `MonitorPanel.svelte` - Real-time system metrics (CPU per-core, memory, disk partitions, network I/O)
-- `DevToolsPanel.svelte` - Collapsible toolkit panel with tool registration system
-- `tools/JsonFormatter.svelte` - JSON formatting tool with validation, syntax highlighting, minification
+前端基于 Svelte + Vite，通过 Wails bindings 与 Go 后端通信。
 
-**State Management (`stores/`)**:
-- `theme.js` - Light/dark theme state
-- `fileManager.js` - File manager panel state (collapsible, width, current path, file list)
-- `monitor.js` - Monitor panel state and metrics data
-- `devtools.js` - Toolkit state with tool registry system
+**组件结构**：
+- `App.svelte` - 主布局，协调标签页、连接侧栏和右侧面板。
+- `TabBar.svelte` - 类浏览器的水平标签栏，支持重命名、关闭确认、自动切换。
+- `Terminal.svelte` - 基于 xterm.js 的终端仿真器，支持 PTY 和实时输出。
+- `ConnectionManager.svelte` - SSH 连接的增删改查、测试、保存、删除。
+- `FileManager.svelte` - 可折叠右侧 SFTP 面板，包含面包屑导航、文件操作、传输进度。
+- `MonitorPanel.svelte` - 实时系统指标，包括 CPU 核心、内存、磁盘分区、网络 I/O。
+- `DevToolsPanel.svelte` - 可折叠工具面板，包含工具注册系统。
+- `tools/JsonFormatter.svelte` - JSON 格式化工具，包含校验、语法高亮、压缩。
 
-**Tool Extension System**:
-- New tools registered in `frontend/src/tools/index.js`
-- Each tool is a Svelte component in `frontend/src/components/tools/`
-- Tools are discovered and rendered dynamically in DevToolsPanel
-- Registration requires: id, name, icon, component, category, order
+**状态管理（`stores/`）**：
+- `theme.js` - 明暗主题状态。
+- `fileManager.js` - 文件管理器面板状态，包括折叠、宽度、当前路径、文件列表。
+- `monitor.js` - 监控面板状态和指标数据。
+- `devtools.js` - 工具集状态和工具注册系统。
 
-### Application Entry (`app.go`)
+**工具扩展系统**：
+- 新工具在 `frontend/src/tools/index.js` 注册。
+- 每个工具是 `frontend/src/components/tools/` 下的 Svelte 组件。
+- 工具由 DevToolsPanel 动态发现和渲染。
+- 注册项必须包含：id、name、icon、component、category、order。
 
-The `App` struct serves as the main controller:
-- Exports Go methods to frontend via Wails bindings (must be capitalized)
-- Manages SSH session lifecycle through SessionManager
-- Handles ConfigManager for config persistence
-- Provides CredentialStore for encrypted password storage
-- Emits events to frontend: `ssh:output:{sessionID}` for terminal data
+### 应用入口（`app.go`）
 
-Key exported methods include: GetConnections, AddConnection, RemoveConnection, TestConnection, ConnectSSH, SendSSHData, ResizeSSH, CloseSSH, and devtools methods (FormatJSON, ValidateJSON, MinifyJSON, EscapeJSON).
+`App` 结构体是主控制器：
+- 通过 Wails bindings 向前端导出 Go 方法，导出方法必须首字母大写。
+- 通过 SessionManager 管理 SSH 会话生命周期。
+- 使用 ConfigManager 管理配置持久化。
+- 提供 CredentialStore 进行加密密码存储。
+- 向前端发出事件：`ssh:output:{sessionID}`，用于终端数据。
 
-### Configuration & Data Persistence
+关键导出方法包括：GetConnections、AddConnection、RemoveConnection、TestConnection、ConnectSSH、SendSSHData、ResizeSSH、CloseSSH，以及 devtools 方法（FormatJSON、ValidateJSON、MinifyJSON、EscapeJSON）。
 
-Stored at `~/.sshtools/`:
-- `config.json` - Connection configs, app settings (theme, sidebar/panel widths), never commit this file
-- `credentials.enc` - AES-GCM encrypted passwords with machine-bound key derivation
+### 配置与数据持久化
 
-## Development Guidelines
+数据存储在 `~/.sshtools/`：
+- `config.json` - 连接配置和应用设置（主题、侧栏和面板宽度），禁止提交。
+- `credentials.enc` - 使用机器绑定密钥派生后的 AES-GCM 加密密码。
 
-### Change Documentation Requirements
-- Every code, configuration, build, or documentation change must include a matching change document under `docs/changes/`.
-- Feature and requirement changes must be recorded under `docs/changes/features/`.
-- Bug fixes must be recorded under `docs/changes/bugs/`.
-- Process, documentation, repository-layout, and workflow changes must be recorded under `docs/changes/process/`.
-- Each change document must include: background, scope, modified files, verification, and residual risks.
-- Keep design and development records separate:
-  - Put design proposals, trade-offs, and architecture decisions in `docs/designs/`.
-  - Put implementation notes, execution details, and rollout notes in `docs/development/`.
-- For non-trivial changes, write or update the design document before implementation notes.
-- Do not mix unrelated feature work and bug fixes in one change document.
-- If a change intentionally skips tests or build verification, document the reason and risk explicitly.
+## 开发指南
 
-### Documentation Layout
-- `docs/README.md` is the documentation map and should be updated when adding or moving document categories.
-- `docs/audits/` stores codebase scans, review reports, and issue inventories.
-- `docs/plans/` stores implementation plans.
-- `docs/archive/` stores historical one-off summaries, temporary debugging notes, and superseded reports.
-- Root-level Markdown should be limited to active entry points and long-lived guides.
-- Prefer archiving obsolete documents over deleting them when they contain project history.
+### 变更文档要求
+- 每次代码、配置、构建或文档变更，都必须在 `docs/changes/` 下包含对应变更文档。
+- 功能和需求变更必须记录在 `docs/changes/features/`。
+- Bug 修复必须记录在 `docs/changes/bugs/`。
+- 流程、文档、仓库布局和工作流变更必须记录在 `docs/changes/process/`。
+- 每份变更文档必须包含：背景、范围、修改文件、验证、剩余风险。
+- 文档语言要求：所有新增或修改的文档正文必须使用中文。稳定技术标识、代码符号、文件路径、命令、API 名称和引用的上游名称可按需保留原文。不得新增全英文文档。
+- 设计记录和开发记录必须分离：
+  - 设计提案、取舍和架构决策放在 `docs/designs/`。
+  - 实现说明、执行细节和上线说明放在 `docs/development/`。
+- 非平凡变更必须先写或更新设计文档，再写实现说明。
+- 不要把无关的功能工作和 bug 修复混在一份变更文档中。
+- 如果某次变更故意跳过测试或构建验证，必须明确记录原因和风险。
 
-### Adding New Developer Tools
-1. Create Svelte component in `frontend/src/components/tools/YourTool.svelte`
-2. Add backend methods in `internal/service/devtools_service.go`
-3. Expose methods in `app.go` with exported names
-4. Register tool in `frontend/src/tools/index.js` with id, name, icon, component, order
-5. Frontend auto-regenerates bindings on `wails dev`
+### 文档布局
+- `docs/README.md` 是文档地图，新增或移动文档分类时必须更新。
+- `docs/audits/` 存放代码库扫描、评审报告和问题清单。
+- `docs/plans/` 存放实现计划。
+- `docs/archive/` 存放历史一次性总结、临时调试记录和已废弃报告。
+- 根目录 Markdown 只应保留活跃入口和长期指南。
+- 包含项目历史的过期文档优先归档，不要直接删除。
 
-### Code Style
-- Go: Exported symbols in `CamelCase`, unexported in `camelCase`, follow `gofmt`
-- Svelte: Components use `PascalCase` filenames (e.g., `ConnectionManager.svelte`), store modules use `camelCase`
+### 新增开发者工具
+1. 在 `frontend/src/components/tools/YourTool.svelte` 创建 Svelte 组件。
+2. 在 `internal/service/devtools_service.go` 添加后端方法。
+3. 在 `app.go` 中以导出方法暴露。
+4. 在 `frontend/src/tools/index.js` 注册工具，包含 id、name、icon、component、order。
+5. 前端在 `wails dev` 时会自动重新生成 bindings。
 
-### Testing
-- Go unit tests alongside code as `*_test.go` files
-- Run `go test ./internal/service -v` before committing backend changes
-- UI regressions checked manually per `TESTING_GUIDE.md`
+### 代码风格
+- Go：导出符号使用 `CamelCase`，未导出符号使用 `camelCase`，遵循 `gofmt`。
+- Svelte：组件文件使用 `PascalCase` 文件名（如 `ConnectionManager.svelte`），store 模块使用 `camelCase`。
 
-## Platform-Specific Notes
+### 测试
+- Go 单元测试与代码放在同目录，文件名为 `*_test.go`。
+- 后端变更提交前运行 `go test ./internal/service -v`。
+- UI 回归按 `TESTING_GUIDE.md` 手工检查。
 
-### macOS Distribution
-To avoid "app is damaged" errors when distributing:
-- Run `./scripts/build-mac.sh` which applies ad-hoc signing and removes quarantine attributes
-- Build output at `build/bin/AHaSSHTools.app`
-- Distribute as zip; users run `xattr -cr sshTools.app && open sshTools.app` after download
-- For official distribution, requires Apple Developer Program signing and notarization (see `MACOS_SIGNING.md`)
+## 平台说明
 
-## Security Considerations
-- Never commit `~/.sshtools/` directory contents (contains real configs and encrypted credentials)
-- SSH key passphrases are never stored to disk
-- Password encryption uses AES-256-GCM with machine-derived key
-- All communication happens locally via Wails bindings (no network exposure)
+### macOS 分发
+为避免分发时出现 “app is damaged” 错误：
+- 运行 `./scripts/build-mac.sh`，该脚本会执行 ad-hoc 签名并移除 quarantine 属性。
+- 构建输出在 `build/bin/AHaSSHTools.app`。
+- 以 zip 分发；用户下载后运行 `xattr -cr sshTools.app && open sshTools.app`。
+- 正式分发需要 Apple Developer Program 签名和 notarization，见 `MACOS_SIGNING.md`。
+
+## 安全注意事项
+- 禁止提交 `~/.sshtools/` 目录内容，其中包含真实配置和加密凭据。
+- SSH key passphrase 不存盘。
+- 密码加密使用 AES-256-GCM，并基于机器特征派生密钥。
+- 所有通信都通过本地 Wails bindings 进行，不暴露网络服务。
