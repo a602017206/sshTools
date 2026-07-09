@@ -118,11 +118,133 @@ export namespace config {
 	        this.type = source["type"];
 	    }
 	}
+	
+	export class JDBCProp {
+	    name: string;
+	    defaultValue?: string;
+	    required?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new JDBCProp(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.defaultValue = source["defaultValue"];
+	        this.required = source["required"];
+	    }
+	}
+	export class JDBCJar {
+	    name: string;
+	    sha256: string;
+	    url?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new JDBCJar(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.sha256 = source["sha256"];
+	        this.url = source["url"];
+	    }
+	}
+	export class JDBCDriverProfile {
+	    id: string;
+	    version: string;
+	    driverClass: string;
+	    urlTemplate: string;
+	    defaultPort: number;
+	    jre: string;
+	    jars: JDBCJar[];
+	    properties?: JDBCProp[];
+	    source?: string;
+	    installed?: boolean;
+	    installPath?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new JDBCDriverProfile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.version = source["version"];
+	        this.driverClass = source["driverClass"];
+	        this.urlTemplate = source["urlTemplate"];
+	        this.defaultPort = source["defaultPort"];
+	        this.jre = source["jre"];
+	        this.jars = this.convertValues(source["jars"], JDBCJar);
+	        this.properties = this.convertValues(source["properties"], JDBCProp);
+	        this.source = source["source"];
+	        this.installed = source["installed"];
+	        this.installPath = source["installPath"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 
 }
 
 export namespace service {
 	
+	export class DriverView {
+	    id: string;
+	    name: string;
+	    recommendedVersion: string;
+	    installed: boolean;
+	    profiles: config.JDBCDriverProfile[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DriverView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.recommendedVersion = source["recommendedVersion"];
+	        this.installed = source["installed"];
+	        this.profiles = this.convertValues(source["profiles"], config.JDBCDriverProfile);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class JSONValidationResult {
 	    valid: boolean;
 	    error?: string;
@@ -135,6 +257,22 @@ export namespace service {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.valid = source["valid"];
 	        this.error = source["error"];
+	    }
+	}
+	export class RuntimeStatus {
+	    kind: string;
+	    javaPath: string;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RuntimeStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.javaPath = source["javaPath"];
+	        this.version = source["version"];
 	    }
 	}
 	export class TableDDL {

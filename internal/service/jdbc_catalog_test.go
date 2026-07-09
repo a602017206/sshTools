@@ -45,3 +45,64 @@ func TestDriverCatalogLoadsManifestAndSelectsRecommendedProfile(t *testing.T) {
 		t.Fatalf("unexpected default port: %d", profile.DefaultPort)
 	}
 }
+
+func TestDriverManagerListsDriversWithInstallStatus(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "manifest.json")
+	err := os.WriteFile(manifestPath, []byte(`{
+	  "version": 1,
+	  "drivers": [
+	    {
+	      "id": "oracle",
+	      "name": "Oracle",
+	      "recommendedVersion": "23.5",
+	      "profiles": [{
+	        "id": "oracle-23.5",
+	        "version": "23.5",
+	        "driverClass": "oracle.jdbc.OracleDriver",
+	        "urlTemplate": "jdbc:oracle:thin:@//{host}:{port}/{database}",
+	        "defaultPort": 1521,
+	        "jre": ">=17",
+	        "jars": [{"name": "ojdbc11.jar", "sha256": "abc"}]
+	      }]
+	    },
+	    {
+	      "id": "h2",
+	      "name": "H2",
+	      "recommendedVersion": "2.2.224",
+	      "profiles": [{
+	        "id": "h2-2.2.224",
+	        "version": "2.2.224",
+	        "driverClass": "org.h2.Driver",
+	        "urlTemplate": "jdbc:h2:mem:{database}",
+	        "defaultPort": 0,
+	        "jre": ">=17",
+	        "jars": [{"name": "h2.jar", "sha256": "def"}]
+	      }]
+	    }
+	  ]
+	}`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installedRoot := filepath.Join(root, "drivers")
+	if err := os.MkdirAll(filepath.Join(installedRoot, "h2", "2.2.224", "jars"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	catalog := NewDriverCatalogService(manifestPath, installedRoot)
+	drivers, err := catalog.ListDriversWithInstallStatus()
+	if err != nil {
+		t.Fatalf("list drivers failed: %v", err)
+	}
+	status := map[string]bool{}
+	for _, driver := range drivers {
+		status[driver.ID] = driver.Installed
+	}
+	if status["oracle"] {
+		t.Fatalf("oracle should not be installed")
+	}
+	if !status["h2"] {
+		t.Fatalf("h2 should be installed")
+	}
+}

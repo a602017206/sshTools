@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"AHaSSHTools/internal/config"
 )
@@ -51,4 +52,40 @@ func (s *DriverCatalogService) GetRecommendedProfile(driverID string) (*config.J
 		return nil, nil, fmt.Errorf("数据库 %s 没有可用 JDBC profile", driverID)
 	}
 	return nil, nil, fmt.Errorf("未找到 JDBC 驱动: %s", driverID)
+}
+
+func (s *DriverCatalogService) ListDriversWithInstallStatus() ([]DriverView, error) {
+	manifest, err := s.LoadManifest()
+	if err != nil {
+		return nil, err
+	}
+	drivers := make([]DriverView, 0, len(manifest.Drivers))
+	for _, driver := range manifest.Drivers {
+		profiles := make([]config.JDBCDriverProfile, len(driver.Profiles))
+		copy(profiles, driver.Profiles)
+		installed := false
+		for i := range profiles {
+			if s.profileInstalled(driver.ID, profiles[i].Version) {
+				profiles[i].Installed = true
+				profiles[i].InstallPath = filepath.Join(s.installedPath, driver.ID, profiles[i].Version)
+				installed = true
+			}
+		}
+		drivers = append(drivers, DriverView{
+			ID:                 driver.ID,
+			Name:               driver.Name,
+			RecommendedVersion: driver.RecommendedVersion,
+			Installed:          installed,
+			Profiles:           profiles,
+		})
+	}
+	return drivers, nil
+}
+
+func (s *DriverCatalogService) profileInstalled(driverID, version string) bool {
+	if s.installedPath == "" || driverID == "" || version == "" {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(s.installedPath, driverID, version))
+	return err == nil && info.IsDir()
 }

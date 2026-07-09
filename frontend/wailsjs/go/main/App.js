@@ -142,6 +142,10 @@ export function GetFileManagerSettings(arg1) {
   return window['go']['main']['App']['GetFileManagerSettings'](arg1);
 }
 
+export function GetJDBCRuntimeStatus() {
+  return window['go']['main']['App']['GetJDBCRuntimeStatus']();
+}
+
 export function GetMonitoringData(arg1) {
   return window['go']['main']['App']['GetMonitoringData'](arg1);
 }
@@ -194,6 +198,14 @@ export function ImportConnectionsWithPassphrase(arg1, arg2) {
   return window['go']['main']['App']['ImportConnectionsWithPassphrase'](arg1, arg2);
 }
 
+export function ImportJDBCDriverPackage(arg1) {
+  return window['go']['main']['App']['ImportJDBCDriverPackage'](arg1);
+}
+
+export function InstallJDBCDriver(arg1, arg2) {
+  return window['go']['main']['App']['InstallJDBCDriver'](arg1, arg2);
+}
+
 export function ListDatabaseTables(arg1) {
   return window['go']['main']['App']['ListDatabaseTables'](arg1);
 }
@@ -208,6 +220,10 @@ export function ListDatabases(arg1) {
 
 export function ListFiles(arg1, arg2) {
   return window['go']['main']['App']['ListFiles'](arg1, arg2);
+}
+
+export function ListJDBCDrivers() {
+  return window['go']['main']['App']['ListJDBCDrivers']();
 }
 
 export function ListSSHSessions() {
@@ -226,6 +242,10 @@ export function RemoveConnection(arg1) {
   return window['go']['main']['App']['RemoveConnection'](arg1);
 }
 
+export function RemoveJDBCDriver(arg1, arg2) {
+  return window['go']['main']['App']['RemoveJDBCDriver'](arg1, arg2);
+}
+
 export function RenameFile(arg1, arg2, arg3) {
   return window['go']['main']['App']['RenameFile'](arg1, arg2, arg3);
 }
@@ -236,6 +256,10 @@ export function ResizeLocalShell(arg1, arg2, arg3) {
 
 export function ResizeSSH(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSH'](arg1, arg2, arg3);
+}
+
+export function RestartJDBCAgent() {
+  return window['go']['main']['App']['RestartJDBCAgent']();
 }
 
 export function SaveBinaryFile(arg1, arg2) {
@@ -280,6 +304,10 @@ export function SendSSHData(arg1, arg2) {
 
 export function SendSSHDataBinary(arg1, arg2) {
   return window['go']['main']['App']['SendSSHDataBinary'](arg1, arg2);
+}
+
+export function SetJDBCRuntimeMode(arg1, arg2) {
+  return window['go']['main']['App']['SetJDBCRuntimeMode'](arg1, arg2);
 }
 
 export function ShowAboutDialog() {
@@ -340,6 +368,10 @@ export function UpdateSettings(arg1) {
 
 export function UploadFiles(arg1, arg2, arg3) {
   return window['go']['main']['App']['UploadFiles'](arg1, arg2, arg3);
+}
+
+export function ValidateJDBCDriver(arg1, arg2) {
+  return window['go']['main']['App']['ValidateJDBCDriver'](arg1, arg2);
 }
 
 export function ValidateJSON(arg1) {

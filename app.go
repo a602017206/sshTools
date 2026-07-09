@@ -40,6 +40,11 @@ type App struct {
 	settingsService   *service.SettingsService
 	devToolsService   *service.DevToolsService
 	databaseService   *service.DatabaseService
+	jdbcPaths         service.JDBCPaths
+	jdbcCatalog       *service.DriverCatalogService
+	jdbcInstaller     *service.DriverInstallService
+	jdbcRuntime       *service.RuntimeService
+	jdbcAgentManager  *service.AgentProcessManager
 	configManager     *config.ConfigManager
 }
 
@@ -75,19 +80,29 @@ func (a *App) startup(ctx context.Context) {
 	a.monitorService = service.NewMonitorService(sessionManager)
 	a.settingsService = service.NewSettingsService(configManager)
 	a.devToolsService = service.NewDevToolsService()
+	a.initJDBCServices()
 	a.databaseService = service.NewDatabaseServiceWithGateway(a.configManager, a.newJDBCGatewayService())
 }
 
-func (a *App) newJDBCGatewayService() *service.JdbcGatewayService {
+func (a *App) initJDBCServices() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		homeDir = "."
 	}
-	paths := service.NewJDBCPaths(filepath.Join(homeDir, ".sshtools"))
-	catalog := service.NewDriverCatalogService(paths.Manifest, paths.DriversDir)
+	a.jdbcPaths = service.NewJDBCPaths(filepath.Join(homeDir, ".sshtools"))
+	a.jdbcCatalog = service.NewDriverCatalogService(a.jdbcPaths.Manifest, a.jdbcPaths.DriversDir)
+	a.jdbcInstaller = service.NewDriverInstallService(a.jdbcPaths)
+	a.jdbcRuntime = service.NewRuntimeService(a.jdbcPaths, "/usr/bin/java")
+	a.jdbcAgentManager = service.NewAgentProcessManager(nil, service.AgentProcessConfig{
+		JavaPath: "/usr/bin/java",
+		AgentJar: filepath.Join(a.jdbcPaths.AgentDir, "jdbc-agent.jar"),
+	})
+}
+
+func (a *App) newJDBCGatewayService() *service.JdbcGatewayService {
 	gateway := service.NewJdbcGatewayService(nil, "")
 	gateway.SetProfileResolver(func(ctx context.Context, cfg config.DatabaseConfig) (config.JDBCDriverProfile, error) {
-		_, profile, err := catalog.GetRecommendedProfile(cfg.DBType)
+		_, profile, err := a.jdbcCatalog.GetRecommendedProfile(cfg.DBType)
 		return dereferenceJDBCProfile(profile), err
 	})
 	return gateway
@@ -983,6 +998,68 @@ func (a *App) ListDatabases(sessionID string) ([]string, error) {
 
 func (a *App) ListDatabaseTablesInDatabase(sessionID, database string) ([]string, error) {
 	return a.databaseService.ListTablesInDatabase(sessionID, database)
+}
+
+func (a *App) ListJDBCDrivers() ([]service.DriverView, error) {
+	return a.jdbcCatalog.ListDriversWithInstallStatus()
+}
+
+func (a *App) InstallJDBCDriver(driverID, version string) error {
+	return fmt.Errorf("JDBC 在线驱动安装暂未实现: %s %s", driverID, version)
+}
+
+func (a *App) ImportJDBCDriverPackage(path string) error {
+	_, err := a.jdbcInstaller.ImportOfflinePackage(path)
+	return err
+}
+
+func (a *App) ValidateJDBCDriver(driverID, version string) error {
+	installPath := filepath.Join(a.jdbcPaths.DriversDir, driverID, version)
+	if _, err := os.Stat(installPath); err != nil {
+		return fmt.Errorf("JDBC 驱动未安装或不可访问: %w", err)
+	}
+	return nil
+}
+
+func (a *App) RemoveJDBCDriver(driverID, version string) error {
+	installPath := filepath.Join(a.jdbcPaths.DriversDir, driverID, version)
+	if err := os.RemoveAll(installPath); err != nil {
+		return fmt.Errorf("删除 JDBC 驱动失败: %w", err)
+	}
+	return nil
+}
+
+func (a *App) GetJDBCRuntimeStatus() (service.RuntimeStatus, error) {
+	selected, err := a.jdbcRuntime.SelectRuntime()
+	if err != nil {
+		return service.RuntimeStatus{}, err
+	}
+	return service.RuntimeStatus{
+		Kind:     selected.Kind,
+		JavaPath: selected.JavaPath,
+		Version:  selected.Version,
+	}, nil
+}
+
+func (a *App) SetJDBCRuntimeMode(mode, path string) error {
+	switch mode {
+	case "system":
+		a.jdbcRuntime = service.NewRuntimeService(a.jdbcPaths, path)
+		a.jdbcRuntime.UseSystemJava(true)
+	case "managed":
+		a.jdbcRuntime = service.NewRuntimeService(a.jdbcPaths, "/usr/bin/java")
+	default:
+		return fmt.Errorf("不支持的 JDBC 运行时模式: %s", mode)
+	}
+	return nil
+}
+
+func (a *App) RestartJDBCAgent() error {
+	if err := a.jdbcAgentManager.Stop(); err != nil {
+		return err
+	}
+	_, err := a.jdbcAgentManager.Start(context.Background())
+	return err
 }
 
 func (a *App) GetTableColumns(sessionID, table string) ([]string, error) {

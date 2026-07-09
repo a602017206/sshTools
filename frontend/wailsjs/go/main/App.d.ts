@@ -74,6 +74,8 @@ export function GetFileInfo(arg1:string,arg2:string):Promise<ssh.FileInfo>;
 
 export function GetFileManagerSettings(arg1:string):Promise<config.FileManagerSettings>;
 
+export function GetJDBCRuntimeStatus():Promise<service.RuntimeStatus>;
+
 export function GetMonitoringData(arg1:string):Promise<ssh.MonitoringData>;
 
 export function GetPassword(arg1:string):Promise<string>;
@@ -100,6 +102,10 @@ export function ImportConnectionsFromFileWithPassphrase(arg1:string,arg2:string)
 
 export function ImportConnectionsWithPassphrase(arg1:string,arg2:string):Promise<number>;
 
+export function ImportJDBCDriverPackage(arg1:string):Promise<void>;
+
+export function InstallJDBCDriver(arg1:string,arg2:string):Promise<void>;
+
 export function ListDatabaseTables(arg1:string):Promise<Array<string>>;
 
 export function ListDatabaseTablesInDatabase(arg1:string,arg2:string):Promise<Array<string>>;
@@ -107,6 +113,8 @@ export function ListDatabaseTablesInDatabase(arg1:string,arg2:string):Promise<Ar
 export function ListDatabases(arg1:string):Promise<Array<string>>;
 
 export function ListFiles(arg1:string,arg2:string):Promise<Array<ssh.FileInfo>>;
+
+export function ListJDBCDrivers():Promise<Array<service.DriverView>>;
 
 export function ListSSHSessions():Promise<Array<string>>;
 
@@ -116,11 +124,15 @@ export function ParseURL(arg1:string):Promise<Record<string, any>>;
 
 export function RemoveConnection(arg1:string):Promise<void>;
 
+export function RemoveJDBCDriver(arg1:string,arg2:string):Promise<void>;
+
 export function RenameFile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function ResizeLocalShell(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function RestartJDBCAgent():Promise<void>;
 
 export function SaveBinaryFile(arg1:string,arg2:string):Promise<string>;
 
@@ -143,6 +155,8 @@ export function SendLocalShellDataBinary(arg1:string,arg2:string):Promise<void>;
 export function SendSSHData(arg1:string,arg2:string):Promise<void>;
 
 export function SendSSHDataBinary(arg1:string,arg2:string):Promise<void>;
+
+export function SetJDBCRuntimeMode(arg1:string,arg2:string):Promise<void>;
 
 export function ShowAboutDialog():Promise<void>;
 
@@ -173,5 +187,7 @@ export function UpdateFileManagerSettings(arg1:string,arg2:Record<string, any>):
 export function UpdateSettings(arg1:Record<string, any>):Promise<void>;
 
 export function UploadFiles(arg1:string,arg2:Array<string>,arg3:string):Promise<Array<string>>;
+
+export function ValidateJDBCDriver(arg1:string,arg2:string):Promise<void>;
 
 export function ValidateJSON(arg1:string):Promise<service.JSONValidationResult>;
