@@ -1,5 +1,9 @@
 # Binaries
 sshTools
+!jdbc-agent/src/main/java/com/sshtools/
+!jdbc-agent/src/main/java/com/sshtools/**
+!jdbc-agent/src/test/java/com/sshtools/
+!jdbc-agent/src/test/java/com/sshtools/**
 *.exe
 *.exe~
 *.dll
@@ -12,6 +16,8 @@ sshTools
 build/bin
 dist/
 frontend/dist
+jdbc-agent/build/
+jdbc-agent/.gradle/
 
 # Dependencies
 node_modules/

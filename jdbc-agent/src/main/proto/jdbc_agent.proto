@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package sshtools.jdbc;
+
+option java_multiple_files = true;
+option java_package = "com.sshtools.jdbcagent.proto";
+option java_outer_classname = "JdbcAgentProto";
+
+service JdbcAgent {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+  rpc ExecuteQuery(ExecuteQueryRequest) returns (QueryResult);
+  rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
+  rpc ListColumns(ListColumnsRequest) returns (ListColumnsResponse);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+}
+
+message HealthRequest {
+  string token = 1;
+}
+
+message HealthResponse {
+  string status = 1;
+  string agent_version = 2;
+  string java_version = 3;
+}
+
+message DriverProfile {
+  string id = 1;
+  string driver_class = 2;
+  string url_template = 3;
+  repeated string jar_paths = 4;
+}
+
+message OpenSessionRequest {
+  string token = 1;
+  string session_id = 2;
+  DriverProfile profile = 3;
+  string host = 4;
+  int32 port = 5;
+  string database = 6;
+  string user = 7;
+  string password = 8;
+  map<string, string> properties = 9;
+}
+
+message OpenSessionResponse {
+  string session_id = 1;
+}
+
+message ExecuteQueryRequest {
+  string token = 1;
+  string session_id = 2;
+  string sql = 3;
+  int32 timeout_seconds = 4;
+}
+
+message QueryResult {
+  repeated string columns = 1;
+  repeated Row rows = 2;
+  int64 affected = 3;
+}
+
+message Row {
+  repeated string values = 1;
+}
+
+message ListTablesRequest {
+  string token = 1;
+  string session_id = 2;
+  string catalog = 3;
+  string schema = 4;
+}
+
+message ListTablesResponse {
+  repeated string tables = 1;
+}
+
+message ListColumnsRequest {
+  string token = 1;
+  string session_id = 2;
+  string catalog = 3;
+  string schema = 4;
+  string table = 5;
+}
+
+message Column {
+  string name = 1;
+  string type = 2;
+  bool nullable = 3;
+  bool primary_key = 4;
+}
+
+message ListColumnsResponse {
+  repeated Column columns = 1;
+}
+
+message CloseSessionRequest {
+  string token = 1;
+  string session_id = 2;
+}
+
+message CloseSessionResponse {
+  bool closed = 1;
+}
