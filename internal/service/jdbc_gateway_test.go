@@ -19,12 +19,15 @@ func TestJdbcGatewayConnectDatabaseOpensAgentSession(t *testing.T) {
 		InstallPath: "/tmp/h2",
 		Jars:        []config.JDBCJar{{Name: "h2.jar"}},
 	}
+	gateway.SetProfileResolver(func(ctx context.Context, cfg config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return profile, nil
+	})
 
 	err := gateway.ConnectDatabase(context.Background(), "db-test", config.DatabaseConfig{
 		DBType:          "h2",
 		Database:        "testdb",
 		DriverProfileID: "h2-2.2.224",
-	}, profile)
+	})
 	if err != nil {
 		t.Fatalf("connect failed: %v", err)
 	}
@@ -64,7 +67,11 @@ func TestJdbcGatewayMapsDriverMissingError(t *testing.T) {
 	client := &fakeJdbcAgentClient{openErr: errors.New("DRIVER_MISSING: h2")}
 	gateway := NewJdbcGatewayService(client, "secret")
 
-	err := gateway.ConnectDatabase(context.Background(), "db-test", config.DatabaseConfig{}, config.JDBCDriverProfile{})
+	gateway.SetProfileResolver(func(ctx context.Context, cfg config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return config.JDBCDriverProfile{}, errors.New("DRIVER_MISSING: h2")
+	})
+
+	err := gateway.ConnectDatabase(context.Background(), "db-test", config.DatabaseConfig{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}

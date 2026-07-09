@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -74,7 +75,29 @@ func (a *App) startup(ctx context.Context) {
 	a.monitorService = service.NewMonitorService(sessionManager)
 	a.settingsService = service.NewSettingsService(configManager)
 	a.devToolsService = service.NewDevToolsService()
-	a.databaseService = service.NewDatabaseService(a.configManager)
+	a.databaseService = service.NewDatabaseServiceWithGateway(a.configManager, a.newJDBCGatewayService())
+}
+
+func (a *App) newJDBCGatewayService() *service.JdbcGatewayService {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "."
+	}
+	paths := service.NewJDBCPaths(filepath.Join(homeDir, ".sshtools"))
+	catalog := service.NewDriverCatalogService(paths.Manifest, paths.DriversDir)
+	gateway := service.NewJdbcGatewayService(nil, "")
+	gateway.SetProfileResolver(func(ctx context.Context, cfg config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		_, profile, err := catalog.GetRecommendedProfile(cfg.DBType)
+		return dereferenceJDBCProfile(profile), err
+	})
+	return gateway
+}
+
+func dereferenceJDBCProfile(profile *config.JDBCDriverProfile) config.JDBCDriverProfile {
+	if profile == nil {
+		return config.JDBCDriverProfile{}
+	}
+	return *profile
 }
 
 // Greet returns a greeting for the given name

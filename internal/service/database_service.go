@@ -29,14 +29,29 @@ type DatabaseService struct {
 	configManager *config.ConfigManager
 	sessionStore  map[string]*DatabaseSession
 	openFunc      func(driverName, dsn string) (*sql.DB, error)
+	gateway       DatabaseGateway
 	mu            sync.RWMutex
 }
 
+type DatabaseGateway interface {
+	ConnectDatabase(ctx context.Context, sessionID string, cfg config.DatabaseConfig) error
+	ExecuteQuery(ctx context.Context, sessionID string, query string) (*QueryResult, error)
+	ListTables(ctx context.Context, sessionID, database string) ([]string, error)
+	ListDatabases(ctx context.Context, sessionID string) ([]string, error)
+	GetTableSchema(ctx context.Context, sessionID, table string) (*config.TableSchema, error)
+	CloseDatabase(ctx context.Context, sessionID string) error
+}
+
 func NewDatabaseService(configManager *config.ConfigManager) *DatabaseService {
+	return NewDatabaseServiceWithGateway(configManager, nil)
+}
+
+func NewDatabaseServiceWithGateway(configManager *config.ConfigManager, gateway DatabaseGateway) *DatabaseService {
 	return &DatabaseService{
 		configManager: configManager,
 		sessionStore:  make(map[string]*DatabaseSession),
 		openFunc:      sql.Open,
+		gateway:       gateway,
 	}
 }
 
@@ -111,6 +126,22 @@ func (ds *DatabaseService) ConnectDatabase(sessionID, host string, port int, use
 		Timeout:  10 * time.Second,
 	}
 
+	if ds.gateway != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
+		defer cancel()
+		if err := ds.gateway.ConnectDatabase(ctx, sessionID, cfg); err != nil {
+			return err
+		}
+		ds.mu.Lock()
+		ds.sessionStore[sessionID] = &DatabaseSession{
+			ID:        sessionID,
+			Config:    cfg,
+			Connected: true,
+		}
+		ds.mu.Unlock()
+		return nil
+	}
+
 	dsn, err := ds.GetDSN(cfg)
 	if err != nil {
 		return err
@@ -153,6 +184,12 @@ func (ds *DatabaseService) ConnectDatabase(sessionID, host string, port int, use
 }
 
 func (ds *DatabaseService) ExecuteQuery(sessionID, query string) (*QueryResult, error) {
+	if ds.gateway != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return ds.gateway.ExecuteQuery(ctx, sessionID, query)
+	}
+
 	session, err := ds.GetSession(sessionID)
 	if err != nil {
 		return nil, err
@@ -225,6 +262,12 @@ func (ds *DatabaseService) ExecuteQuery(sessionID, query string) (*QueryResult, 
 }
 
 func (ds *DatabaseService) ListTables(sessionID string) ([]string, error) {
+	if ds.gateway != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return ds.gateway.ListTables(ctx, sessionID, "")
+	}
+
 	session, err := ds.GetSession(sessionID)
 	if err != nil {
 		return nil, err
@@ -241,6 +284,12 @@ func (ds *DatabaseService) ListTables(sessionID string) ([]string, error) {
 }
 
 func (ds *DatabaseService) ListDatabases(sessionID string) ([]string, error) {
+	if ds.gateway != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return ds.gateway.ListDatabases(ctx, sessionID)
+	}
+
 	session, err := ds.GetSession(sessionID)
 	if err != nil {
 		return nil, err
@@ -289,6 +338,12 @@ func (ds *DatabaseService) ListDatabases(sessionID string) ([]string, error) {
 }
 
 func (ds *DatabaseService) ListTablesInDatabase(sessionID, database string) ([]string, error) {
+	if ds.gateway != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return ds.gateway.ListTables(ctx, sessionID, database)
+	}
+
 	session, err := ds.GetSession(sessionID)
 	if err != nil {
 		return nil, err
@@ -333,6 +388,12 @@ func (ds *DatabaseService) ListTablesInDatabase(sessionID, database string) ([]s
 }
 
 func (ds *DatabaseService) GetTableSchema(sessionID, table string) (*config.TableSchema, error) {
+	if ds.gateway != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return ds.gateway.GetTableSchema(ctx, sessionID, table)
+	}
+
 	session, err := ds.GetSession(sessionID)
 	if err != nil {
 		return nil, err
@@ -412,6 +473,16 @@ func (ds *DatabaseService) GetTableSchema(sessionID, table string) (*config.Tabl
 }
 
 func (ds *DatabaseService) CloseDatabase(sessionID string) error {
+	if ds.gateway != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := ds.gateway.CloseDatabase(ctx, sessionID)
+		ds.mu.Lock()
+		delete(ds.sessionStore, sessionID)
+		ds.mu.Unlock()
+		return err
+	}
+
 	ds.mu.Lock()
 	session, exists := ds.sessionStore[sessionID]
 	if exists {

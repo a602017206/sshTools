@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -78,6 +79,47 @@ func TestDatabaseService_CloseDatabase_RemovesSession(t *testing.T) {
 	if _, err := ds.GetSession("db-test"); err == nil {
 		t.Fatalf("expected session to be removed")
 	}
+}
+
+func TestDatabaseServiceDelegatesConnectToJdbcGateway(t *testing.T) {
+	gateway := &fakeJdbcGateway{}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+	err := ds.ConnectDatabase("db-test", "localhost", 1521, "scott", "tiger", "oracle", "orcl")
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	if gateway.lastDBType != "oracle" {
+		t.Fatalf("expected oracle, got %s", gateway.lastDBType)
+	}
+}
+
+type fakeJdbcGateway struct {
+	lastDBType string
+}
+
+func (g *fakeJdbcGateway) ConnectDatabase(ctx context.Context, sessionID string, cfg config.DatabaseConfig) error {
+	g.lastDBType = cfg.DBType
+	return nil
+}
+
+func (g *fakeJdbcGateway) ExecuteQuery(ctx context.Context, sessionID string, query string) (*QueryResult, error) {
+	return &QueryResult{}, nil
+}
+
+func (g *fakeJdbcGateway) ListTables(ctx context.Context, sessionID, database string) ([]string, error) {
+	return []string{}, nil
+}
+
+func (g *fakeJdbcGateway) ListDatabases(ctx context.Context, sessionID string) ([]string, error) {
+	return []string{}, nil
+}
+
+func (g *fakeJdbcGateway) GetTableSchema(ctx context.Context, sessionID, table string) (*config.TableSchema, error) {
+	return &config.TableSchema{TableName: table}, nil
+}
+
+func (g *fakeJdbcGateway) CloseDatabase(ctx context.Context, sessionID string) error {
+	return nil
 }
 
 func TestDatabaseService_ListDatabases_MySQL(t *testing.T) {
