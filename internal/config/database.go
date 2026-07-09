@@ -32,6 +32,18 @@ func GetDefaultPort(dbType string) int {
 		return 3306
 	case "postgresql":
 		return 5432
+	case "sqlite":
+		return 0
+	case "oracle":
+		return 1521
+	case "sqlserver":
+		return 1433
+	case "dm":
+		return 5236
+	case "kingbase":
+		return 54321
+	case "opengauss":
+		return 5432
 	default:
 		return 3306
 	}

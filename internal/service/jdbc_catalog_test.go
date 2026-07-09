@@ -4,7 +4,27 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"AHaSSHTools/internal/config"
 )
+
+func TestDriverCatalogReturnsDefaultPortsForInitialJDBCTypes(t *testing.T) {
+	cases := map[string]int{
+		"mysql":      3306,
+		"postgresql": 5432,
+		"sqlite":     0,
+		"oracle":     1521,
+		"sqlserver":  1433,
+		"dm":         5236,
+		"kingbase":   54321,
+		"opengauss":  5432,
+	}
+	for dbType, want := range cases {
+		if got := config.GetDefaultPort(dbType); got != want {
+			t.Fatalf("%s default port: got %d want %d", dbType, got, want)
+		}
+	}
+}
 
 func TestDriverCatalogLoadsManifestAndSelectsRecommendedProfile(t *testing.T) {
 	root := t.TempDir()

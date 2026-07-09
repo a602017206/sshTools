@@ -22,11 +22,23 @@
   const passwordInputClass = `${inputClass} pr-10`;
   const choiceClass = (active) => `p-2 rounded-lg border-2 transition-all ops-choice ${active ? 'ops-choice-active' : ''}`;
   const authChoiceClass = (active) => `flex-1 px-3 py-1.5 rounded-md border-2 transition-all ops-choice ${active ? 'ops-choice-active' : ''}`;
+  const databaseTypes = [
+    { value: 'mysql', label: 'MySQL', port: '3306' },
+    { value: 'postgresql', label: 'PostgreSQL', port: '5432' },
+    { value: 'sqlite', label: 'SQLite', port: '0' },
+    { value: 'oracle', label: 'Oracle', port: '1521' },
+    { value: 'sqlserver', label: 'SQL Server', port: '1433' },
+    { value: 'dm', label: '达梦 DM', port: '5236' },
+    { value: 'kingbase', label: '人大金仓 Kingbase', port: '54321' },
+    { value: 'opengauss', label: 'openGauss', port: '5432' }
+  ];
 
   // Group selector state
   let showGroupDropdown = false;
   let groupSearchTerm = '';
   let selectedGroupIndex = -1;
+  let jdbcDrivers = [];
+  let jdbcDriversLoaded = false;
 
   let formData = {
     id: '',
@@ -60,6 +72,9 @@
   $: availableGroups = formData.group && !filteredGroups.includes(formData.group)
     ? [...filteredGroups, formData.group]
     : filteredGroups;
+  $: isSQLiteDatabase = assetType === 'database' && formData.dbType === 'sqlite';
+  $: selectedJDBCDriver = jdbcDrivers.find(driver => driver.id === formData.dbType);
+  $: selectedJDBCDriverMissing = assetType === 'database' && selectedJDBCDriver && !selectedJDBCDriver.installed;
 
   async function handleTestConnection() {
     if (!window.wailsBindings) {
@@ -67,17 +82,22 @@
       return;
     }
 
-    if (!formData.host) {
+    if (!isSQLiteDatabase && !formData.host) {
       testResult = '请填写主机地址';
       return;
     }
 
-    if (authType === 'password' && !formData.password) {
+    if (selectedJDBCDriverMissing) {
+      testResult = `请先在全局设置中安装 ${selectedJDBCDriver.name} JDBC 驱动`;
+      return;
+    }
+
+    if (authType === 'password' && !isSQLiteDatabase && !formData.password) {
       testResult = '请输入密码以测试连接';
       return;
     }
 
-    if (authType === 'password' && !formData.username) {
+    if (authType === 'password' && !isSQLiteDatabase && !formData.username) {
       testResult = '请填写用户名';
       return;
     }
@@ -94,10 +114,10 @@
     try {
       if (assetType === 'database') {
         await window.wailsBindings.TestDatabaseConnection(
-          formData.host,
+          isSQLiteDatabase ? '' : formData.host,
           parseInt(formData.port),
-          formData.username,
-          formData.password,
+          isSQLiteDatabase ? '' : formData.username,
+          isSQLiteDatabase ? '' : formData.password,
           formData.dbType,
           formData.database
         );
@@ -144,17 +164,27 @@
       return;
     }
 
-    if (!formData.name || !formData.host) {
+    if (!formData.name || (!isSQLiteDatabase && !formData.host)) {
       alert('请填写必填字段（连接名称、主机地址）');
       return;
     }
 
-    if (authType === 'password' && !formData.username) {
+    if (isSQLiteDatabase && !formData.database) {
+      alert('请填写 SQLite 数据库文件路径或 JDBC URL');
+      return;
+    }
+
+    if (selectedJDBCDriverMissing) {
+      alert(`请先在全局设置中安装 ${selectedJDBCDriver.name} JDBC 驱动`);
+      return;
+    }
+
+    if (authType === 'password' && !isSQLiteDatabase && !formData.username) {
       alert('密码认证需要填写用户名');
       return;
     }
 
-    if (authType === 'password' && !formData.password) {
+    if (authType === 'password' && !isSQLiteDatabase && !formData.password) {
       alert('密码认证需要输入密码');
       return;
     }
@@ -172,9 +202,9 @@
       const connectionData = {
         id: isEdit ? editingAsset.id : `conn_${Date.now()}`,
         name: formData.name,
-        host: formData.host,
+        host: isSQLiteDatabase ? '' : formData.host,
         port: parseInt(formData.port),
-        user: formData.username,
+        user: isSQLiteDatabase ? '' : formData.username,
         auth_type: authType,
         key_path: authType === 'key' ? formData.keyPath : '',
         tags: [formData.group || '默认分组'],
@@ -241,6 +271,7 @@
     showGroupDropdown = false;
     groupSearchTerm = '';
     selectedGroupIndex = -1;
+    jdbcDriversLoaded = false;
     editingAssetLoaded = false; // Reset the loaded flag
   }
 
@@ -274,11 +305,7 @@
       case 'ssh': return '22';
       case 'docker': return '2375';
       case 'database':
-        switch (dbType) {
-          case 'mysql': return '3306';
-          case 'postgresql': return '5432';
-          default: return '';
-        }
+        return databaseTypes.find(type => type.value === dbType)?.port || '';
       default: return '';
     }
   }
@@ -303,6 +330,7 @@
     if (!editingAsset && assetType === 'database') {
       formData.port = getDefaultPortFor('database', event.currentTarget.value);
     }
+    testResult = '';
   }
 
   $: if (assetType === 'ssh') {
@@ -358,6 +386,10 @@
 
   $: if (isOpen && editingAsset) {
     loadConnectionData();
+  }
+
+  $: if (isOpen && assetType === 'database' && !jdbcDriversLoaded) {
+    loadJDBCDrivers();
   }
 
   // Reset the loaded flag when editingAsset changes or dialog closes
@@ -444,6 +476,19 @@
     setTimeout(() => {
       showGroupDropdown = false;
     }, 150);
+  }
+
+  async function loadJDBCDrivers() {
+    if (!window.wailsBindings || typeof window.wailsBindings.ListJDBCDrivers !== 'function') {
+      return;
+    }
+    try {
+      jdbcDrivers = await window.wailsBindings.ListJDBCDrivers();
+      jdbcDriversLoaded = true;
+    } catch (error) {
+      console.warn('Failed to load JDBC driver status:', error);
+      jdbcDriversLoaded = true;
+    }
   }
 </script>
 
@@ -625,42 +670,50 @@
           on:change={handleDatabaseTypeChange}
           class={inputClass}
         >
-            <option value="mysql">MySQL</option>
-            <option value="postgresql">PostgreSQL</option>
+            {#each databaseTypes as db}
+              <option value={db.value}>{db.label}</option>
+            {/each}
          </select>
+       </div>
+       {#if selectedJDBCDriverMissing}
+         <div class="p-2 rounded-md text-xs ops-status-error">
+           请先在全局设置中安装 {selectedJDBCDriver.name} JDBC 驱动。
+         </div>
+       {/if}
+     {/if}
+
+     {#if !isSQLiteDatabase}
+       <div class="grid grid-cols-3 gap-2">
+         <div class="col-span-2">
+           <label class={labelClass} for="connection-host">
+             主机地址 <span class="ops-required">*</span>
+           </label>
+           <input
+             type="text"
+             id="connection-host"
+             required
+             bind:value={formData.host}
+             placeholder="192.168.1.10 或 example.com"
+             class={inputClass}
+           />
+         </div>
+         <div>
+           <label class={labelClass} for="connection-port">
+             端口 <span class="ops-required">*</span>
+           </label>
+           <input
+             type="text"
+             id="connection-port"
+             required
+             bind:value={formData.port}
+             placeholder={getDefaultPort()}
+             class={inputClass}
+           />
+         </div>
        </div>
      {/if}
 
-     <div class="grid grid-cols-3 gap-2">
-       <div class="col-span-2">
-         <label class={labelClass} for="connection-host">
-           主机地址 <span class="ops-required">*</span>
-         </label>
-         <input
-           type="text"
-           id="connection-host"
-           required
-           bind:value={formData.host}
-           placeholder="192.168.1.10 或 example.com"
-           class={inputClass}
-         />
-       </div>
-       <div>
-         <label class={labelClass} for="connection-port">
-           端口 <span class="ops-required">*</span>
-         </label>
-         <input
-           type="text"
-           id="connection-port"
-           required
-           bind:value={formData.port}
-           placeholder={getDefaultPort()}
-           class={inputClass}
-         />
-       </div>
-     </div>
-
-      {#if authType === 'password' || assetType === 'database' || assetType === 'docker'}
+      {#if (authType === 'password' || assetType === 'database' || assetType === 'docker') && !isSQLiteDatabase}
         <div>
           <label class={labelClass} for="connection-username">
             用户名 <span class="ops-required">*</span>
@@ -676,7 +729,7 @@
         </div>
       {/if}
 
-      {#if authType === 'password'}
+      {#if authType === 'password' && !isSQLiteDatabase}
         <div>
           <label class={labelClass} for="connection-password">
             密码 <span class="ops-required">*</span>
@@ -727,13 +780,13 @@
       {#if assetType === 'database'}
        <div>
          <label class={labelClass} for="database-name">
-           数据库名
+           {isSQLiteDatabase ? '数据库文件或 JDBC URL' : '数据库名'}
          </label>
          <input
            type="text"
            id="database-name"
            bind:value={formData.database}
-           placeholder="例如：production_db"
+           placeholder={isSQLiteDatabase ? '例如：/data/app.db 或 jdbc:sqlite:/data/app.db' : '例如：production_db'}
            class={inputClass}
          />
        </div>
