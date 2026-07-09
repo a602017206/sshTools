@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'application'
     id 'com.google.protobuf' version '0.9.4'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
 group = 'com.sshtools'
@@ -49,4 +50,19 @@ protobuf {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+tasks.named('shadowJar') {
+    archiveFileName = 'sshtools-jdbc-agent-all.jar'
+    mergeServiceFiles()
+}
+
+tasks.register('printH2Jar') {
+    doLast {
+        def h2Jar = configurations.testRuntimeClasspath.files.find { it.name.startsWith('h2-') && it.name.endsWith('.jar') }
+        if (h2Jar == null) {
+            throw new GradleException('未找到 H2 JDBC jar')
+        }
+        println h2Jar.absolutePath
+    }
 }
