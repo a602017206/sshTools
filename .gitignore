@@ -37,3 +37,4 @@ config.local.json
 .worktrees/
 
 .codegraph/
+.superpowers/

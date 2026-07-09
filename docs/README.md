@@ -11,6 +11,7 @@ This directory separates active planning, design, implementation notes, audits, 
 - `designs/` - design proposals, trade-offs, architecture decisions, and UX/system design notes.
 - `development/` - implementation notes, execution summaries, rollout notes, and follow-up engineering details.
 - `plans/` - step-by-step implementation plans.
+- `superpowers/specs/` - validated brainstorming specs produced before implementation planning.
 - `archive/` - historical one-off summaries, temporary debugging notes, and superseded reports.
 
 ## Change Documentation Rules
