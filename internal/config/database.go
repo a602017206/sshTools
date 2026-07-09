@@ -3,13 +3,15 @@ package config
 import "time"
 
 type DatabaseConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBType   string
-	Database string
-	Timeout  time.Duration
+	Host            string
+	Port            int
+	User            string
+	Password        string
+	DBType          string
+	Database        string
+	Timeout         time.Duration
+	DriverProfileID string
+	Properties      map[string]string
 }
 
 type TableSchema struct {
