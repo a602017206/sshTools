@@ -1,5 +1,6 @@
 <script>
   import Dialog from './ui/Dialog.svelte';
+  import JDBCDriverManager from './JDBCDriverManager.svelte';
   import { ACCENT_PRESETS, FONT_PRESETS, TERMINAL_FONT_PRESETS, getDefaultAppSettings } from '../settings/appearance.js';
 
   export let isOpen = false;
@@ -10,6 +11,7 @@
 
   let draft = getDefaultAppSettings();
   let initializedForOpen = false;
+  let activeSection = 'appearance';
 
   $: if (isOpen && !initializedForOpen) {
     draft = normalizeDraft({ ...getDefaultAppSettings(), ...value });
@@ -74,6 +76,28 @@
 </script>
 
 <Dialog bind:isOpen={isOpen} onClose={onCancel} title="全局设置" size="xl">
+  <div class="settings-shell">
+    <nav class="settings-nav" aria-label="全局设置分类">
+      <button
+        type="button"
+        class:active={activeSection === 'appearance'}
+        on:click={() => (activeSection = 'appearance')}
+      >
+        <span>外观</span>
+        <small>主题、字体、字号</small>
+      </button>
+      <button
+        type="button"
+        class:active={activeSection === 'jdbc'}
+        on:click={() => (activeSection = 'jdbc')}
+      >
+        <span>数据库驱动</span>
+        <small>JRE、驱动、agent</small>
+      </button>
+    </nav>
+
+    <div class="settings-content">
+      {#if activeSection === 'appearance'}
   <div class="space-y-6">
     <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/70 dark:bg-slate-900/50">
       <div class="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">实时预览</div>
@@ -182,4 +206,73 @@
       </div>
     </div>
   </div>
+      {:else}
+        <JDBCDriverManager />
+      {/if}
+    </div>
+  </div>
 </Dialog>
+
+<style>
+  .settings-shell {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 16px;
+    min-height: 560px;
+  }
+
+  .settings-nav {
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    padding: 8px;
+  }
+
+  .settings-nav button {
+    width: 100%;
+    display: block;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 10px;
+    text-align: left;
+  }
+
+  .settings-nav button.active {
+    border-color: var(--accent-primary);
+    background: var(--accent-subtle);
+    color: var(--text-primary);
+  }
+
+  .settings-nav span,
+  .settings-nav small {
+    display: block;
+  }
+
+  .settings-nav span {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .settings-nav small {
+    color: var(--text-tertiary);
+    font-size: 11px;
+  }
+
+  .settings-content {
+    min-width: 0;
+  }
+
+  @media (max-width: 900px) {
+    .settings-shell {
+      grid-template-columns: 1fr;
+    }
+
+    .settings-nav {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+  }
+</style>

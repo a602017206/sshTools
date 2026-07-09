@@ -14,6 +14,8 @@ require (
 	github.com/tjfoc/gmsm v1.4.1
 	github.com/wailsapp/wails/v2 v2.11.0
 	golang.org/x/crypto v0.46.0
+	google.golang.org/grpc v1.65.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -66,8 +68,6 @@ require (
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240528184218-531527333157 // indirect
-	google.golang.org/grpc v1.65.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 )
 
 // replace github.com/wailsapp/wails/v2 v2.11.0 => ../path/to/local/wails
