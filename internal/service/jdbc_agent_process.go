@@ -8,6 +8,7 @@ import (
 	"net"
 	"os/exec"
 	"strconv"
+	"sync"
 )
 
 type AgentProcessConfig struct {
@@ -33,6 +34,7 @@ type AgentProcessManager struct {
 	runner AgentCommandRunner
 	config AgentProcessConfig
 	handle *AgentProcessHandle
+	mu     sync.Mutex
 }
 
 func NewAgentProcessManager(runner AgentCommandRunner, config AgentProcessConfig) *AgentProcessManager {
@@ -43,6 +45,22 @@ func NewAgentProcessManager(runner AgentCommandRunner, config AgentProcessConfig
 }
 
 func (m *AgentProcessManager) Start(ctx context.Context) (*AgentProcessHandle, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.startLocked(ctx, m.config)
+}
+
+func (m *AgentProcessManager) StartAgent(ctx context.Context, config AgentProcessConfig) (*AgentProcessHandle, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.config = config
+	return m.startLocked(ctx, config)
+}
+
+func (m *AgentProcessManager) startLocked(ctx context.Context, config AgentProcessConfig) (*AgentProcessHandle, error) {
+	if m.handle != nil {
+		return m.handle, nil
+	}
 	port, err := chooseLocalPort()
 	if err != nil {
 		return nil, err
@@ -53,9 +71,9 @@ func (m *AgentProcessManager) Start(ctx context.Context) (*AgentProcessHandle, e
 	}
 	process, err := m.runner.Start(
 		ctx,
-		m.config.JavaPath,
+		config.JavaPath,
 		"-jar",
-		m.config.AgentJar,
+		config.AgentJar,
 		"--port",
 		strconv.Itoa(port),
 		"--token",
@@ -70,6 +88,8 @@ func (m *AgentProcessManager) Start(ctx context.Context) (*AgentProcessHandle, e
 }
 
 func (m *AgentProcessManager) Stop() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.handle == nil || m.handle.Process == nil {
 		return nil
 	}
@@ -79,6 +99,8 @@ func (m *AgentProcessManager) Stop() error {
 }
 
 func (m *AgentProcessManager) Health(context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.handle == nil {
 		return fmt.Errorf("JDBC agent 未启动")
 	}
