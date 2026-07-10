@@ -16,6 +16,7 @@ sshTools
 build/bin
 dist/
 frontend/dist
+frontend/build/jdbc-agent.jar
 jdbc-agent/build/
 jdbc-agent/.gradle/
 

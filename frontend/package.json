@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && ../scripts/stage-jdbc-agent.sh",
     "preview": "vite preview"
   },
   "dependencies": {
