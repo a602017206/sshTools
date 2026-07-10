@@ -2,33 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/service/jdbcproto"
 )
-
-type JDBCError struct {
-	Code    string
-	Message string
-	Err     error
-}
-
-func (e *JDBCError) Error() string {
-	if e.Message != "" {
-		return e.Message
-	}
-	if e.Err != nil {
-		return e.Err.Error()
-	}
-	return e.Code
-}
-
-func (e *JDBCError) Unwrap() error {
-	return e.Err
-}
 
 type JdbcAgentClient interface {
 	OpenSession(ctx context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error)
@@ -54,10 +34,10 @@ func (s *JdbcGatewayService) SetProfileResolver(resolver func(context.Context, c
 
 func (s *JdbcGatewayService) ConnectDatabase(ctx context.Context, sessionID string, cfg config.DatabaseConfig) error {
 	if s.client == nil {
-		return &JDBCError{Code: "AGENT_UNAVAILABLE", Message: "JDBC agent client not configured"}
+		return MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
 	}
 	if s.profileResolver == nil {
-		return &JDBCError{Code: "DRIVER_MISSING", Message: "JDBC driver profile resolver not configured"}
+		return MapJDBCAgentError("DRIVER_MISSING: JDBC driver profile resolver not configured")
 	}
 	profile, err := s.profileResolver(ctx, cfg)
 	if err != nil {
@@ -87,7 +67,7 @@ func (s *JdbcGatewayService) ConnectDatabase(ctx context.Context, sessionID stri
 
 func (s *JdbcGatewayService) ExecuteQuery(ctx context.Context, sessionID string, query string) (*QueryResult, error) {
 	if s.client == nil {
-		return nil, &JDBCError{Code: "AGENT_UNAVAILABLE", Message: "JDBC agent client not configured"}
+		return nil, MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
 	}
 	result, err := s.client.ExecuteQuery(ctx, &jdbcproto.ExecuteQueryRequest{
 		Token:     s.token,
@@ -114,7 +94,7 @@ func (s *JdbcGatewayService) ExecuteQuery(ctx context.Context, sessionID string,
 
 func (s *JdbcGatewayService) ListTables(ctx context.Context, sessionID, database string) ([]string, error) {
 	if s.client == nil {
-		return nil, &JDBCError{Code: "AGENT_UNAVAILABLE", Message: "JDBC agent client not configured"}
+		return nil, MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
 	}
 	result, err := s.client.ListTables(ctx, &jdbcproto.ListTablesRequest{
 		Token:     s.token,
@@ -133,7 +113,7 @@ func (s *JdbcGatewayService) ListDatabases(context.Context, string) ([]string, e
 
 func (s *JdbcGatewayService) GetTableSchema(ctx context.Context, sessionID, table string) (*config.TableSchema, error) {
 	if s.client == nil {
-		return nil, &JDBCError{Code: "AGENT_UNAVAILABLE", Message: "JDBC agent client not configured"}
+		return nil, MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
 	}
 	result, err := s.client.ListColumns(ctx, &jdbcproto.ListColumnsRequest{
 		Token:     s.token,
@@ -157,7 +137,7 @@ func (s *JdbcGatewayService) GetTableSchema(ctx context.Context, sessionID, tabl
 
 func (s *JdbcGatewayService) CloseDatabase(ctx context.Context, sessionID string) error {
 	if s.client == nil {
-		return &JDBCError{Code: "AGENT_UNAVAILABLE", Message: "JDBC agent client not configured"}
+		return MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
 	}
 	_, err := s.client.CloseSession(ctx, &jdbcproto.CloseSessionRequest{
 		Token:     s.token,
@@ -185,10 +165,9 @@ func mapJdbcGatewayError(err error) error {
 	if err == nil {
 		return nil
 	}
-	message := err.Error()
-	code := "DB_CONNECT_FAILED"
-	if strings.Contains(message, "DRIVER_MISSING") {
-		code = "DRIVER_MISSING"
+	var jdbcErr *JDBCError
+	if errors.As(err, &jdbcErr) {
+		return err
 	}
-	return &JDBCError{Code: code, Message: message, Err: err}
+	return newJDBCError(err.Error(), err)
 }

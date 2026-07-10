@@ -7,6 +7,7 @@
     ListJDBCDrivers,
     RemoveJDBCDriver,
     RestartJDBCAgent,
+    SetJDBCRuntimeMode,
     ValidateJDBCDriver
   } from '../../wailsjs/go/main/App.js';
 
@@ -19,6 +20,10 @@
   let isBusy = false;
   let activeTaskMessage = '';
   let errorMessage = '';
+  let errorCode = '';
+  let rawError = '';
+  let showRawError = false;
+  let resourcePath = '';
 
   $: filteredDrivers = drivers.filter((driver) => {
     const text = `${driver.name || ''} ${driver.id || ''}`.toLowerCase();
@@ -68,10 +73,16 @@
     isBusy = true;
     activeTaskMessage = message;
     errorMessage = '';
+    errorCode = '';
+    rawError = '';
+    showRawError = false;
+    resourcePath = '';
     try {
       await task();
     } catch (error) {
-      errorMessage = error?.message || String(error);
+      rawError = error?.message || String(error);
+      errorCode = parseJDBCErrorCode(rawError);
+      errorMessage = jdbcErrorLabel(errorCode);
     } finally {
       isBusy = false;
       activeTaskMessage = '';
@@ -119,6 +130,56 @@
     });
   }
 
+  function parseJDBCErrorCode(message) {
+    const knownCodes = [
+      'RUNTIME_MISSING',
+      'DRIVER_MISSING',
+      'DRIVER_INVALID',
+      'AGENT_UNAVAILABLE',
+      'DB_CONNECT_FAILED'
+    ];
+    const upper = String(message || '').toUpperCase();
+    const exact = knownCodes.find((code) => upper.includes(code));
+    if (exact) return exact;
+    if (upper.includes('JAVA') || upper.includes('运行时') || upper.includes('JRE')) return 'RUNTIME_MISSING';
+    return 'DB_CONNECT_FAILED';
+  }
+
+  function jdbcErrorLabel(code) {
+    switch (code) {
+      case 'RUNTIME_MISSING':
+        return '未找到可用 Java 运行时';
+      case 'DRIVER_MISSING':
+        return '所需 JDBC 驱动尚未安装';
+      case 'DRIVER_INVALID':
+        return 'JDBC 驱动文件校验失败';
+      case 'AGENT_UNAVAILABLE':
+        return 'JDBC agent 当前不可用';
+      default:
+        return '数据库连接失败';
+    }
+  }
+
+  async function useManagedRuntime() {
+    await runTask('正在切换托管 JRE', async () => {
+      await SetJDBCRuntimeMode('managed', '');
+      await loadData();
+    });
+  }
+
+  async function chooseJavaRuntime(promptTitle) {
+    const javaPath = window.prompt(promptTitle);
+    if (!javaPath) return;
+    await runTask('正在更新 Java 运行时', async () => {
+      await SetJDBCRuntimeMode('system', javaPath);
+      await loadData();
+    });
+  }
+
+  function showResource(path) {
+    resourcePath = path;
+  }
+
   function runtimeLabel(kind) {
     switch (kind) {
       case 'managed':
@@ -152,7 +213,34 @@
   </header>
 
   {#if errorMessage}
-    <div class="jdbc-manager__error">{errorMessage}</div>
+    <div class="jdbc-manager__error" role="alert">
+      <strong>{errorMessage}</strong>
+      <div class="jdbc-manager__error-actions">
+        {#if errorCode === 'RUNTIME_MISSING'}
+          <button type="button" disabled={isBusy} on:click={useManagedRuntime}>安装 JRE</button>
+          <button type="button" disabled={isBusy} on:click={() => chooseJavaRuntime('输入导入 JRE 的 java 可执行文件路径')}>导入 JRE</button>
+          <button type="button" disabled={isBusy} on:click={() => chooseJavaRuntime('输入系统 Java 可执行文件路径')}>选择系统 Java</button>
+        {:else if errorCode === 'DRIVER_MISSING'}
+          <button type="button" disabled={isBusy} on:click={installSelected}>安装推荐驱动</button>
+          <button type="button" disabled={isBusy} on:click={importOfflinePackage}>导入离线包</button>
+        {:else if errorCode === 'DRIVER_INVALID'}
+          <button type="button" disabled={isBusy} on:click={installSelected}>重新安装</button>
+          <button type="button" on:click={() => showResource(selectedProfile?.installPath || '~/.sshtools/drivers')}>查看文件</button>
+          <button type="button" disabled={isBusy} on:click={removeSelected}>删除</button>
+        {:else if errorCode === 'AGENT_UNAVAILABLE'}
+          <button type="button" disabled={isBusy} on:click={restartAgent}>重启 agent</button>
+          <button type="button" on:click={() => showResource('~/.sshtools/logs/jdbc-agent.log')}>查看日志</button>
+        {:else}
+          <button type="button" on:click={() => (showRawError = !showRawError)}>查看原始错误</button>
+        {/if}
+      </div>
+      {#if resourcePath}
+        <code class="jdbc-manager__error-detail">{resourcePath}</code>
+      {/if}
+      {#if showRawError}
+        <pre class="jdbc-manager__error-detail">{rawError}</pre>
+      {/if}
+    </div>
   {/if}
 
   <div class="jdbc-manager__body">
@@ -356,6 +444,48 @@
     color: #dc2626;
     padding: 10px 12px;
     font-size: 12px;
+  }
+
+  .jdbc-manager__error strong {
+    display: block;
+  }
+
+  .jdbc-manager__error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 8px;
+  }
+
+  .jdbc-manager__error-actions button {
+    min-height: 28px;
+    border: 1px solid rgba(220, 38, 38, 0.35);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: #dc2626;
+    padding: 0 9px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .jdbc-manager__error-actions button:disabled {
+    opacity: 0.55;
+  }
+
+  .jdbc-manager__error-detail {
+    display: block;
+    max-height: 96px;
+    overflow: auto;
+    margin: 8px 0 0;
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    border-radius: 6px;
+    background: var(--bg-input);
+    padding: 8px;
+    color: var(--text-primary);
+    font-family: Menlo, Monaco, 'Courier New', monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .jdbc-manager__body {

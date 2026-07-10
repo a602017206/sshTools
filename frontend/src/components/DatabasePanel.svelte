@@ -9,12 +9,17 @@
   let tables = [];
   let isLoading = false;
   let errorMessage = '';
+  let errorCode = '';
+  let rawError = '';
+  let showRawError = false;
+  let resourcePath = '';
   let queryHistory = [];
   let dbTypeLabel = '';
 
   const historyLimit = 50;
 
   $: dbTypeLabel = dbConfig?.metadata?.db_type ? dbConfig.metadata.db_type.toUpperCase() : '';
+  $: errorActions = getErrorActions(errorCode);
 
   onMount(async () => {
     if (!sessionId) return;
@@ -44,7 +49,7 @@
     if (!window.wailsBindings || !sessionId) return;
 
     isLoading = true;
-    errorMessage = '';
+    clearError();
 
     try {
       const result = await window.wailsBindings.ExecuteDatabaseQuery(sessionId, query);
@@ -53,7 +58,7 @@
       addToHistory(query.trim());
     } catch (error) {
       console.error('Query execution failed:', error);
-      errorMessage = `查询执行失败: ${error.message || '未知错误'}`;
+      setJDBCError('查询执行失败', error);
     } finally {
       isLoading = false;
     }
@@ -63,14 +68,14 @@
     if (!window.wailsBindings || !sessionId) return;
 
     isLoading = true;
-    errorMessage = '';
+    clearError();
 
     try {
       const result = await window.wailsBindings.ListDatabaseTables(sessionId);
       tables = (result || []).slice().sort();
     } catch (error) {
       console.error('Failed to load tables:', error);
-      errorMessage = `加载数据库表失败: ${error.message || '未知错误'}`;
+      setJDBCError('加载数据库表失败', error);
     } finally {
       isLoading = false;
     }
@@ -118,6 +123,165 @@
 
   function handleHistoryClick(statement) {
     query = statement;
+  }
+
+  function clearError() {
+    errorMessage = '';
+    errorCode = '';
+    rawError = '';
+    showRawError = false;
+    resourcePath = '';
+  }
+
+  function setJDBCError(prefix, error) {
+    rawError = error?.message || String(error || '未知错误');
+    errorCode = parseJDBCErrorCode(rawError);
+    errorMessage = `${prefix}: ${jdbcErrorLabel(errorCode)}`;
+    showRawError = false;
+    resourcePath = '';
+  }
+
+  function parseJDBCErrorCode(message) {
+    const knownCodes = [
+      'RUNTIME_MISSING',
+      'DRIVER_MISSING',
+      'DRIVER_INVALID',
+      'AGENT_UNAVAILABLE',
+      'DB_CONNECT_FAILED'
+    ];
+    const upper = String(message || '').toUpperCase();
+    return knownCodes.find((code) => upper.includes(code)) || 'DB_CONNECT_FAILED';
+  }
+
+  function jdbcErrorLabel(code) {
+    switch (code) {
+      case 'RUNTIME_MISSING':
+        return '未找到可用 Java 运行时';
+      case 'DRIVER_MISSING':
+        return '当前数据库驱动未安装';
+      case 'DRIVER_INVALID':
+        return '当前数据库驱动文件无效';
+      case 'AGENT_UNAVAILABLE':
+        return 'JDBC agent 当前不可用';
+      default:
+        return '数据库连接或查询失败';
+    }
+  }
+
+  function getErrorActions(code) {
+    switch (code) {
+      case 'RUNTIME_MISSING':
+        return [
+          { id: 'install-runtime', label: '安装 JRE' },
+          { id: 'import-runtime', label: '导入 JRE' },
+          { id: 'system-runtime', label: '选择系统 Java' }
+        ];
+      case 'DRIVER_MISSING':
+        return [
+          { id: 'install-driver', label: '安装推荐驱动' },
+          { id: 'import-driver', label: '导入离线包' }
+        ];
+      case 'DRIVER_INVALID':
+        return [
+          { id: 'install-driver', label: '重新安装' },
+          { id: 'view-driver', label: '查看文件' },
+          { id: 'remove-driver', label: '删除' }
+        ];
+      case 'AGENT_UNAVAILABLE':
+        return [
+          { id: 'restart-agent', label: '重启 agent' },
+          { id: 'view-agent-log', label: '查看日志' }
+        ];
+      case 'DB_CONNECT_FAILED':
+        return [
+          { id: 'edit-connection', label: '编辑连接' },
+          { id: 'raw-error', label: '查看原始错误' }
+        ];
+      default:
+        return [];
+    }
+  }
+
+  async function handleErrorAction(action) {
+    try {
+      switch (action) {
+        case 'install-runtime':
+          await window.wailsBindings.SetJDBCRuntimeMode('managed', '');
+          await loadTables();
+          break;
+        case 'import-runtime':
+        case 'system-runtime': {
+          const javaPath = window.prompt(action === 'import-runtime' ? '输入导入 JRE 的 java 可执行文件路径' : '输入系统 Java 可执行文件路径');
+          if (!javaPath) return;
+          await window.wailsBindings.SetJDBCRuntimeMode('system', javaPath);
+          await loadTables();
+          break;
+        }
+        case 'install-driver':
+          await installCurrentDriver();
+          await loadTables();
+          break;
+        case 'import-driver': {
+          const packagePath = window.prompt('输入离线驱动包路径');
+          if (!packagePath) return;
+          await window.wailsBindings.ImportJDBCDriverPackage(packagePath);
+          await loadTables();
+          break;
+        }
+        case 'view-driver':
+          await showCurrentDriverPath();
+          break;
+        case 'remove-driver':
+          await removeCurrentDriver();
+          break;
+        case 'restart-agent':
+          await window.wailsBindings.RestartJDBCAgent();
+          await loadTables();
+          break;
+        case 'view-agent-log':
+          resourcePath = '~/.sshtools/logs/jdbc-agent.log';
+          break;
+        case 'edit-connection':
+          window.dispatchEvent(new CustomEvent('database:edit-connection', { detail: dbConfig }));
+          break;
+        case 'raw-error':
+          showRawError = !showRawError;
+          break;
+      }
+    } catch (error) {
+      setJDBCError('操作失败', error);
+    }
+  }
+
+  async function getCurrentDriver() {
+    const driverID = dbConfig?.metadata?.db_type;
+    const drivers = await window.wailsBindings.ListJDBCDrivers();
+    return (drivers || []).find((driver) => driver.id === driverID);
+  }
+
+  function recommendedProfile(driver) {
+    return driver?.profiles?.find((profile) => profile.version === driver.recommendedVersion) || driver?.profiles?.[0];
+  }
+
+  async function installCurrentDriver() {
+    const driver = await getCurrentDriver();
+    const profile = recommendedProfile(driver);
+    if (!driver || !profile) throw new Error('DRIVER_MISSING: 未找到当前数据库的驱动 profile');
+    await window.wailsBindings.InstallJDBCDriver(driver.id, profile.version);
+  }
+
+  async function showCurrentDriverPath() {
+    const profile = recommendedProfile(await getCurrentDriver());
+    resourcePath = profile?.installPath || '~/.sshtools/drivers';
+  }
+
+  async function removeCurrentDriver() {
+    const driver = await getCurrentDriver();
+    const profile = recommendedProfile(driver);
+    if (!driver || !profile) throw new Error('DRIVER_MISSING: 未找到当前数据库的驱动 profile');
+    if (!window.confirm(`删除 ${driver.name} ${profile.version}？`)) return;
+    await window.wailsBindings.RemoveJDBCDriver(driver.id, profile.version);
+    resourcePath = '';
   }
 </script>
 
@@ -192,7 +356,20 @@
     ></textarea>
 
     {#if errorMessage}
-      <div class="error-message">{errorMessage}</div>
+      <div class="error-message" role="alert">
+        <div class="error-message__title">{errorMessage}</div>
+        <div class="error-message__actions">
+          {#each errorActions as action}
+            <button type="button" on:click={() => handleErrorAction(action.id)}>{action.label}</button>
+          {/each}
+        </div>
+        {#if resourcePath}
+          <code class="error-message__detail">{resourcePath}</code>
+        {/if}
+        {#if showRawError}
+          <pre class="error-message__detail">{rawError}</pre>
+        {/if}
+      </div>
     {/if}
 
     <div class="results-wrapper">
@@ -438,6 +615,45 @@
     background: #fee2e2;
     border-radius: 4px;
     color: #dc2626;
+  }
+
+  .error-message__title {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .error-message__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .error-message__actions button {
+    min-height: 28px;
+    border: 1px solid rgba(220, 38, 38, 0.35);
+    border-radius: 4px;
+    background: #fff;
+    color: #b91c1c;
+    padding: 0 9px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .error-message__detail {
+    display: block;
+    max-height: 96px;
+    overflow: auto;
+    margin: 8px 0 0;
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 7px;
+    color: #7f1d1d;
+    font-family: Menlo, Monaco, 'Courier New', monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .loading-spinner {

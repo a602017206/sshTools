@@ -582,6 +582,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
 
     let cleanupEvents = null;
     let handleDatabaseConnectEvent = null;
+    let handleDatabaseEditEvent = null;
 
     try {
       const wails = await import('../wailsjs/go/main/App.js');
@@ -598,7 +599,14 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
         handleDatabaseConnect(event.detail);
       };
 
+      handleDatabaseEditEvent = (event) => {
+        if (event.detail) {
+          handleEditAsset(event.detail);
+        }
+      };
+
       window.addEventListener('database:connect', handleDatabaseConnectEvent);
+      window.addEventListener('database:edit-connection', handleDatabaseEditEvent);
 
       // Listen for about dialog event from backend
       const runtime = await import('../wailsjs/runtime/runtime.js');
@@ -621,6 +629,9 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
       window.removeEventListener('assets-changed', loadAssetsFromBackend);
       if (handleDatabaseConnectEvent) {
         window.removeEventListener('database:connect', handleDatabaseConnectEvent);
+      }
+      if (handleDatabaseEditEvent) {
+        window.removeEventListener('database:edit-connection', handleDatabaseEditEvent);
       }
       if (cleanupEvents) {
         cleanupEvents();
