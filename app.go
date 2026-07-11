@@ -46,12 +46,39 @@ type App struct {
 	jdbcRuntime         *service.RuntimeService
 	jdbcAgentSupervisor *service.JDBCAgentSupervisor
 	jdbcGateway         *service.ManagedJDBCGateway
+	jdbcFileDialogs     jdbcFileDialogs
 	configManager       *config.ConfigManager
+}
+
+type jdbcFileDialogs interface {
+	SelectRuntimeArchive(context.Context) (string, error)
+	SelectDriverPackage(context.Context) (string, error)
+	SelectJavaExecutable(context.Context) (string, error)
+}
+
+type wailsJDBCFileDialogs struct{}
+
+func (wailsJDBCFileDialogs) SelectRuntimeArchive(ctx context.Context) (string, error) {
+	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
+		Title:   "选择 JDBC JRE 归档",
+		Filters: []runtime.FileFilter{{DisplayName: "JRE 归档 (*.zip;*.tar.gz;*.tgz)", Pattern: "*.zip;*.tar.gz;*.tgz"}},
+	})
+}
+
+func (wailsJDBCFileDialogs) SelectDriverPackage(ctx context.Context) (string, error) {
+	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
+		Title:   "选择 JDBC 离线驱动包",
+		Filters: []runtime.FileFilter{{DisplayName: "JDBC 驱动包 (*.zip)", Pattern: "*.zip"}},
+	})
+}
+
+func (wailsJDBCFileDialogs) SelectJavaExecutable(ctx context.Context) (string, error) {
+	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{Title: "选择 Java 可执行文件"})
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{jdbcFileDialogs: wailsJDBCFileDialogs{}}
 }
 
 // startup is called when the app starts. The context is saved
@@ -1115,13 +1142,57 @@ func (a *App) InstallJDBCManagedRuntime() (service.RuntimeStatus, error) {
 	return service.RuntimeStatus{Kind: selected.Kind, JavaPath: selected.JavaPath, Version: selected.Version}, nil
 }
 
+func (a *App) ImportJDBCRuntimeArchive(path string) (service.RuntimeStatus, error) {
+	selected, err := a.jdbcRuntime.ImportRuntimeArchive(path)
+	if err != nil {
+		return service.RuntimeStatus{}, err
+	}
+	return service.RuntimeStatus{Kind: selected.Kind, JavaPath: selected.JavaPath, Version: selected.Version}, nil
+}
+
+func (a *App) SelectJDBCRuntimeArchive() (string, error) {
+	return a.jdbcDialogs().SelectRuntimeArchive(a.ctx)
+}
+
+func (a *App) SelectJDBCDriverPackage() (string, error) {
+	return a.jdbcDialogs().SelectDriverPackage(a.ctx)
+}
+
+func (a *App) SelectJDBCJavaExecutable() (string, error) {
+	return a.jdbcDialogs().SelectJavaExecutable(a.ctx)
+}
+
+func (a *App) jdbcDialogs() jdbcFileDialogs {
+	if a.jdbcFileDialogs == nil {
+		return wailsJDBCFileDialogs{}
+	}
+	return a.jdbcFileDialogs
+}
+
+func (a *App) GetJDBCAgentStatus() (service.JDBCAgentStatus, error) {
+	if a.jdbcAgentSupervisor == nil {
+		return service.JDBCAgentStatus{}, &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: "JDBC agent supervisor 未初始化"}
+	}
+	status := a.jdbcAgentSupervisor.Status()
+	if a.jdbcRuntime != nil {
+		selected, err := a.jdbcRuntime.SelectRuntime()
+		if err != nil {
+			return service.JDBCAgentStatus{}, err
+		}
+		status.RuntimeKind = selected.Kind
+	}
+	return status, nil
+}
+
 func (a *App) SetJDBCRuntimeMode(mode, path string) error {
+	if a.jdbcRuntime == nil {
+		return fmt.Errorf("JDBC 运行时服务未初始化")
+	}
 	switch mode {
 	case "system":
-		a.jdbcRuntime = service.NewRuntimeService(a.jdbcPaths, path)
-		a.jdbcRuntime.UseSystemJava(true)
+		a.jdbcRuntime.ConfigureSystemJava(path, true)
 	case "managed":
-		a.jdbcRuntime = service.NewRuntimeService(a.jdbcPaths, "/usr/bin/java")
+		a.jdbcRuntime.UseSystemJava(false)
 	default:
 		return fmt.Errorf("不支持的 JDBC 运行时模式: %s", mode)
 	}

@@ -34,6 +34,8 @@ type JDBCAgentSupervisor struct {
 	mu          sync.Mutex
 	connection  *JDBCAgentConnection
 	closeClient func() error
+	statusMu    sync.RWMutex
+	status      JDBCAgentStatus
 }
 
 func NewJDBCAgentSupervisor(runtime JDBCRuntimeSelector, starter JDBCAgentStarter, dialer JDBCAgentDialer, agentJar string) *JDBCAgentSupervisor {
@@ -45,7 +47,14 @@ func NewJDBCAgentSupervisor(runtime JDBCRuntimeSelector, starter JDBCAgentStarte
 		starter:  starter,
 		dialer:   dialer,
 		agentJar: agentJar,
+		status:   JDBCAgentStatus{State: JDBCAgentStateStopped, RuntimeKind: RuntimeKindMissing},
 	}
+}
+
+func (s *JDBCAgentSupervisor) Status() JDBCAgentStatus {
+	s.statusMu.RLock()
+	defer s.statusMu.RUnlock()
+	return s.status
 }
 
 func (s *JDBCAgentSupervisor) Client(ctx context.Context) (*JDBCAgentConnection, error) {
@@ -73,22 +82,34 @@ func (s *JDBCAgentSupervisor) clientLocked(ctx context.Context) (*JDBCAgentConne
 	if s.connection != nil {
 		return s.connection, nil
 	}
+	s.setStatus(JDBCAgentStateStarting, "", "")
 	if s.runtime == nil {
-		return nil, &JDBCError{Code: JDBCErrorRuntimeMissing, Message: "JDBC runtime selector 未配置"}
+		err := &JDBCError{Code: JDBCErrorRuntimeMissing, Message: "JDBC runtime selector 未配置"}
+		s.setStatus(JDBCAgentStateFailed, RuntimeKindMissing, err.Error())
+		return nil, err
 	}
 	if s.starter == nil {
-		return nil, &JDBCError{Code: JDBCErrorAgentUnavailable, Message: "JDBC agent starter 未配置"}
+		err := &JDBCError{Code: JDBCErrorAgentUnavailable, Message: "JDBC agent starter 未配置"}
+		s.setStatus(JDBCAgentStateFailed, "", err.Error())
+		return nil, err
 	}
 
 	selected, err := s.runtime.SelectRuntime()
 	if err != nil {
-		return nil, newJDBCError(err.Error(), err)
+		mapped := newJDBCError(err.Error(), err)
+		s.setStatus(JDBCAgentStateFailed, RuntimeKindMissing, mapped.Error())
+		return nil, mapped
 	}
 	if selected == nil || selected.Kind == RuntimeKindMissing || selected.JavaPath == "" {
-		return nil, &JDBCError{Code: JDBCErrorRuntimeMissing, Message: "未找到可用 Java 运行时"}
+		err := &JDBCError{Code: JDBCErrorRuntimeMissing, Message: "未找到可用 Java 运行时"}
+		s.setStatus(JDBCAgentStateFailed, RuntimeKindMissing, err.Error())
+		return nil, err
 	}
+	s.setStatus(JDBCAgentStateStarting, selected.Kind, "")
 	if s.agentJar == "" {
-		return nil, &JDBCError{Code: JDBCErrorAgentUnavailable, Message: "JDBC agent jar 未配置"}
+		err := &JDBCError{Code: JDBCErrorAgentUnavailable, Message: "JDBC agent jar 未配置"}
+		s.setStatus(JDBCAgentStateFailed, selected.Kind, err.Error())
+		return nil, err
 	}
 
 	handle, err := s.starter.StartAgent(context.Background(), AgentProcessConfig{
@@ -96,16 +117,21 @@ func (s *JDBCAgentSupervisor) clientLocked(ctx context.Context) (*JDBCAgentConne
 		AgentJar: s.agentJar,
 	})
 	if err != nil {
-		return nil, &JDBCError{Code: JDBCErrorAgentUnavailable, Message: err.Error(), Err: err}
+		mapped := &JDBCError{Code: JDBCErrorAgentUnavailable, Message: err.Error(), Err: err}
+		s.setStatus(JDBCAgentStateFailed, selected.Kind, mapped.Error())
+		return nil, mapped
 	}
 	client, closeClient, err := s.dialer.Dial(ctx, "127.0.0.1", handle.Port)
 	if err != nil {
 		_ = s.starter.Stop()
-		return nil, &JDBCError{Code: JDBCErrorAgentUnavailable, Message: err.Error(), Err: err}
+		mapped := &JDBCError{Code: JDBCErrorAgentUnavailable, Message: err.Error(), Err: err}
+		s.setStatus(JDBCAgentStateFailed, selected.Kind, mapped.Error())
+		return nil, mapped
 	}
 
 	s.connection = &JDBCAgentConnection{Client: client, Token: handle.Token}
 	s.closeClient = closeClient
+	s.setStatus(JDBCAgentStateRunning, selected.Kind, "")
 	return s.connection, nil
 }
 
@@ -120,7 +146,22 @@ func (s *JDBCAgentSupervisor) closeLocked() error {
 	}
 	s.connection = nil
 	s.closeClient = nil
-	return errors.Join(closeErr, stopErr)
+	combined := errors.Join(closeErr, stopErr)
+	if combined != nil {
+		s.setStatus(JDBCAgentStateFailed, "", combined.Error())
+	} else {
+		s.setStatus(JDBCAgentStateStopped, "", "")
+	}
+	return combined
+}
+
+func (s *JDBCAgentSupervisor) setStatus(state JDBCAgentState, runtimeKind RuntimeKind, lastError string) {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	if runtimeKind == "" {
+		runtimeKind = s.status.RuntimeKind
+	}
+	s.status = JDBCAgentStatus{State: state, RuntimeKind: runtimeKind, LastError: lastError}
 }
 
 type grpcJDBCAgentDialer struct{}

@@ -206,12 +206,18 @@
     try {
       switch (action) {
         case 'install-runtime':
-          await window.wailsBindings.SetJDBCRuntimeMode('managed', '');
+          await window.wailsBindings.InstallJDBCManagedRuntime();
           await loadTables();
           break;
-        case 'import-runtime':
+        case 'import-runtime': {
+          const archivePath = await window.wailsBindings.SelectJDBCRuntimeArchive();
+          if (!archivePath) return;
+          await window.wailsBindings.ImportJDBCRuntimeArchive(archivePath);
+          await loadTables();
+          break;
+        }
         case 'system-runtime': {
-          const javaPath = window.prompt(action === 'import-runtime' ? '输入导入 JRE 的 java 可执行文件路径' : '输入系统 Java 可执行文件路径');
+          const javaPath = await window.wailsBindings.SelectJDBCJavaExecutable();
           if (!javaPath) return;
           await window.wailsBindings.SetJDBCRuntimeMode('system', javaPath);
           await loadTables();
@@ -222,7 +228,7 @@
           await loadTables();
           break;
         case 'import-driver': {
-          const packagePath = window.prompt('输入离线驱动包路径');
+          const packagePath = await window.wailsBindings.SelectJDBCDriverPackage();
           if (!packagePath) return;
           await window.wailsBindings.ImportJDBCDriverPackage(packagePath);
           await loadTables();

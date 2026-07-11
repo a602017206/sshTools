@@ -15,3 +15,18 @@ type RuntimeStatus struct {
 	JavaPath string      `json:"javaPath"`
 	Version  string      `json:"version"`
 }
+
+type JDBCAgentState string
+
+const (
+	JDBCAgentStateStopped  JDBCAgentState = "stopped"
+	JDBCAgentStateStarting JDBCAgentState = "starting"
+	JDBCAgentStateRunning  JDBCAgentState = "running"
+	JDBCAgentStateFailed   JDBCAgentState = "failed"
+)
+
+type JDBCAgentStatus struct {
+	State       JDBCAgentState `json:"state"`
+	RuntimeKind RuntimeKind    `json:"runtimeKind"`
+	LastError   string         `json:"lastError"`
+}

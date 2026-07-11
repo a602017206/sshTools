@@ -1,11 +1,11 @@
 export namespace config {
-	
+
 	export class FileManagerSettings {
 	    directory_tracking: boolean;
 	    history_enabled: boolean;
 	    history_limit: number;
 	    history: string[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new FileManagerSettings(source);
 	    }
@@ -244,6 +244,22 @@ export namespace service {
 		    }
 		    return a;
 		}
+	}
+	export class JDBCAgentStatus {
+	    state: string;
+	    runtimeKind: string;
+	    lastError: string;
+
+	    static createFrom(source: any = {}) {
+	        return new JDBCAgentStatus(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.runtimeKind = source["runtimeKind"];
+	        this.lastError = source["lastError"];
+	    }
 	}
 	export class JSONValidationResult {
 	    valid: boolean;
@@ -583,4 +599,3 @@ export namespace ssh {
 	}
 
 }
-

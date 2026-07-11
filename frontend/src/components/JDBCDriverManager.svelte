@@ -1,18 +1,25 @@
 <script>
   import { onMount } from 'svelte';
   import {
+    GetJDBCAgentStatus,
     GetJDBCRuntimeStatus,
     ImportJDBCDriverPackage,
+    ImportJDBCRuntimeArchive,
     InstallJDBCDriver,
+    InstallJDBCManagedRuntime,
     ListJDBCDrivers,
     RemoveJDBCDriver,
     RestartJDBCAgent,
+    SelectJDBCDriverPackage,
+    SelectJDBCJavaExecutable,
+    SelectJDBCRuntimeArchive,
     SetJDBCRuntimeMode,
     ValidateJDBCDriver
   } from '../../wailsjs/go/main/App.js';
 
   let drivers = [];
   let runtimeStatus = null;
+  let agentStatus = null;
   let selectedDriverId = '';
   let selectedProfileId = '';
   let search = '';
@@ -48,15 +55,20 @@
     profiles[0] ||
     null;
 
-  $: agentStatusLabel = activeTaskMessage ? activeTaskMessage : '待连接';
+  $: agentStatusLabel = activeTaskMessage ? activeTaskMessage : agentStateLabel(agentStatus?.state);
 
   onMount(loadData);
 
   async function loadData() {
     await runTask('正在刷新驱动状态', async () => {
-      const [driverList, runtime] = await Promise.all([ListJDBCDrivers(), GetJDBCRuntimeStatus()]);
+      const [driverList, runtime, agent] = await Promise.all([
+        ListJDBCDrivers(),
+        GetJDBCRuntimeStatus(),
+        GetJDBCAgentStatus()
+      ]);
       drivers = driverList || [];
       runtimeStatus = runtime;
+      agentStatus = agent;
       if (!selectedDriverId && drivers.length > 0) {
         selectedDriverId = drivers[0].id;
       }
@@ -98,7 +110,7 @@
   }
 
   async function importOfflinePackage() {
-    const path = window.prompt('输入离线驱动包路径');
+    const path = await SelectJDBCDriverPackage();
     if (!path) return;
     await runTask('正在导入离线驱动包', async () => {
       await ImportJDBCDriverPackage(path);
@@ -127,6 +139,7 @@
   async function restartAgent() {
     await runTask('正在重启 agent', async () => {
       await RestartJDBCAgent();
+      agentStatus = await GetJDBCAgentStatus();
     });
   }
 
@@ -161,14 +174,23 @@
   }
 
   async function useManagedRuntime() {
-    await runTask('正在切换托管 JRE', async () => {
-      await SetJDBCRuntimeMode('managed', '');
+    await runTask('正在安装托管 JRE', async () => {
+      await InstallJDBCManagedRuntime();
       await loadData();
     });
   }
 
-  async function chooseJavaRuntime(promptTitle) {
-    const javaPath = window.prompt(promptTitle);
+  async function importRuntimeArchive() {
+    const archivePath = await SelectJDBCRuntimeArchive();
+    if (!archivePath) return;
+    await runTask('正在导入 Java 运行时', async () => {
+      await ImportJDBCRuntimeArchive(archivePath);
+      await loadData();
+    });
+  }
+
+  async function chooseJavaRuntime() {
+    const javaPath = await SelectJDBCJavaExecutable();
     if (!javaPath) return;
     await runTask('正在更新 Java 运行时', async () => {
       await SetJDBCRuntimeMode('system', javaPath);
@@ -192,6 +214,21 @@
         return '未知';
     }
   }
+
+  function agentStateLabel(state) {
+    switch (state) {
+      case 'starting':
+        return '启动中';
+      case 'running':
+        return '运行中';
+      case 'failed':
+        return '启动失败';
+      case 'stopped':
+        return '已停止';
+      default:
+        return '未知';
+    }
+  }
 </script>
 
 <div class="jdbc-manager">
@@ -204,7 +241,7 @@
     <div>
       <div class="jdbc-manager__eyebrow">Agent</div>
       <div class="jdbc-manager__status-title">{agentStatusLabel}</div>
-      <div class="jdbc-manager__status-meta">本地 gRPC 子进程</div>
+      <div class="jdbc-manager__status-meta">{agentStatus?.lastError || '本地 gRPC 子进程'}</div>
     </div>
     <div class="jdbc-manager__status-actions">
       <button type="button" class="jdbc-manager__button" disabled={isBusy} on:click={loadData}>刷新</button>
@@ -218,8 +255,8 @@
       <div class="jdbc-manager__error-actions">
         {#if errorCode === 'RUNTIME_MISSING'}
           <button type="button" disabled={isBusy} on:click={useManagedRuntime}>安装 JRE</button>
-          <button type="button" disabled={isBusy} on:click={() => chooseJavaRuntime('输入导入 JRE 的 java 可执行文件路径')}>导入 JRE</button>
-          <button type="button" disabled={isBusy} on:click={() => chooseJavaRuntime('输入系统 Java 可执行文件路径')}>选择系统 Java</button>
+          <button type="button" disabled={isBusy} on:click={importRuntimeArchive}>导入 JRE</button>
+          <button type="button" disabled={isBusy} on:click={chooseJavaRuntime}>选择系统 Java</button>
         {:else if errorCode === 'DRIVER_MISSING'}
           <button type="button" disabled={isBusy} on:click={installSelected}>安装推荐驱动</button>
           <button type="button" disabled={isBusy} on:click={importOfflinePackage}>导入离线包</button>

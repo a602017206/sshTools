@@ -41,6 +41,11 @@ func (s *RuntimeService) UseSystemJava(enabled bool) {
 	s.useSystemJava = enabled
 }
 
+func (s *RuntimeService) ConfigureSystemJava(path string, enabled bool) {
+	s.systemJavaPath = path
+	s.useSystemJava = enabled
+}
+
 func (s *RuntimeService) ConfigureManagedInstaller(provider ManagedRuntimeProvider, fetcher ArtifactFetcher) {
 	s.provider = provider
 	s.fetcher = fetcher

@@ -142,6 +142,10 @@ export function GetFileManagerSettings(arg1) {
   return window['go']['main']['App']['GetFileManagerSettings'](arg1);
 }
 
+export function GetJDBCAgentStatus() {
+  return window['go']['main']['App']['GetJDBCAgentStatus']();
+}
+
 export function GetJDBCRuntimeStatus() {
   return window['go']['main']['App']['GetJDBCRuntimeStatus']();
 }
@@ -202,8 +206,16 @@ export function ImportJDBCDriverPackage(arg1) {
   return window['go']['main']['App']['ImportJDBCDriverPackage'](arg1);
 }
 
+export function ImportJDBCRuntimeArchive(arg1) {
+  return window['go']['main']['App']['ImportJDBCRuntimeArchive'](arg1);
+}
+
 export function InstallJDBCDriver(arg1, arg2) {
   return window['go']['main']['App']['InstallJDBCDriver'](arg1, arg2);
+}
+
+export function InstallJDBCManagedRuntime() {
+  return window['go']['main']['App']['InstallJDBCManagedRuntime']();
 }
 
 export function ListDatabaseTables(arg1) {
@@ -280,6 +292,18 @@ export function SelectDownloadDirectory() {
 
 export function SelectImportFile() {
   return window['go']['main']['App']['SelectImportFile']();
+}
+
+export function SelectJDBCDriverPackage() {
+  return window['go']['main']['App']['SelectJDBCDriverPackage']();
+}
+
+export function SelectJDBCJavaExecutable() {
+  return window['go']['main']['App']['SelectJDBCJavaExecutable']();
+}
+
+export function SelectJDBCRuntimeArchive() {
+  return window['go']['main']['App']['SelectJDBCRuntimeArchive']();
 }
 
 export function SelectSSHKeyFile() {
