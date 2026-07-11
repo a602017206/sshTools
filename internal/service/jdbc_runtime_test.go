@@ -31,6 +31,60 @@ func TestRuntimeServicePrefersManagedRuntimeThenSystemRuntime(t *testing.T) {
 	}
 }
 
+func TestRuntimeServiceRestoresExplicitSystemJava(t *testing.T) {
+	javaPath := filepath.Join(t.TempDir(), "bin", "java")
+	if err := os.MkdirAll(filepath.Dir(javaPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(javaPath, []byte("java"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	runtimeSvc := NewRuntimeService(NewJDBCPaths(t.TempDir()), "/default/java")
+	if err := runtimeSvc.ApplyMode("system", javaPath); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := runtimeSvc.SelectRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.Kind != RuntimeKindSystem || selected.JavaPath != javaPath {
+		t.Fatalf("unexpected selection: %+v", selected)
+	}
+}
+
+func TestRuntimeServiceRejectsInvalidExplicitSystemJava(t *testing.T) {
+	runtimeSvc := NewRuntimeService(NewJDBCPaths(t.TempDir()), "/default/java")
+	if err := runtimeSvc.ApplyMode("system", t.TempDir()); err == nil {
+		t.Fatal("expected directory rejection")
+	}
+	if err := runtimeSvc.ApplyMode("system", filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("expected missing path rejection")
+	}
+	if err := runtimeSvc.ApplyMode("other", ""); err == nil {
+		t.Fatal("expected unknown mode rejection")
+	}
+}
+
+func TestRuntimeServiceRestoresSnapshot(t *testing.T) {
+	javaPath := filepath.Join(t.TempDir(), "java")
+	if err := os.WriteFile(javaPath, []byte("java"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runtimeSvc := NewRuntimeService(NewJDBCPaths(t.TempDir()), javaPath)
+	if err := runtimeSvc.ApplyMode("system", javaPath); err != nil {
+		t.Fatal(err)
+	}
+	before := runtimeSvc.Snapshot()
+	if err := runtimeSvc.ApplyMode("managed", ""); err != nil {
+		t.Fatal(err)
+	}
+	runtimeSvc.Restore(before)
+	if got := runtimeSvc.Snapshot(); got != before {
+		t.Fatalf("snapshot not restored: got %+v want %+v", got, before)
+	}
+}
+
 func TestRuntimeServiceInstallsManagedRuntime(t *testing.T) {
 	root := t.TempDir()
 	paths := NewJDBCPaths(filepath.Join(root, ".sshtools"))

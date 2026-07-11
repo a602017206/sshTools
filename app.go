@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -123,7 +124,14 @@ func (a *App) initJDBCServices(agentJar []byte) error {
 	if err != nil {
 		homeDir = "."
 	}
-	bundle, buildErr := buildJDBCServices(filepath.Join(homeDir, ".sshtools"), agentJar, jdbcServiceDependencies{})
+	settings := config.DefaultSettings()
+	if a.configManager != nil {
+		settings = a.configManager.GetSettings()
+	}
+	bundle, buildErr := buildJDBCServices(filepath.Join(homeDir, ".sshtools"), agentJar, jdbcServiceDependencies{
+		runtimeMode: settings.JDBCRuntimeMode,
+		runtimePath: settings.JDBCSystemJavaPath,
+	})
 	a.jdbcPaths = bundle.paths
 	a.jdbcCatalog = bundle.catalog
 	a.jdbcInstaller = bundle.installer
@@ -135,6 +143,8 @@ func (a *App) initJDBCServices(agentJar []byte) error {
 
 type jdbcServiceDependencies struct {
 	systemJavaPath string
+	runtimeMode    string
+	runtimePath    string
 	starter        service.JDBCAgentStarter
 	dialer         service.JDBCAgentDialer
 }
@@ -169,6 +179,7 @@ func buildJDBCServices(root string, agentJar []byte, deps jdbcServiceDependencie
 		service.NewAdoptiumRuntimeProvider(nil, ""),
 		service.NewArtifactDownloader(service.ArtifactDownloadOptions{}),
 	)
+	runtimeErr := runtimeService.RestoreMode(deps.runtimeMode, deps.runtimePath)
 	starter := deps.starter
 	if starter == nil {
 		starter = service.NewAgentProcessManager(nil, service.AgentProcessConfig{})
@@ -192,7 +203,7 @@ func buildJDBCServices(root string, agentJar []byte, deps jdbcServiceDependencie
 		runtime:    runtimeService,
 		supervisor: supervisor,
 		gateway:    gateway,
-	}, artifactErr
+	}, errors.Join(artifactErr, runtimeErr)
 }
 
 func (a *App) shutdown(context.Context) {

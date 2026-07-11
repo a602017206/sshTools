@@ -29,6 +29,67 @@ func TestBuildJDBCServicesInjectsManagedGateway(t *testing.T) {
 	}
 }
 
+func TestBuildJDBCServicesRestoresPersistedRuntimeMode(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".sshtools")
+	javaPath := filepath.Join(root, "jdk", "bin", "java")
+	if err := os.MkdirAll(filepath.Dir(javaPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(javaPath, []byte("java"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	starter := &serviceStartCountingAgentStarter{}
+	bundle, err := buildJDBCServices(root, []byte("agent"), jdbcServiceDependencies{
+		systemJavaPath: javaPath,
+		runtimeMode:    "system",
+		runtimePath:    javaPath,
+		starter:        starter,
+	})
+	if err != nil {
+		t.Fatalf("build services failed: %v", err)
+	}
+	selected, err := bundle.runtime.SelectRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.Kind != service.RuntimeKindSystem || selected.JavaPath != javaPath {
+		t.Fatalf("runtime not restored: %+v", selected)
+	}
+	if starter.startCalls != 0 {
+		t.Fatalf("startup restore should not start agent: %d", starter.startCalls)
+	}
+}
+
+func TestBuildJDBCServicesKeepsInvalidPersistedSystemRuntimeMissing(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".sshtools")
+	bundle, err := buildJDBCServices(root, []byte("agent"), jdbcServiceDependencies{
+		systemJavaPath: "/usr/bin/java",
+		runtimeMode:    "system",
+		runtimePath:    filepath.Join(root, "missing-java"),
+	})
+	if err == nil {
+		t.Fatal("expected invalid persisted system Java error")
+	}
+	selected, selectErr := bundle.runtime.SelectRuntime()
+	if selectErr != nil {
+		t.Fatal(selectErr)
+	}
+	if selected.Kind != service.RuntimeKindMissing {
+		t.Fatalf("invalid persisted runtime silently fell back: %+v", selected)
+	}
+}
+
+type serviceStartCountingAgentStarter struct {
+	startCalls int
+}
+
+func (s *serviceStartCountingAgentStarter) StartAgent(context.Context, service.AgentProcessConfig) (*service.AgentProcessHandle, error) {
+	s.startCalls++
+	return &service.AgentProcessHandle{}, nil
+}
+
+func (s *serviceStartCountingAgentStarter) Stop() error { return nil }
+
 func TestJDBCManagementAPIReturnsAgentAndRuntimeState(t *testing.T) {
 	root := filepath.Join(t.TempDir(), ".sshtools")
 	paths := service.NewJDBCPaths(root)

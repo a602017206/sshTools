@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -25,10 +26,16 @@ type RuntimeSelection struct {
 	Version  string
 }
 
+type RuntimeModeSnapshot struct {
+	Mode           string
+	SystemJavaPath string
+}
+
 type RuntimeService struct {
+	mu             sync.RWMutex
 	paths          JDBCPaths
 	systemJavaPath string
-	useSystemJava  bool
+	mode           string
 	provider       ManagedRuntimeProvider
 	fetcher        ArtifactFetcher
 }
@@ -38,24 +45,99 @@ func NewRuntimeService(paths JDBCPaths, systemJavaPath string) *RuntimeService {
 }
 
 func (s *RuntimeService) UseSystemJava(enabled bool) {
-	s.useSystemJava = enabled
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if enabled {
+		s.mode = string(RuntimeKindSystem)
+	} else {
+		s.mode = string(RuntimeKindManaged)
+	}
 }
 
 func (s *RuntimeService) ConfigureSystemJava(path string, enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.systemJavaPath = path
-	s.useSystemJava = enabled
+	if enabled {
+		s.mode = string(RuntimeKindSystem)
+	} else {
+		s.mode = ""
+	}
+}
+
+func (s *RuntimeService) ApplyMode(mode, systemJavaPath string) error {
+	mode = strings.TrimSpace(mode)
+	systemJavaPath = strings.TrimSpace(systemJavaPath)
+	if err := validateRuntimeMode(mode, systemJavaPath); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mode = mode
+	if mode == string(RuntimeKindSystem) {
+		s.systemJavaPath = systemJavaPath
+	}
+	return nil
+}
+
+func (s *RuntimeService) RestoreMode(mode, systemJavaPath string) error {
+	mode = strings.TrimSpace(mode)
+	systemJavaPath = strings.TrimSpace(systemJavaPath)
+	s.mu.Lock()
+	s.mode = mode
+	if mode == string(RuntimeKindSystem) {
+		s.systemJavaPath = systemJavaPath
+	}
+	s.mu.Unlock()
+	return validateRuntimeMode(mode, systemJavaPath)
+}
+
+func validateRuntimeMode(mode, systemJavaPath string) error {
+	if mode != "" && mode != string(RuntimeKindManaged) && mode != string(RuntimeKindSystem) {
+		return fmt.Errorf("不支持的 JDBC 运行时模式: %s", mode)
+	}
+	if mode != string(RuntimeKindSystem) {
+		return nil
+	}
+	info, err := os.Stat(systemJavaPath)
+	if err != nil {
+		return fmt.Errorf("系统 Java 路径不可用: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("系统 Java 路径不是普通文件: %s", systemJavaPath)
+	}
+	return nil
+}
+
+func (s *RuntimeService) Snapshot() RuntimeModeSnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return RuntimeModeSnapshot{Mode: s.mode, SystemJavaPath: s.systemJavaPath}
+}
+
+func (s *RuntimeService) Restore(snapshot RuntimeModeSnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mode = snapshot.Mode
+	s.systemJavaPath = snapshot.SystemJavaPath
 }
 
 func (s *RuntimeService) ConfigureManagedInstaller(provider ManagedRuntimeProvider, fetcher ArtifactFetcher) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.provider = provider
 	s.fetcher = fetcher
 }
 
 func (s *RuntimeService) InstallManagedRuntime(ctx context.Context) (*RuntimeSelection, error) {
-	if s.provider == nil || s.fetcher == nil {
+	s.mu.RLock()
+	provider := s.provider
+	fetcher := s.fetcher
+	s.mu.RUnlock()
+	if provider == nil || fetcher == nil {
 		return nil, fmt.Errorf("托管 JDBC JRE 安装器未配置")
 	}
-	pkg, err := s.provider.Latest(ctx, 21)
+	pkg, err := provider.Latest(ctx, 21)
 	if err != nil {
 		return nil, err
 	}
@@ -72,15 +154,25 @@ func (s *RuntimeService) InstallManagedRuntime(ctx context.Context) (*RuntimeSel
 	}
 	defer os.RemoveAll(downloadDir)
 	archivePath := filepath.Join(downloadDir, archiveName)
-	if err := s.fetcher.Download(ctx, pkg.URL, pkg.SHA256, archivePath); err != nil {
+	if err := fetcher.Download(ctx, pkg.URL, pkg.SHA256, archivePath); err != nil {
 		return nil, fmt.Errorf("下载托管 JDBC JRE 失败: %w", err)
 	}
 	return s.ImportRuntimeArchive(archivePath)
 }
 
 func (s *RuntimeService) SelectRuntime() (*RuntimeSelection, error) {
-	if s.useSystemJava && fileExists(s.systemJavaPath) {
-		return &RuntimeSelection{Kind: RuntimeKindSystem, JavaPath: s.systemJavaPath}, nil
+	s.mu.RLock()
+	mode := s.mode
+	systemJavaPath := s.systemJavaPath
+	s.mu.RUnlock()
+	if mode == string(RuntimeKindSystem) {
+		if fileExists(systemJavaPath) {
+			return &RuntimeSelection{Kind: RuntimeKindSystem, JavaPath: systemJavaPath}, nil
+		}
+		return &RuntimeSelection{Kind: RuntimeKindMissing}, nil
+	}
+	if mode != "" && mode != string(RuntimeKindManaged) {
+		return &RuntimeSelection{Kind: RuntimeKindMissing}, nil
 	}
 
 	managed, err := s.latestManagedRuntime()
@@ -90,8 +182,11 @@ func (s *RuntimeService) SelectRuntime() (*RuntimeSelection, error) {
 	if managed != "" {
 		return &RuntimeSelection{Kind: RuntimeKindManaged, JavaPath: managed, Version: filepath.Base(filepath.Dir(filepath.Dir(managed)))}, nil
 	}
-	if fileExists(s.systemJavaPath) {
-		return &RuntimeSelection{Kind: RuntimeKindSystem, JavaPath: s.systemJavaPath}, nil
+	if mode == string(RuntimeKindManaged) {
+		return &RuntimeSelection{Kind: RuntimeKindMissing}, nil
+	}
+	if fileExists(systemJavaPath) {
+		return &RuntimeSelection{Kind: RuntimeKindSystem, JavaPath: systemJavaPath}, nil
 	}
 	return &RuntimeSelection{Kind: RuntimeKindMissing}, nil
 }
