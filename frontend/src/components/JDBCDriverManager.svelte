@@ -138,8 +138,11 @@
 
   async function restartAgent() {
     await runTask('正在重启 agent', async () => {
-      await RestartJDBCAgent();
-      agentStatus = await GetJDBCAgentStatus();
+      try {
+        await RestartJDBCAgent();
+      } finally {
+        agentStatus = await GetJDBCAgentStatus();
+      }
     });
   }
 
