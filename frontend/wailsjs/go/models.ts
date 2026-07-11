@@ -31,6 +31,8 @@ export namespace config {
 	    compact_mode: boolean;
 	    reduced_motion: boolean;
 	    sidebar_width: number;
+	    jdbc_runtime_mode: string;
+	    jdbc_system_java_path: string;
 	    monitor_collapsed: boolean;
 	    monitor_width: number;
 	    monitor_refresh_interval: number;
@@ -59,6 +61,8 @@ export namespace config {
 	        this.compact_mode = source["compact_mode"];
 	        this.reduced_motion = source["reduced_motion"];
 	        this.sidebar_width = source["sidebar_width"];
+	        this.jdbc_runtime_mode = source["jdbc_runtime_mode"];
+	        this.jdbc_system_java_path = source["jdbc_system_java_path"];
 	        this.monitor_collapsed = source["monitor_collapsed"];
 	        this.monitor_width = source["monitor_width"];
 	        this.monitor_refresh_interval = source["monitor_refresh_interval"];
@@ -261,18 +265,20 @@ export namespace service {
 	        this.lastError = source["lastError"];
 	    }
 	}
-	export class JSONValidationResult {
-	    valid: boolean;
-	    error?: string;
-	
+	export class JDBCLogTail {
+	    content: string;
+	    truncated: boolean;
+	    size: number;
+
 	    static createFrom(source: any = {}) {
-	        return new JSONValidationResult(source);
+	        return new JDBCLogTail(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.valid = source["valid"];
-	        this.error = source["error"];
+	        this.content = source["content"];
+	        this.truncated = source["truncated"];
+	        this.size = source["size"];
 	    }
 	}
 	export class RuntimeStatus {
@@ -291,6 +297,53 @@ export namespace service {
 	        this.version = source["version"];
 	    }
 	}
+	export class JDBCRuntimeActivationResult {
+	    runtime: RuntimeStatus;
+	    agent: JDBCAgentStatus;
+
+	    static createFrom(source: any = {}) {
+	        return new JDBCRuntimeActivationResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runtime = this.convertValues(source["runtime"], RuntimeStatus);
+	        this.agent = this.convertValues(source["agent"], JDBCAgentStatus);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class JSONValidationResult {
+	    valid: boolean;
+	    error?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new JSONValidationResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.valid = source["valid"];
+	        this.error = source["error"];
+	    }
+	}
+
 	export class TableDDL {
 	    table_name: string;
 	    ddl: string;

@@ -142,6 +142,10 @@ export function GetFileManagerSettings(arg1) {
   return window['go']['main']['App']['GetFileManagerSettings'](arg1);
 }
 
+export function GetJDBCAgentLogTail(arg1) {
+  return window['go']['main']['App']['GetJDBCAgentLogTail'](arg1);
+}
+
 export function GetJDBCAgentStatus() {
   return window['go']['main']['App']['GetJDBCAgentStatus']();
 }

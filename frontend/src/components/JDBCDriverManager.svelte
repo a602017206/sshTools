@@ -1,6 +1,7 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import {
+    GetJDBCAgentLogTail,
     GetJDBCAgentStatus,
     GetJDBCRuntimeStatus,
     ImportJDBCDriverPackage,
@@ -31,6 +32,14 @@
   let rawError = '';
   let showRawError = false;
   let resourcePath = '';
+  let statusTimer = null;
+  let statusPollError = '';
+  const statusPollInterval = 2000;
+  let showAgentLog = false;
+  let agentLog = null;
+  let agentLogBusy = false;
+  let agentLogError = '';
+  let agentLogCopyStatus = '';
 
   $: filteredDrivers = drivers.filter((driver) => {
     const text = `${driver.name || ''} ${driver.id || ''}`.toLowerCase();
@@ -57,7 +66,26 @@
 
   $: agentStatusLabel = activeTaskMessage ? activeTaskMessage : agentStateLabel(agentStatus?.state);
 
-  onMount(loadData);
+  onMount(() => {
+    loadData();
+    statusTimer = setInterval(pollJDBCStatus, statusPollInterval);
+  });
+
+  onDestroy(() => {
+    if (statusTimer) clearInterval(statusTimer);
+  });
+
+  async function pollJDBCStatus() {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    try {
+      const [runtime, agent] = await Promise.all([GetJDBCRuntimeStatus(), GetJDBCAgentStatus()]);
+      runtimeStatus = runtime;
+      agentStatus = agent;
+      statusPollError = '';
+    } catch (error) {
+      statusPollError = error?.message || String(error);
+    }
+  }
 
   async function loadData() {
     await runTask('正在刷新驱动状态', async () => {
@@ -178,8 +206,7 @@
 
   async function useManagedRuntime() {
     await runTask('正在安装托管 JRE', async () => {
-      await InstallJDBCManagedRuntime();
-      await loadData();
+      applyActivationResult(await InstallJDBCManagedRuntime());
     });
   }
 
@@ -187,8 +214,7 @@
     const archivePath = await SelectJDBCRuntimeArchive();
     if (!archivePath) return;
     await runTask('正在导入 Java 运行时', async () => {
-      await ImportJDBCRuntimeArchive(archivePath);
-      await loadData();
+      applyActivationResult(await ImportJDBCRuntimeArchive(archivePath));
     });
   }
 
@@ -196,9 +222,56 @@
     const javaPath = await SelectJDBCJavaExecutable();
     if (!javaPath) return;
     await runTask('正在更新 Java 运行时', async () => {
-      await SetJDBCRuntimeMode('system', javaPath);
-      await loadData();
+      applyActivationResult(await SetJDBCRuntimeMode('system', javaPath));
     });
+  }
+
+  function applyActivationResult(result) {
+    if (!result) return;
+    runtimeStatus = result.runtime || runtimeStatus;
+    agentStatus = result.agent || agentStatus;
+  }
+
+  async function openAgentLog() {
+    showAgentLog = true;
+    await refreshAgentLog();
+  }
+
+  function closeAgentLog() {
+    showAgentLog = false;
+    agentLogError = '';
+    agentLogCopyStatus = '';
+  }
+
+  async function refreshAgentLog() {
+    agentLogBusy = true;
+    agentLogError = '';
+    agentLogCopyStatus = '';
+    try {
+      agentLog = await GetJDBCAgentLogTail(65536);
+    } catch (error) {
+      agentLogError = error?.message || String(error);
+    } finally {
+      agentLogBusy = false;
+    }
+  }
+
+  async function copyAgentLog() {
+    if (!agentLog?.content) return;
+    try {
+      await navigator.clipboard.writeText(agentLog.content);
+      agentLogCopyStatus = '已复制';
+    } catch (error) {
+      agentLogCopyStatus = '';
+      agentLogError = `复制日志失败：${error?.message || String(error)}`;
+    }
+  }
+
+  function formatLogSize(size) {
+    if (!size) return '0 B';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KiB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MiB`;
   }
 
   function showResource(path) {
@@ -245,6 +318,9 @@
       <div class="jdbc-manager__eyebrow">Agent</div>
       <div class="jdbc-manager__status-title">{agentStatusLabel}</div>
       <div class="jdbc-manager__status-meta">{agentStatus?.lastError || '本地 gRPC 子进程'}</div>
+      {#if statusPollError}
+        <div class="jdbc-manager__status-warning">状态刷新失败</div>
+      {/if}
     </div>
     <div class="jdbc-manager__status-actions">
       <button type="button" class="jdbc-manager__button" disabled={isBusy} on:click={loadData}>刷新</button>
@@ -269,7 +345,7 @@
           <button type="button" disabled={isBusy} on:click={removeSelected}>删除</button>
         {:else if errorCode === 'AGENT_UNAVAILABLE'}
           <button type="button" disabled={isBusy} on:click={restartAgent}>重启 agent</button>
-          <button type="button" on:click={() => showResource('~/.sshtools/logs/jdbc-agent.log')}>查看日志</button>
+          <button type="button" on:click={openAgentLog}>查看日志</button>
         {:else}
           <button type="button" on:click={() => (showRawError = !showRawError)}>查看原始错误</button>
         {/if}
@@ -395,6 +471,39 @@
       {/if}
     </section>
   </div>
+
+  {#if showAgentLog}
+    <div class="jdbc-manager__log-dialog" role="dialog" aria-modal="true" aria-labelledby="jdbc-agent-log-title">
+      <div class="jdbc-manager__log-panel">
+        <header class="jdbc-manager__log-header">
+          <div>
+            <h3 id="jdbc-agent-log-title">JDBC Agent 日志</h3>
+            <p>
+              {formatLogSize(agentLog?.size || 0)}
+              {#if agentLog?.truncated} · 仅显示最近 64 KiB{/if}
+            </p>
+          </div>
+          <div class="jdbc-manager__log-actions">
+            <button type="button" disabled={agentLogBusy} on:click={refreshAgentLog}>刷新</button>
+            <button type="button" disabled={!agentLog?.content || agentLogBusy} on:click={copyAgentLog}>复制</button>
+            <button type="button" on:click={closeAgentLog}>关闭</button>
+          </div>
+        </header>
+        {#if agentLogError}
+          <div class="jdbc-manager__log-error" role="alert">{agentLogError}</div>
+        {:else if agentLogBusy}
+          <div class="jdbc-manager__log-empty">正在读取日志...</div>
+        {:else if agentLog?.content}
+          <pre class="jdbc-manager__log-content">{agentLog.content}</pre>
+        {:else}
+          <div class="jdbc-manager__log-empty">暂无 JDBC Agent 日志。</div>
+        {/if}
+        {#if agentLogCopyStatus}
+          <div class="jdbc-manager__log-copy-status">{agentLogCopyStatus}</div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -439,6 +548,12 @@
     color: var(--text-tertiary);
     font-size: 12px;
     overflow-wrap: anywhere;
+  }
+
+  .jdbc-manager__status-warning {
+    color: #b45309;
+    font-size: 11px;
+    margin-top: 2px;
   }
 
   .jdbc-manager__status-actions,
@@ -738,6 +853,108 @@
     padding: 12px;
   }
 
+  .jdbc-manager__log-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.48);
+    padding: 24px;
+  }
+
+  .jdbc-manager__log-panel {
+    width: min(860px, 100%);
+    max-height: min(680px, calc(100vh - 48px));
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    padding: 16px;
+  }
+
+  .jdbc-manager__log-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--border-primary);
+    padding-bottom: 12px;
+  }
+
+  .jdbc-manager__log-header h3,
+  .jdbc-manager__log-header p {
+    margin: 0;
+  }
+
+  .jdbc-manager__log-header p {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    margin-top: 3px;
+  }
+
+  .jdbc-manager__log-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .jdbc-manager__log-actions button {
+    min-height: 30px;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .jdbc-manager__log-actions button:disabled {
+    opacity: 0.5;
+  }
+
+  .jdbc-manager__log-content {
+    flex: 1;
+    min-height: 260px;
+    overflow: auto;
+    margin: 12px 0 0;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    padding: 12px;
+    font-family: Menlo, Monaco, 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .jdbc-manager__log-empty,
+  .jdbc-manager__log-error {
+    margin-top: 12px;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    padding: 20px;
+    color: var(--text-tertiary);
+    text-align: center;
+    font-size: 12px;
+  }
+
+  .jdbc-manager__log-error {
+    border-color: rgba(220, 38, 38, 0.35);
+    color: #dc2626;
+  }
+
+  .jdbc-manager__log-copy-status {
+    color: var(--accent-primary);
+    font-size: 11px;
+    margin-top: 8px;
+    text-align: right;
+  }
+
   @media (max-width: 900px) {
     .jdbc-manager__status,
     .jdbc-manager__body,
@@ -750,6 +967,10 @@
     }
 
     .jdbc-manager__detail-head {
+      flex-direction: column;
+    }
+
+    .jdbc-manager__log-header {
       flex-direction: column;
     }
   }

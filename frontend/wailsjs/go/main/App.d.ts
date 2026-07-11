@@ -74,6 +74,8 @@ export function GetFileInfo(arg1:string,arg2:string):Promise<ssh.FileInfo>;
 
 export function GetFileManagerSettings(arg1:string):Promise<config.FileManagerSettings>;
 
+export function GetJDBCAgentLogTail(arg1:number):Promise<service.JDBCLogTail>;
+
 export function GetJDBCAgentStatus():Promise<service.JDBCAgentStatus>;
 
 export function GetJDBCRuntimeStatus():Promise<service.RuntimeStatus>;
@@ -106,11 +108,11 @@ export function ImportConnectionsWithPassphrase(arg1:string,arg2:string):Promise
 
 export function ImportJDBCDriverPackage(arg1:string):Promise<void>;
 
-export function ImportJDBCRuntimeArchive(arg1:string):Promise<service.RuntimeStatus>;
+export function ImportJDBCRuntimeArchive(arg1:string):Promise<service.JDBCRuntimeActivationResult>;
 
 export function InstallJDBCDriver(arg1:string,arg2:string):Promise<void>;
 
-export function InstallJDBCManagedRuntime():Promise<service.RuntimeStatus>;
+export function InstallJDBCManagedRuntime():Promise<service.JDBCRuntimeActivationResult>;
 
 export function ListDatabaseTables(arg1:string):Promise<Array<string>>;
 
@@ -168,7 +170,7 @@ export function SendSSHData(arg1:string,arg2:string):Promise<void>;
 
 export function SendSSHDataBinary(arg1:string,arg2:string):Promise<void>;
 
-export function SetJDBCRuntimeMode(arg1:string,arg2:string):Promise<void>;
+export function SetJDBCRuntimeMode(arg1:string,arg2:string):Promise<service.JDBCRuntimeActivationResult>;
 
 export function ShowAboutDialog():Promise<void>;
 
