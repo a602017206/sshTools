@@ -51,6 +51,20 @@ func TestDriverInstallDownloadsProfileJarsAtomically(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(result.InstallPath, "driver.json")); err != nil {
 		t.Fatalf("driver metadata missing: %v", err)
 	}
+	markerPath := filepath.Join(result.InstallPath, "stale-marker")
+	if err := os.WriteFile(markerPath, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reinstalled, err := installer.InstallProfile(context.Background(), driver, profile)
+	if err != nil {
+		t.Fatalf("reinstall profile failed: %v", err)
+	}
+	if reinstalled.InstallPath != result.InstallPath {
+		t.Fatalf("reinstall path changed: %q", reinstalled.InstallPath)
+	}
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Fatalf("reinstall retained stale version content: %v", err)
+	}
 
 	badDriver, badProfile := onlineTestDriver(server.URL, firstJar, secondJar)
 	badDriver.ID = "broken"

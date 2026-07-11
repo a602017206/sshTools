@@ -100,16 +100,39 @@ func (s *DriverInstallService) InstallProfile(ctx context.Context, driver config
 	}
 
 	targetDir := filepath.Join(driverDir, profile.Version)
-	if _, err := os.Stat(targetDir); err == nil {
-		return nil, fmt.Errorf("JDBC 驱动版本已安装: %s %s", driver.ID, profile.Version)
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("检查 JDBC 驱动安装目录失败: %w", err)
-	}
-	if err := os.Rename(temporaryDir, targetDir); err != nil {
+	if err := replaceDriverVersionDirectory(temporaryDir, targetDir); err != nil {
 		return nil, fmt.Errorf("提交 JDBC 驱动安装失败: %w", err)
 	}
 	committed = true
 	return &DriverInstallResult{DriverID: driver.ID, ProfileID: profile.ID, Version: profile.Version, InstallPath: targetDir}, nil
+}
+
+func replaceDriverVersionDirectory(sourceDir, targetDir string) error {
+	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
+		return os.Rename(sourceDir, targetDir)
+	} else if err != nil {
+		return fmt.Errorf("检查现有版本目录失败: %w", err)
+	}
+
+	parent := filepath.Dir(targetDir)
+	backupDir, err := os.MkdirTemp(parent, ".driver-backup-*")
+	if err != nil {
+		return fmt.Errorf("创建版本备份路径失败: %w", err)
+	}
+	if err := os.Remove(backupDir); err != nil {
+		return fmt.Errorf("准备版本备份路径失败: %w", err)
+	}
+	if err := os.Rename(targetDir, backupDir); err != nil {
+		return fmt.Errorf("备份现有版本失败: %w", err)
+	}
+	if err := os.Rename(sourceDir, targetDir); err != nil {
+		if restoreErr := os.Rename(backupDir, targetDir); restoreErr != nil {
+			return fmt.Errorf("提交新版本失败: %v；恢复旧版本失败: %w", err, restoreErr)
+		}
+		return fmt.Errorf("提交新版本失败，已恢复旧版本: %w", err)
+	}
+	_ = os.RemoveAll(backupDir)
+	return nil
 }
 
 func (s *DriverInstallService) ImportOfflinePackage(zipPath string) (*DriverInstallResult, error) {
