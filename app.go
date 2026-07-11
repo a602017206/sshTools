@@ -1066,7 +1066,12 @@ func (a *App) ListJDBCDrivers() ([]service.DriverView, error) {
 }
 
 func (a *App) InstallJDBCDriver(driverID, version string) error {
-	return fmt.Errorf("JDBC 在线驱动安装暂未实现: %s %s", driverID, version)
+	driver, profile, err := a.jdbcCatalog.GetProfile(driverID, version)
+	if err != nil {
+		return err
+	}
+	_, err = a.jdbcInstaller.InstallProfile(context.Background(), *driver, *profile)
+	return err
 }
 
 func (a *App) ImportJDBCDriverPackage(path string) error {

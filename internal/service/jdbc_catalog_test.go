@@ -26,6 +26,29 @@ func TestDriverCatalogReturnsDefaultPortsForInitialJDBCTypes(t *testing.T) {
 	}
 }
 
+func TestDriverCatalogBootstrapsBuiltinManifest(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "config", "jdbc-drivers.json")
+	catalog := NewDriverCatalogService(manifestPath, filepath.Join(root, "drivers"))
+
+	drivers, err := catalog.ListDriversWithInstallStatus()
+	if err != nil {
+		t.Fatalf("list builtin drivers failed: %v", err)
+	}
+	want := []string{"mysql", "postgresql", "sqlite", "oracle", "sqlserver", "dm", "kingbase", "opengauss"}
+	if len(drivers) != len(want) {
+		t.Fatalf("builtin driver count: got %d want %d", len(drivers), len(want))
+	}
+	for i, driverID := range want {
+		if drivers[i].ID != driverID {
+			t.Fatalf("builtin driver %d: got %q want %q", i, drivers[i].ID, driverID)
+		}
+	}
+	if _, err := os.Stat(manifestPath); err != nil {
+		t.Fatalf("builtin manifest was not persisted: %v", err)
+	}
+}
+
 func TestDriverCatalogLoadsManifestAndSelectsRecommendedProfile(t *testing.T) {
 	root := t.TempDir()
 	manifestPath := filepath.Join(root, "manifest.json")

@@ -1,6 +1,7 @@
 package service
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,9 @@ import (
 
 	"AHaSSHTools/internal/config"
 )
+
+//go:embed jdbc_builtin_manifest.json
+var builtinJDBCManifest []byte
 
 type DriverCatalogService struct {
 	manifestPath  string
@@ -19,6 +23,9 @@ func NewDriverCatalogService(manifestPath, installedPath string) *DriverCatalogS
 }
 
 func (s *DriverCatalogService) LoadManifest() (*config.JDBCManifest, error) {
+	if err := s.ensureManifest(); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(s.manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取 JDBC 驱动清单失败: %w", err)
@@ -28,6 +35,38 @@ func (s *DriverCatalogService) LoadManifest() (*config.JDBCManifest, error) {
 		return nil, fmt.Errorf("解析 JDBC 驱动清单失败: %w", err)
 	}
 	return &manifest, nil
+}
+
+func (s *DriverCatalogService) ensureManifest() error {
+	if _, err := os.Stat(s.manifestPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("检查 JDBC 驱动清单失败: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(s.manifestPath), 0o700); err != nil {
+		return fmt.Errorf("创建 JDBC 驱动清单目录失败: %w", err)
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(s.manifestPath), ".jdbc-manifest-*.tmp")
+	if err != nil {
+		return fmt.Errorf("创建 JDBC 驱动清单临时文件失败: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.Write(builtinJDBCManifest); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("写入 JDBC 驱动清单失败: %w", err)
+	}
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("设置 JDBC 驱动清单权限失败: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("关闭 JDBC 驱动清单失败: %w", err)
+	}
+	if err := os.Rename(temporaryPath, s.manifestPath); err != nil {
+		return fmt.Errorf("提交 JDBC 驱动清单失败: %w", err)
+	}
+	return nil
 }
 
 func (s *DriverCatalogService) GetRecommendedProfile(driverID string) (*config.JDBCDriver, *config.JDBCDriverProfile, error) {
@@ -50,6 +89,30 @@ func (s *DriverCatalogService) GetRecommendedProfile(driverID string) (*config.J
 			return driver, &driver.Profiles[0], nil
 		}
 		return nil, nil, fmt.Errorf("数据库 %s 没有可用 JDBC profile", driverID)
+	}
+	return nil, nil, fmt.Errorf("未找到 JDBC 驱动: %s", driverID)
+}
+
+func (s *DriverCatalogService) GetProfile(driverID, version string) (*config.JDBCDriver, *config.JDBCDriverProfile, error) {
+	if version == "" {
+		return s.GetRecommendedProfile(driverID)
+	}
+	manifest, err := s.LoadManifest()
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range manifest.Drivers {
+		driver := &manifest.Drivers[i]
+		if driver.ID != driverID {
+			continue
+		}
+		for j := range driver.Profiles {
+			profile := &driver.Profiles[j]
+			if profile.Version == version || profile.ID == version {
+				return driver, profile, nil
+			}
+		}
+		return nil, nil, fmt.Errorf("未找到 JDBC 驱动版本: %s %s", driverID, version)
 	}
 	return nil, nil, fmt.Errorf("未找到 JDBC 驱动: %s", driverID)
 }
