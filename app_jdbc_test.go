@@ -1,13 +1,17 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"AHaSSHTools/internal/service"
+	"AHaSSHTools/internal/service/jdbcproto"
 )
 
 func TestBuildJDBCServicesInjectsManagedGateway(t *testing.T) {
@@ -157,6 +161,211 @@ func TestJDBCManagementAPIReturnsAgentAndRuntimeState(t *testing.T) {
 	if path, _ := app.SelectJDBCJavaExecutable(); path != dialogs.javaExecutable {
 		t.Fatalf("unexpected java executable: %q", path)
 	}
+}
+
+func TestSetJDBCRuntimeModePersistsAndRestartsAgent(t *testing.T) {
+	app, settings, starter := newRuntimeActivationTestApp(t, activationAgentDialer{})
+	javaPath := writeTestJava(t, filepath.Join(t.TempDir(), "bin", "java"))
+
+	result, err := app.SetJDBCRuntimeMode("system", javaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.mode != "system" || settings.path != javaPath || settings.calls != 1 {
+		t.Fatalf("settings not persisted: %+v", settings)
+	}
+	if starter.startCalls != 1 {
+		t.Fatalf("expected one agent start, got %d", starter.startCalls)
+	}
+	if result.Runtime.Kind != service.RuntimeKindSystem || result.Agent.State != service.JDBCAgentStateRunning {
+		t.Fatalf("unexpected activation result: %+v", result)
+	}
+}
+
+func TestSetJDBCRuntimeModeRollsBackWhenPersistenceFails(t *testing.T) {
+	app, settings, starter := newRuntimeActivationTestApp(t, activationAgentDialer{})
+	settings.err = errors.New("save failed")
+	before := app.jdbcRuntime.Snapshot()
+	javaPath := writeTestJava(t, filepath.Join(t.TempDir(), "bin", "java"))
+
+	if _, err := app.SetJDBCRuntimeMode("system", javaPath); err == nil {
+		t.Fatal("expected persistence error")
+	}
+	if got := app.jdbcRuntime.Snapshot(); got != before {
+		t.Fatalf("runtime not rolled back: got %+v want %+v", got, before)
+	}
+	if starter.startCalls != 0 {
+		t.Fatalf("agent started after persistence failure: %d", starter.startCalls)
+	}
+}
+
+func TestSetJDBCRuntimeModeKeepsSelectionWhenRestartFails(t *testing.T) {
+	app, settings, _ := newRuntimeActivationTestApp(t, failingAgentDialer{})
+	javaPath := writeTestJava(t, filepath.Join(t.TempDir(), "bin", "java"))
+
+	result, err := app.SetJDBCRuntimeMode("system", javaPath)
+	if err == nil {
+		t.Fatal("expected restart error")
+	}
+	if settings.mode != "system" || app.jdbcRuntime.Snapshot().Mode != "system" {
+		t.Fatalf("new selection was rolled back: settings=%+v snapshot=%+v", settings, app.jdbcRuntime.Snapshot())
+	}
+	if result.Agent.State != service.JDBCAgentStateFailed || result.Agent.LastError == "" {
+		t.Fatalf("expected failed agent status: %+v", result)
+	}
+}
+
+func TestManagedRuntimeInstallAndImportActivateManagedMode(t *testing.T) {
+	app, settings, starter := newRuntimeActivationTestApp(t, activationAgentDialer{})
+	archivePath := createAppTestRuntimeArchive(t)
+	provider := &appTestRuntimeProvider{pkg: service.ManagedRuntimePackage{
+		Version: "21.0.8", Name: "runtime.zip", URL: "https://example.invalid/runtime.zip", SHA256: "checksum",
+	}}
+	app.jdbcRuntime.ConfigureManagedInstaller(provider, &appTestArtifactFetcher{source: archivePath})
+
+	if _, err := app.InstallJDBCManagedRuntime(); err != nil {
+		t.Fatalf("managed install activation failed: %v", err)
+	}
+	if settings.mode != "managed" || starter.startCalls != 1 {
+		t.Fatalf("managed install not activated: settings=%+v starts=%d", settings, starter.startCalls)
+	}
+	if err := app.jdbcAgentSupervisor.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.ImportJDBCRuntimeArchive(archivePath); err != nil {
+		t.Fatalf("runtime import activation failed: %v", err)
+	}
+	if settings.calls != 2 || starter.startCalls != 2 {
+		t.Fatalf("runtime import not activated: saves=%d starts=%d", settings.calls, starter.startCalls)
+	}
+}
+
+type fakeJDBCRuntimeSettingsStore struct {
+	mode  string
+	path  string
+	calls int
+	err   error
+}
+
+func (s *fakeJDBCRuntimeSettingsStore) UpdateJDBCRuntimeSettings(mode, path string) error {
+	s.calls++
+	if s.err != nil {
+		return s.err
+	}
+	s.mode = mode
+	s.path = path
+	return nil
+}
+
+type activationAgentStarter struct {
+	startCalls int
+	stopCalls  int
+}
+
+func (s *activationAgentStarter) StartAgent(context.Context, service.AgentProcessConfig) (*service.AgentProcessHandle, error) {
+	s.startCalls++
+	return &service.AgentProcessHandle{Port: 47000 + s.startCalls, Token: "token"}, nil
+}
+
+func (s *activationAgentStarter) Stop() error {
+	s.stopCalls++
+	return nil
+}
+
+type activationAgentDialer struct{}
+
+func (activationAgentDialer) Dial(context.Context, string, int) (service.JdbcAgentClient, func() error, error) {
+	return activationJdbcClient{}, func() error { return nil }, nil
+}
+
+type activationJdbcClient struct{}
+
+func (activationJdbcClient) OpenSession(context.Context, *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error) {
+	return &jdbcproto.OpenSessionResponse{}, nil
+}
+func (activationJdbcClient) ExecuteQuery(context.Context, *jdbcproto.ExecuteQueryRequest) (*jdbcproto.QueryResult, error) {
+	return &jdbcproto.QueryResult{}, nil
+}
+func (activationJdbcClient) ListTables(context.Context, *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
+	return &jdbcproto.ListTablesResponse{}, nil
+}
+func (activationJdbcClient) ListColumns(context.Context, *jdbcproto.ListColumnsRequest) (*jdbcproto.ListColumnsResponse, error) {
+	return &jdbcproto.ListColumnsResponse{}, nil
+}
+func (activationJdbcClient) CloseSession(context.Context, *jdbcproto.CloseSessionRequest) (*jdbcproto.CloseSessionResponse, error) {
+	return &jdbcproto.CloseSessionResponse{}, nil
+}
+
+func newRuntimeActivationTestApp(t *testing.T, dialer service.JDBCAgentDialer) (*App, *fakeJDBCRuntimeSettingsStore, *activationAgentStarter) {
+	t.Helper()
+	paths := service.NewJDBCPaths(filepath.Join(t.TempDir(), ".sshtools"))
+	runtimeService := service.NewRuntimeService(paths, "")
+	starter := &activationAgentStarter{}
+	supervisor := service.NewJDBCAgentSupervisor(runtimeService, starter, dialer, "/agent/jdbc-agent.jar")
+	settings := &fakeJDBCRuntimeSettingsStore{}
+	return &App{
+		jdbcPaths: paths, jdbcRuntime: runtimeService, jdbcAgentSupervisor: supervisor, jdbcRuntimeSettings: settings,
+	}, settings, starter
+}
+
+func writeTestJava(t *testing.T, path string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("java"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+type appTestRuntimeProvider struct{ pkg service.ManagedRuntimePackage }
+
+func (p *appTestRuntimeProvider) Latest(context.Context, int) (service.ManagedRuntimePackage, error) {
+	return p.pkg, nil
+}
+
+type appTestArtifactFetcher struct{ source string }
+
+func (f *appTestArtifactFetcher) Download(_ context.Context, _, _ string, target string) error {
+	source, err := os.Open(f.source)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	destination, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer destination.Close()
+	_, err = io.Copy(destination, source)
+	return err
+}
+
+func createAppTestRuntimeArchive(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "runtime.zip")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(file)
+	header := &zip.FileHeader{Name: "jdk-21.0.8/bin/java", Method: zip.Deflate}
+	header.SetMode(0o755)
+	part, err := writer.CreateHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("java")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 type blockingAgentStarter struct {

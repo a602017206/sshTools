@@ -48,7 +48,12 @@ type App struct {
 	jdbcAgentSupervisor *service.JDBCAgentSupervisor
 	jdbcGateway         *service.ManagedJDBCGateway
 	jdbcFileDialogs     jdbcFileDialogs
+	jdbcRuntimeSettings jdbcRuntimeSettingsStore
 	configManager       *config.ConfigManager
+}
+
+type jdbcRuntimeSettingsStore interface {
+	UpdateJDBCRuntimeSettings(mode, javaPath string) error
 }
 
 type jdbcFileDialogs interface {
@@ -94,6 +99,7 @@ func (a *App) startup(ctx context.Context) {
 		configManager = config.NewFallbackConfigManager()
 	}
 	a.configManager = configManager
+	a.jdbcRuntimeSettings = configManager
 
 	// Initialize credential store
 	credentialStore := store.NewCredentialStore()
@@ -1145,20 +1151,20 @@ func (a *App) GetJDBCRuntimeStatus() (service.RuntimeStatus, error) {
 	}, nil
 }
 
-func (a *App) InstallJDBCManagedRuntime() (service.RuntimeStatus, error) {
-	selected, err := a.jdbcRuntime.InstallManagedRuntime(context.Background())
+func (a *App) InstallJDBCManagedRuntime() (service.JDBCRuntimeActivationResult, error) {
+	_, err := a.jdbcRuntime.InstallManagedRuntime(context.Background())
 	if err != nil {
-		return service.RuntimeStatus{}, err
+		return service.JDBCRuntimeActivationResult{}, err
 	}
-	return service.RuntimeStatus{Kind: selected.Kind, JavaPath: selected.JavaPath, Version: selected.Version}, nil
+	return a.activateJDBCRuntime("managed", "")
 }
 
-func (a *App) ImportJDBCRuntimeArchive(path string) (service.RuntimeStatus, error) {
-	selected, err := a.jdbcRuntime.ImportRuntimeArchive(path)
+func (a *App) ImportJDBCRuntimeArchive(path string) (service.JDBCRuntimeActivationResult, error) {
+	_, err := a.jdbcRuntime.ImportRuntimeArchive(path)
 	if err != nil {
-		return service.RuntimeStatus{}, err
+		return service.JDBCRuntimeActivationResult{}, err
 	}
-	return service.RuntimeStatus{Kind: selected.Kind, JavaPath: selected.JavaPath, Version: selected.Version}, nil
+	return a.activateJDBCRuntime("managed", "")
 }
 
 func (a *App) SelectJDBCRuntimeArchive() (string, error) {
@@ -1195,19 +1201,53 @@ func (a *App) GetJDBCAgentStatus() (service.JDBCAgentStatus, error) {
 	return status, nil
 }
 
-func (a *App) SetJDBCRuntimeMode(mode, path string) error {
+func (a *App) SetJDBCRuntimeMode(mode, path string) (service.JDBCRuntimeActivationResult, error) {
+	return a.activateJDBCRuntime(mode, path)
+}
+
+func (a *App) activateJDBCRuntime(mode, path string) (service.JDBCRuntimeActivationResult, error) {
 	if a.jdbcRuntime == nil {
-		return fmt.Errorf("JDBC 运行时服务未初始化")
+		return service.JDBCRuntimeActivationResult{}, fmt.Errorf("JDBC 运行时服务未初始化")
 	}
-	switch mode {
-	case "system":
-		a.jdbcRuntime.ConfigureSystemJava(path, true)
-	case "managed":
-		a.jdbcRuntime.UseSystemJava(false)
-	default:
-		return fmt.Errorf("不支持的 JDBC 运行时模式: %s", mode)
+	if a.jdbcAgentSupervisor == nil {
+		return service.JDBCRuntimeActivationResult{}, &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: "JDBC agent supervisor 未初始化"}
 	}
-	return nil
+	settings := a.jdbcRuntimeSettings
+	if settings == nil {
+		settings = a.configManager
+	}
+	if settings == nil {
+		return service.JDBCRuntimeActivationResult{}, fmt.Errorf("JDBC 运行时配置存储未初始化")
+	}
+
+	before := a.jdbcRuntime.Snapshot()
+	if err := a.jdbcRuntime.ApplyMode(mode, path); err != nil {
+		return service.JDBCRuntimeActivationResult{}, err
+	}
+	if err := settings.UpdateJDBCRuntimeSettings(mode, path); err != nil {
+		a.jdbcRuntime.Restore(before)
+		return service.JDBCRuntimeActivationResult{}, fmt.Errorf("保存 JDBC 运行时设置失败: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_, restartErr := a.jdbcAgentSupervisor.Restart(ctx)
+	result, statusErr := a.jdbcRuntimeActivationResult()
+	if statusErr != nil {
+		return result, statusErr
+	}
+	return result, restartErr
+}
+
+func (a *App) jdbcRuntimeActivationResult() (service.JDBCRuntimeActivationResult, error) {
+	selected, err := a.jdbcRuntime.SelectRuntime()
+	if err != nil {
+		return service.JDBCRuntimeActivationResult{}, err
+	}
+	return service.JDBCRuntimeActivationResult{
+		Runtime: service.RuntimeStatus{Kind: selected.Kind, JavaPath: selected.JavaPath, Version: selected.Version},
+		Agent:   a.jdbcAgentSupervisor.Status(),
+	}, nil
 }
 
 func (a *App) RestartJDBCAgent() error {

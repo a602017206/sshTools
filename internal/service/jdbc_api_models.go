@@ -30,3 +30,8 @@ type JDBCAgentStatus struct {
 	RuntimeKind RuntimeKind    `json:"runtimeKind"`
 	LastError   string         `json:"lastError"`
 }
+
+type JDBCRuntimeActivationResult struct {
+	Runtime RuntimeStatus   `json:"runtime"`
+	Agent   JDBCAgentStatus `json:"agent"`
+}
