@@ -27,12 +27,19 @@ JDBC 驱动管理实施计划已完成代码阶段，需要在发布前统一验
 
 ## 发布结论
 
-自动测试与构建门禁全部通过，但手工验收只达到两项通过、两项部分通过、一项未通过。当前版本具备可测试的 JDBC agent/H2 技术闭环，不具备计划目标所述的完整用户闭环，暂不建议按完整功能发布。
+自动测试与构建门禁全部通过，原先缺失的在线驱动安装、托管 JRE 安装、运行时归档导入、真实 gateway、Agent 状态和崩溃恢复均已补齐。当前代码具备 JDBC 管理自动化闭环；发布候选包仍需执行真实桌面点击验收。
+
+## 补全验证
+
+- `TestDriverInstallDownloadsProfileJarsAtomically`：验证推荐驱动全部下载和 checksum 通过后才提交。
+- `TestRuntimeServiceInstallsManagedRuntimeFromProvider`：验证托管 JRE 查询、下载、校验和导入。
+- `TestJDBCManagementAPIReturnsAgentAndRuntimeState`：验证运行时类型、Agent 四态、最后错误和文件选择器注入。
+- `TestJDBCAgentRecoversSessionAfterCrash`：验证真实 Java agent 被终止后，文件模式 H2 session 自动恢复并返回原数据。
+- macOS 构建前检查 `frontend/build/jdbc-agent.jar`，生产产物存在于 `build/bin/AHaSSHTools.app/Contents/MacOS/AHaSSHTools`。
 
 ## 剩余风险
 
-- 在线推荐驱动安装尚未实现。
-- 托管 JRE 下载和离线运行时归档导入尚未实现。
-- 应用初始化使用空 gateway client，agent 重启后不会自动建立新的 gRPC 连接。
 - 驱动管理页尚未完成真实桌面 UI 点击回归。
-- Gradle 8.5 构建存在面向 Gradle 9 的弃用警告；前端存在既有 Svelte 可访问性和大分块警告。
+- Maven Central、Adoptium API 或网络不可用时，在线安装需要转为离线路径。
+- 系统 Java/托管 JRE 的模式选择尚未持久化。
+- Gradle 8.5 构建存在面向 Gradle 9 的弃用警告；前端存在既有 Svelte 可访问性和大分块告警。

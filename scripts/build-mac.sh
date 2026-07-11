@@ -22,6 +22,13 @@ echo "$VERSION"
 
 echo "Building application..."
 
+AGENT_JAR="frontend/build/jdbc-agent.jar"
+if [ ! -f "$AGENT_JAR" ]; then
+    echo "错误：缺少待嵌入的 JDBC agent 资源：$AGENT_JAR"
+    echo "请先运行：cd frontend && npm run build"
+    exit 1
+fi
+
 wails build -clean "$VERSION"
 
 APP_PATH="./build/bin/AHaSSHTools.app"

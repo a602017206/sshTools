@@ -2,16 +2,16 @@
 
 ## 实施状态
 
-实施计划中的任务 1 至 14 已按顺序执行并分别提交。Go、Java agent、H2 端到端、前端和 Wails 生产构建均通过。最终验收同时确认，在线驱动安装、托管 JRE 安装/归档导入和应用运行时 gateway 自动重连仍是占位或未接线状态，因此当前版本不应按“完整 JDBC 管理闭环”发布。
+初始实施计划和后续补全计划均已按任务顺序执行。Go、Java agent、H2 端到端、崩溃恢复、前端和 Wails 生产构建均通过。推荐驱动在线安装、托管 JRE 安装与归档导入、真实文件选择器、Agent 状态和 session 自动恢复已经接线。
 
 ## 已实现架构
 
-- Go 侧提供 JDBC manifest、driver profile、本地目录、checksum 校验、离线驱动包导入、运行时选择、agent 进程管理和 gRPC gateway。
+- Go 侧提供内置 JDBC manifest、driver profile、本地目录、checksum 校验、在线安装、离线驱动包导入、运行时安装与选择、agent supervisor 和托管 gRPC gateway。
 - Java 21 agent 提供健康检查、JDBC classloader、连接注册、查询、表/字段元数据和会话关闭服务，并通过 shadow jar 打包。
 - 原有 Wails 数据库 API 保持不变，`DatabaseService` 可把连接、查询、元数据和关闭请求委托给 JDBC gateway。
-- Wails 暴露驱动列表、导入、校验、删除、运行时模式和 agent 重启 API。
-- Svelte 增加 JDBC 驱动管理页、首批数据库类型、错误分类提示和恢复操作。
-- H2 集成脚本覆盖离线包导入、真实 Java 子进程、gRPC、SQL、元数据和会话关闭。
+- Wails 暴露驱动列表、在线安装、离线导入、校验、删除、托管 JRE 安装、运行时归档导入、文件选择、Agent 状态和重启 API。
+- Svelte JDBC 驱动管理页使用系统文件选择器，展示运行时和 Agent 实际状态，并提供错误分类后的恢复操作。
+- H2 集成脚本覆盖离线包导入、真实 Java 子进程、gRPC、SQL、元数据、会话关闭和进程崩溃后的 session 恢复。
 
 ## 错误与日志
 
@@ -46,6 +46,11 @@
 ### Wails
 
 - 沙箱内 `wails build` 无法访问 `~/Library/Caches/go-build`，bindings 生成阶段失败；最小修复是在沙箱外重跑相同命令。第二次运行以退出码 0 完成应用编译和打包。
+- 补全计划中首次执行 `wails generate module` 同样因 Go 构建缓存权限失败；最小修复是在允许访问缓存的环境中重跑原命令，未手工伪造 bindings。
+
+### 前端构建与 Agent 暂存
+
+- `npm run build` 的 Vite 阶段成功后，`stage-jdbc-agent.sh` 因沙箱无法创建 `~/.gradle` wrapper 锁文件而退出；最小修复是在允许访问 Gradle 缓存的环境中重跑完整命令，确保未跳过 agent 构建与暂存。
 
 ## 最终验证
 
@@ -54,6 +59,7 @@
 | Go 全量测试 | 通过 | `go test ./...` |
 | Java agent 全量测试 | 通过 | `cd jdbc-agent && ./gradlew test` |
 | H2 端到端测试 | 通过 | `./scripts/test-jdbc-agent.sh` |
+| Agent 崩溃恢复 | 通过 | `TestJDBCAgentRecoversSessionAfterCrash` 杀死真实 Java 进程后重新查询成功 |
 | 前端生产构建 | 通过 | `cd frontend && npm run build` |
 | Wails 生产构建 | 通过 | `/Users/dingwei/go/bin/wails build` |
 
@@ -63,16 +69,14 @@ Wails 产物位于 `build/bin/AHaSSHTools.app`。前端仍有仓库既有的 Sve
 
 | 验收项 | 结论 | 说明 |
 | --- | --- | --- |
-| 无 Java 环境时提示安装托管 JRE | 部分通过 | 已有 `RUNTIME_MISSING` 按钮；托管 JRE 下载和归档导入仍未实现。 |
+| 无 Java 环境时提示安装托管 JRE | 自动验证通过 | 在线安装、归档导入和文件选择 API 均有测试；未执行真实桌面点击。 |
 | 离线导入 H2 包后查询 | 通过 | 集成测试已用真实 agent 完成导入、查询和元数据读取。 |
-| 驱动页安装、校验、卸载、重新导入 | 部分通过 | 离线导入、校验和删除 API 已接线；在线安装仍返回“暂未实现”，未进行真实 UI 点击验收。 |
+| 驱动页安装、校验、卸载、重新导入 | 自动验证通过 | 在线下载原子提交、离线导入、校验、删除和文件选择已接线；未执行真实桌面点击。 |
 | 连接表单选择首批 JDBC 类型 | 通过 | 表单包含 MySQL、PostgreSQL、SQLite、Oracle、SQL Server、达梦、人大金仓和 openGauss，前端构建通过。 |
-| agent 崩溃后提示重连 | 未通过 | 已有 `AGENT_UNAVAILABLE` 操作，但应用初始化 gateway client 为空，重启后没有重新创建 gRPC client 并注入 gateway。 |
+| agent 崩溃后恢复 session | 通过 | 集成测试杀死真实 agent 后由 supervisor 启动新进程、重新打开文件模式 H2 session 并完成原查询。 |
 
-## 后续最小工作
+## 后续工作
 
-1. 实现托管 JRE 下载、checksum 校验和离线运行时归档导入，并让 `SetJDBCRuntimeMode` 持久化选择。
-2. 实现推荐驱动在线下载，同时保留现有离线包导入作为无网络路径。
-3. 在应用启动和 agent 重启后创建真实 `GRPCJdbcAgentClient`，注入 gateway，并在进程退出时触发 `AGENT_UNAVAILABLE` 和重连。
-4. 完成真实 Wails UI 点击验收，补充文件选择器和日志查看器，避免依赖文本路径输入。
-
+1. 在发布候选包上执行真实 Wails 桌面点击验收，覆盖文件选择器、在线下载进度、错误提示和状态刷新。
+2. 为系统 Java 与托管 JRE 的选择增加持久化配置，避免每次启动重新选择。
+3. 处理仓库既有的 Svelte 可访问性和大分块告警，并评估 Gradle 9 升级。

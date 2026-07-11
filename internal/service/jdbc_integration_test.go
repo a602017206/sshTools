@@ -101,6 +101,75 @@ func TestJDBCAgentH2EndToEnd(t *testing.T) {
 	}
 }
 
+func TestJDBCAgentRecoversSessionAfterCrash(t *testing.T) {
+	root := t.TempDir()
+	paths := NewJDBCPaths(filepath.Join(root, ".sshtools"))
+	agentJar := os.Getenv("JDBC_AGENT_JAR")
+	if agentJar == "" {
+		agentJar = filepath.Join("..", "..", "jdbc-agent", "build", "libs", "sshtools-jdbc-agent-all.jar")
+	}
+	h2Jar := os.Getenv("H2_JAR")
+	if h2Jar == "" {
+		t.Fatal("H2_JAR is required")
+	}
+
+	zipPath := filepath.Join(root, "h2-driver-package.zip")
+	createIntegrationDriverPackage(t, zipPath, h2Jar)
+	installResult, err := NewDriverInstallService(paths).ImportOfflinePackage(zipPath)
+	if err != nil {
+		t.Fatalf("import H2 package failed: %v", err)
+	}
+
+	javaPath := "/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home/bin/java"
+	runtimeService := NewRuntimeService(paths, javaPath)
+	runtimeService.UseSystemJava(true)
+	manager := NewAgentProcessManager(nil, AgentProcessConfig{JavaPath: javaPath, AgentJar: agentJar})
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	handle, err := manager.Start(ctx)
+	if err != nil {
+		t.Fatalf("start agent failed: %v", err)
+	}
+	defer manager.Stop()
+
+	supervisor := NewJDBCAgentSupervisor(runtimeService, manager, nil, agentJar)
+	gateway := NewManagedJDBCGateway(supervisor)
+	gateway.SetProfileResolver(func(context.Context, config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return config.JDBCDriverProfile{
+			ID:          installResult.ProfileID,
+			Version:     installResult.Version,
+			DriverClass: "org.h2.Driver",
+			URLTemplate: "jdbc:h2:file:{database};WRITE_DELAY=0",
+			InstallPath: installResult.InstallPath,
+			Jars:        []config.JDBCJar{{Name: "h2.jar"}},
+		}, nil
+	})
+
+	databasePath := filepath.Join(root, "recovery-db")
+	cfg := config.DatabaseConfig{DBType: "h2", Database: databasePath}
+	if err := gateway.ConnectDatabase(ctx, "h2-recovery", cfg); err != nil {
+		t.Fatalf("connect database failed: %v", err)
+	}
+	if _, err := gateway.ExecuteQuery(ctx, "h2-recovery", "create table recovery_test (id int primary key, payload varchar(32))"); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	if _, err := gateway.ExecuteQuery(ctx, "h2-recovery", "insert into recovery_test values (1, 'after-restart')"); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+	if err := handle.Process.Stop(); err != nil {
+		t.Fatalf("stop agent process failed: %v", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	result, err := gateway.ExecuteQuery(ctx, "h2-recovery", "select payload from recovery_test where id = 1")
+	if err != nil {
+		t.Fatalf("query after agent crash failed: %v", err)
+	}
+	if len(result.Rows) != 1 || len(result.Rows[0]) != 1 || result.Rows[0][0] != "after-restart" {
+		t.Fatalf("unexpected recovery result: %+v", result)
+	}
+}
+
 func createIntegrationDriverPackage(t *testing.T, zipPath, h2Jar string) {
 	t.Helper()
 	jarBytes, err := os.ReadFile(h2Jar)
