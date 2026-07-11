@@ -42,3 +42,21 @@ func TestJDBCDriverManagerIncludesPollingAndLogViewer(t *testing.T) {
 		t.Fatal("status polling must not refresh the driver catalog")
 	}
 }
+
+func TestJDBCDriverManagerAlwaysExposesRuntimeSwitching(t *testing.T) {
+	data, err := os.ReadFile("frontend/src/components/JDBCDriverManager.svelte")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	headerEnd := strings.Index(source, "{#if errorMessage}")
+	if headerEnd < 0 {
+		t.Fatal("JDBC manager missing error section")
+	}
+	header := source[:headerEnd]
+	for _, handler := range []string{"useManagedRuntime", "importRuntimeArchive", "chooseJavaRuntime"} {
+		if !strings.Contains(header, "on:click={"+handler+"}") {
+			t.Errorf("normal runtime status missing %s action", handler)
+		}
+	}
+}

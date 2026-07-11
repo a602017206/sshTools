@@ -323,6 +323,9 @@
       {/if}
     </div>
     <div class="jdbc-manager__status-actions">
+      <button type="button" class="jdbc-manager__button" disabled={isBusy} on:click={useManagedRuntime}>托管 JRE</button>
+      <button type="button" class="jdbc-manager__button" disabled={isBusy} on:click={importRuntimeArchive}>导入 JRE</button>
+      <button type="button" class="jdbc-manager__button" disabled={isBusy} on:click={chooseJavaRuntime}>系统 Java</button>
       <button type="button" class="jdbc-manager__button" disabled={isBusy} on:click={loadData}>刷新</button>
       <button type="button" class="jdbc-manager__button jdbc-manager__button--primary" disabled={isBusy} on:click={restartAgent}>重启 agent</button>
     </div>
