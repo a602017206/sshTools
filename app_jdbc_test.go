@@ -240,6 +240,25 @@ func TestManagedRuntimeInstallAndImportActivateManagedMode(t *testing.T) {
 	}
 }
 
+func TestGetJDBCAgentLogTailUsesConfiguredPath(t *testing.T) {
+	paths := service.NewJDBCPaths(t.TempDir())
+	logPath := service.NewJDBCLogPaths(paths).Agent
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("agent-log"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{jdbcPaths: paths}
+	tail, err := app.GetJDBCAgentLogTail(1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tail.Content != "agent-log" {
+		t.Fatalf("unexpected log tail: %+v", tail)
+	}
+}
+
 type fakeJDBCRuntimeSettingsStore struct {
 	mode  string
 	path  string

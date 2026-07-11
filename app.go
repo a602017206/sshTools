@@ -1201,6 +1201,10 @@ func (a *App) GetJDBCAgentStatus() (service.JDBCAgentStatus, error) {
 	return status, nil
 }
 
+func (a *App) GetJDBCAgentLogTail(maxBytes int64) (service.JDBCLogTail, error) {
+	return service.NewJDBCLogTailService(a.jdbcPaths).Read(maxBytes)
+}
+
 func (a *App) SetJDBCRuntimeMode(mode, path string) (service.JDBCRuntimeActivationResult, error) {
 	return a.activateJDBCRuntime(mode, path)
 }

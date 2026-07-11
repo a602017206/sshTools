@@ -35,3 +35,9 @@ type JDBCRuntimeActivationResult struct {
 	Runtime RuntimeStatus   `json:"runtime"`
 	Agent   JDBCAgentStatus `json:"agent"`
 }
+
+type JDBCLogTail struct {
+	Content   string `json:"content"`
+	Truncated bool   `json:"truncated"`
+	Size      int64  `json:"size"`
+}
