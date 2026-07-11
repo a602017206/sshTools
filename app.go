@@ -138,6 +138,10 @@ func buildJDBCServices(root string, agentJar []byte, deps jdbcServiceDependencie
 		systemJavaPath = "/usr/bin/java"
 	}
 	runtimeService := service.NewRuntimeService(paths, systemJavaPath)
+	runtimeService.ConfigureManagedInstaller(
+		service.NewAdoptiumRuntimeProvider(nil, ""),
+		service.NewArtifactDownloader(service.ArtifactDownloadOptions{}),
+	)
 	starter := deps.starter
 	if starter == nil {
 		starter = service.NewAgentProcessManager(nil, service.AgentProcessConfig{})
@@ -1096,6 +1100,14 @@ func (a *App) GetJDBCRuntimeStatus() (service.RuntimeStatus, error) {
 		JavaPath: selected.JavaPath,
 		Version:  selected.Version,
 	}, nil
+}
+
+func (a *App) InstallJDBCManagedRuntime() (service.RuntimeStatus, error) {
+	selected, err := a.jdbcRuntime.InstallManagedRuntime(context.Background())
+	if err != nil {
+		return service.RuntimeStatus{}, err
+	}
+	return service.RuntimeStatus{Kind: selected.Kind, JavaPath: selected.JavaPath, Version: selected.Version}, nil
 }
 
 func (a *App) SetJDBCRuntimeMode(mode, path string) error {

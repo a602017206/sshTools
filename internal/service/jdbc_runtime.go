@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,6 +29,8 @@ type RuntimeService struct {
 	paths          JDBCPaths
 	systemJavaPath string
 	useSystemJava  bool
+	provider       ManagedRuntimeProvider
+	fetcher        ArtifactFetcher
 }
 
 func NewRuntimeService(paths JDBCPaths, systemJavaPath string) *RuntimeService {
@@ -36,6 +39,38 @@ func NewRuntimeService(paths JDBCPaths, systemJavaPath string) *RuntimeService {
 
 func (s *RuntimeService) UseSystemJava(enabled bool) {
 	s.useSystemJava = enabled
+}
+
+func (s *RuntimeService) ConfigureManagedInstaller(provider ManagedRuntimeProvider, fetcher ArtifactFetcher) {
+	s.provider = provider
+	s.fetcher = fetcher
+}
+
+func (s *RuntimeService) InstallManagedRuntime(ctx context.Context) (*RuntimeSelection, error) {
+	if s.provider == nil || s.fetcher == nil {
+		return nil, fmt.Errorf("托管 JDBC JRE 安装器未配置")
+	}
+	pkg, err := s.provider.Latest(ctx, 21)
+	if err != nil {
+		return nil, err
+	}
+	archiveName := filepath.Base(pkg.Name)
+	if archiveName == "." || archiveName == "" || archiveName != pkg.Name {
+		return nil, fmt.Errorf("托管 JDBC JRE 包名无效: %s", pkg.Name)
+	}
+	if err := os.MkdirAll(s.paths.RuntimesDir, 0o700); err != nil {
+		return nil, fmt.Errorf("创建 JDBC 运行时目录失败: %w", err)
+	}
+	downloadDir, err := os.MkdirTemp(s.paths.RuntimesDir, ".runtime-download-*")
+	if err != nil {
+		return nil, fmt.Errorf("创建 JDBC JRE 下载目录失败: %w", err)
+	}
+	defer os.RemoveAll(downloadDir)
+	archivePath := filepath.Join(downloadDir, archiveName)
+	if err := s.fetcher.Download(ctx, pkg.URL, pkg.SHA256, archivePath); err != nil {
+		return nil, fmt.Errorf("下载托管 JDBC JRE 失败: %w", err)
+	}
+	return s.ImportRuntimeArchive(archivePath)
 }
 
 func (s *RuntimeService) SelectRuntime() (*RuntimeSelection, error) {

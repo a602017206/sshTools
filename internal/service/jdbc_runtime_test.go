@@ -2,6 +2,8 @@ package service
 
 import (
 	"archive/zip"
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,6 +29,68 @@ func TestRuntimeServicePrefersManagedRuntimeThenSystemRuntime(t *testing.T) {
 	if selected.Kind != RuntimeKindManaged {
 		t.Fatalf("expected managed runtime, got %s", selected.Kind)
 	}
+}
+
+func TestRuntimeServiceInstallsManagedRuntime(t *testing.T) {
+	root := t.TempDir()
+	paths := NewJDBCPaths(filepath.Join(root, ".sshtools"))
+	sourceArchive := filepath.Join(root, "temurin-21.zip")
+	createRuntimeZip(t, sourceArchive, map[string]runtimeZipEntry{
+		"jdk-21.0.7/bin/java": {body: "#!/bin/sh\n", mode: 0o755},
+	})
+	provider := &fixedManagedRuntimeProvider{runtimePackage: ManagedRuntimePackage{
+		Version: "21.0.7+6",
+		Name:    "temurin-21.zip",
+		URL:     "https://example.invalid/temurin-21.zip",
+		SHA256:  "fixed-checksum",
+	}}
+	fetcher := &copyingArtifactFetcher{source: sourceArchive}
+	service := NewRuntimeService(paths, "")
+	service.ConfigureManagedInstaller(provider, fetcher)
+
+	selected, err := service.InstallManagedRuntime(context.Background())
+	if err != nil {
+		t.Fatalf("install managed runtime failed: %v", err)
+	}
+	if selected.Kind != RuntimeKindManaged || selected.Version != "21.0.7" {
+		t.Fatalf("unexpected selected runtime: %+v", selected)
+	}
+	if fetcher.calls != 1 || fetcher.url != provider.runtimePackage.URL || fetcher.sha256 != provider.runtimePackage.SHA256 {
+		t.Fatalf("unexpected artifact fetch: %+v", fetcher)
+	}
+}
+
+type fixedManagedRuntimeProvider struct {
+	runtimePackage ManagedRuntimePackage
+}
+
+func (p *fixedManagedRuntimeProvider) Latest(context.Context, int) (ManagedRuntimePackage, error) {
+	return p.runtimePackage, nil
+}
+
+type copyingArtifactFetcher struct {
+	source string
+	calls  int
+	url    string
+	sha256 string
+}
+
+func (f *copyingArtifactFetcher) Download(_ context.Context, url, sha256, target string) error {
+	f.calls++
+	f.url = url
+	f.sha256 = sha256
+	source, err := os.Open(f.source)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	destination, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer destination.Close()
+	_, err = io.Copy(destination, source)
+	return err
 }
 
 func TestRuntimeServiceImportsJREArchive(t *testing.T) {
