@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // ConnectionConfig represents a saved connection (SSH, Database, Docker)
@@ -42,6 +43,8 @@ type AppSettings struct {
 	CompactMode        bool   `json:"compact_mode"`
 	ReducedMotion      bool   `json:"reduced_motion"`
 	SidebarWidth       int    `json:"sidebar_width"`
+	JDBCRuntimeMode    string `json:"jdbc_runtime_mode"`
+	JDBCSystemJavaPath string `json:"jdbc_system_java_path"`
 
 	// Monitor panel settings
 	MonitorCollapsed       bool `json:"monitor_collapsed"`
@@ -229,6 +232,28 @@ func (cm *ConfigManager) UpdateConnection(conn ConnectionConfig) error {
 // GetSettings returns the current application settings
 func (cm *ConfigManager) GetSettings() AppSettings {
 	return cm.config.Settings
+}
+
+func (cm *ConfigManager) UpdateJDBCRuntimeSettings(mode, javaPath string) error {
+	mode = strings.TrimSpace(mode)
+	javaPath = strings.TrimSpace(javaPath)
+	if mode != "" && mode != "managed" && mode != "system" {
+		return fmt.Errorf("不支持的 JDBC 运行时模式: %s", mode)
+	}
+	if mode == "system" && javaPath == "" {
+		return fmt.Errorf("系统 Java 路径不能为空")
+	}
+
+	previousMode := cm.config.Settings.JDBCRuntimeMode
+	previousPath := cm.config.Settings.JDBCSystemJavaPath
+	cm.config.Settings.JDBCRuntimeMode = mode
+	cm.config.Settings.JDBCSystemJavaPath = javaPath
+	if err := cm.Save(); err != nil {
+		cm.config.Settings.JDBCRuntimeMode = previousMode
+		cm.config.Settings.JDBCSystemJavaPath = previousPath
+		return err
+	}
+	return nil
 }
 
 // UpdateSettings updates application settings (partial update)
