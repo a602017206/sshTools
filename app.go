@@ -33,19 +33,20 @@ type App struct {
 	ctx context.Context
 
 	// Services
-	connectionService *service.ConnectionService
-	sessionService    *service.SessionService
-	sftpService       *service.SFTPService
-	monitorService    *service.MonitorService
-	settingsService   *service.SettingsService
-	devToolsService   *service.DevToolsService
-	databaseService   *service.DatabaseService
-	jdbcPaths         service.JDBCPaths
-	jdbcCatalog       *service.DriverCatalogService
-	jdbcInstaller     *service.DriverInstallService
-	jdbcRuntime       *service.RuntimeService
-	jdbcAgentManager  *service.AgentProcessManager
-	configManager     *config.ConfigManager
+	connectionService   *service.ConnectionService
+	sessionService      *service.SessionService
+	sftpService         *service.SFTPService
+	monitorService      *service.MonitorService
+	settingsService     *service.SettingsService
+	devToolsService     *service.DevToolsService
+	databaseService     *service.DatabaseService
+	jdbcPaths           service.JDBCPaths
+	jdbcCatalog         *service.DriverCatalogService
+	jdbcInstaller       *service.DriverInstallService
+	jdbcRuntime         *service.RuntimeService
+	jdbcAgentSupervisor *service.JDBCAgentSupervisor
+	jdbcGateway         *service.ManagedJDBCGateway
+	configManager       *config.ConfigManager
 }
 
 // NewApp creates a new App application struct
@@ -80,39 +81,95 @@ func (a *App) startup(ctx context.Context) {
 	a.monitorService = service.NewMonitorService(sessionManager)
 	a.settingsService = service.NewSettingsService(configManager)
 	a.devToolsService = service.NewDevToolsService()
-	a.initJDBCServices()
-	a.databaseService = service.NewDatabaseServiceWithGateway(a.configManager, a.newJDBCGatewayService())
+	agentJar, readAgentErr := assets.ReadFile("frontend/build/jdbc-agent.jar")
+	if readAgentErr != nil {
+		fmt.Printf("Failed to read embedded JDBC agent: %v\n", readAgentErr)
+	}
+	if err := a.initJDBCServices(agentJar); err != nil {
+		fmt.Printf("Failed to initialize JDBC services: %v\n", err)
+	}
+	a.databaseService = service.NewDatabaseServiceWithGateway(a.configManager, a.jdbcGateway)
 }
 
-func (a *App) initJDBCServices() {
+func (a *App) initJDBCServices(agentJar []byte) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		homeDir = "."
 	}
-	a.jdbcPaths = service.NewJDBCPaths(filepath.Join(homeDir, ".sshtools"))
-	a.jdbcCatalog = service.NewDriverCatalogService(a.jdbcPaths.Manifest, a.jdbcPaths.DriversDir)
-	a.jdbcInstaller = service.NewDriverInstallService(a.jdbcPaths)
-	a.jdbcRuntime = service.NewRuntimeService(a.jdbcPaths, "/usr/bin/java")
-	a.jdbcAgentManager = service.NewAgentProcessManager(nil, service.AgentProcessConfig{
-		JavaPath: "/usr/bin/java",
-		AgentJar: filepath.Join(a.jdbcPaths.AgentDir, "jdbc-agent.jar"),
-	})
+	bundle, buildErr := buildJDBCServices(filepath.Join(homeDir, ".sshtools"), agentJar, jdbcServiceDependencies{})
+	a.jdbcPaths = bundle.paths
+	a.jdbcCatalog = bundle.catalog
+	a.jdbcInstaller = bundle.installer
+	a.jdbcRuntime = bundle.runtime
+	a.jdbcAgentSupervisor = bundle.supervisor
+	a.jdbcGateway = bundle.gateway
+	return buildErr
 }
 
-func (a *App) newJDBCGatewayService() *service.JdbcGatewayService {
-	gateway := service.NewJdbcGatewayService(nil, "")
-	gateway.SetProfileResolver(func(ctx context.Context, cfg config.DatabaseConfig) (config.JDBCDriverProfile, error) {
-		_, profile, err := a.jdbcCatalog.GetRecommendedProfile(cfg.DBType)
-		return dereferenceJDBCProfile(profile), err
-	})
-	return gateway
+type jdbcServiceDependencies struct {
+	systemJavaPath string
+	starter        service.JDBCAgentStarter
+	dialer         service.JDBCAgentDialer
 }
 
-func dereferenceJDBCProfile(profile *config.JDBCDriverProfile) config.JDBCDriverProfile {
-	if profile == nil {
-		return config.JDBCDriverProfile{}
+type jdbcServiceBundle struct {
+	paths      service.JDBCPaths
+	catalog    *service.DriverCatalogService
+	installer  *service.DriverInstallService
+	runtime    *service.RuntimeService
+	supervisor *service.JDBCAgentSupervisor
+	gateway    *service.ManagedJDBCGateway
+}
+
+func buildJDBCServices(root string, agentJar []byte, deps jdbcServiceDependencies) (*jdbcServiceBundle, error) {
+	paths := service.NewJDBCPaths(root)
+	agentPath := filepath.Join(paths.AgentDir, "jdbc-agent.jar")
+	var artifactErr error
+	if len(agentJar) == 0 {
+		artifactErr = fmt.Errorf("嵌入的 JDBC agent jar 为空")
+	} else {
+		agentPath, artifactErr = service.NewAgentArtifactInstaller(paths).Install(agentJar)
 	}
-	return *profile
+
+	catalog := service.NewDriverCatalogService(paths.Manifest, paths.DriversDir)
+	installer := service.NewDriverInstallService(paths)
+	systemJavaPath := deps.systemJavaPath
+	if systemJavaPath == "" {
+		systemJavaPath = "/usr/bin/java"
+	}
+	runtimeService := service.NewRuntimeService(paths, systemJavaPath)
+	starter := deps.starter
+	if starter == nil {
+		starter = service.NewAgentProcessManager(nil, service.AgentProcessConfig{})
+	}
+	supervisor := service.NewJDBCAgentSupervisor(runtimeService, starter, deps.dialer, agentPath)
+	gateway := service.NewManagedJDBCGateway(supervisor)
+	gateway.SetProfileResolver(func(ctx context.Context, cfg config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		driver, profile, err := catalog.GetRecommendedProfile(cfg.DBType)
+		if err != nil {
+			return config.JDBCDriverProfile{}, err
+		}
+		resolved := *profile
+		resolved.InstallPath = filepath.Join(paths.DriversDir, driver.ID, profile.Version)
+		return resolved, nil
+	})
+
+	return &jdbcServiceBundle{
+		paths:      paths,
+		catalog:    catalog,
+		installer:  installer,
+		runtime:    runtimeService,
+		supervisor: supervisor,
+		gateway:    gateway,
+	}, artifactErr
+}
+
+func (a *App) shutdown(context.Context) {
+	if a.jdbcAgentSupervisor != nil {
+		if err := a.jdbcAgentSupervisor.Close(); err != nil {
+			fmt.Printf("Failed to close JDBC agent: %v\n", err)
+		}
+	}
 }
 
 // Greet returns a greeting for the given name
@@ -1055,10 +1112,12 @@ func (a *App) SetJDBCRuntimeMode(mode, path string) error {
 }
 
 func (a *App) RestartJDBCAgent() error {
-	if err := a.jdbcAgentManager.Stop(); err != nil {
-		return err
+	if a.jdbcAgentSupervisor == nil {
+		return &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: "JDBC agent supervisor 未初始化"}
 	}
-	_, err := a.jdbcAgentManager.Start(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_, err := a.jdbcAgentSupervisor.Restart(ctx)
 	return err
 }
 

@@ -93,11 +93,30 @@ func TestDatabaseServiceDelegatesConnectToJdbcGateway(t *testing.T) {
 	}
 }
 
+func TestDatabaseServiceTestConnectionUsesGateway(t *testing.T) {
+	gateway := &fakeJdbcGateway{}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+
+	err := ds.TestConnection("db.example", 1521, "scott", "tiger", "oracle", "orcl")
+	if err != nil {
+		t.Fatalf("test connection failed: %v", err)
+	}
+	if gateway.connectCalls != 1 || gateway.closeCalls != 1 {
+		t.Fatalf("expected temporary gateway session, connect=%d close=%d", gateway.connectCalls, gateway.closeCalls)
+	}
+	if gateway.lastDBType != "oracle" {
+		t.Fatalf("expected oracle gateway config, got %s", gateway.lastDBType)
+	}
+}
+
 type fakeJdbcGateway struct {
-	lastDBType string
+	lastDBType   string
+	connectCalls int
+	closeCalls   int
 }
 
 func (g *fakeJdbcGateway) ConnectDatabase(ctx context.Context, sessionID string, cfg config.DatabaseConfig) error {
+	g.connectCalls++
 	g.lastDBType = cfg.DBType
 	return nil
 }
@@ -119,6 +138,7 @@ func (g *fakeJdbcGateway) GetTableSchema(ctx context.Context, sessionID, table s
 }
 
 func (g *fakeJdbcGateway) CloseDatabase(ctx context.Context, sessionID string) error {
+	g.closeCalls++
 	return nil
 }
 

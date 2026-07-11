@@ -516,6 +516,18 @@ func (ds *DatabaseService) TestConnection(host string, port int, user, password,
 		Database: databaseName,
 		Timeout:  10 * time.Second,
 	}
+	if ds.gateway != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
+		defer cancel()
+		sessionID := fmt.Sprintf("jdbc-connection-test-%d", time.Now().UnixNano())
+		if err := ds.gateway.ConnectDatabase(ctx, sessionID, cfg); err != nil {
+			return err
+		}
+		if err := ds.gateway.CloseDatabase(ctx, sessionID); err != nil {
+			return fmt.Errorf("关闭 JDBC 测试连接失败: %w", err)
+		}
+		return nil
+	}
 
 	dsn, err := ds.GetDSN(cfg)
 	if err != nil {
