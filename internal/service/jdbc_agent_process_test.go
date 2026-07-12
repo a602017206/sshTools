@@ -61,6 +61,9 @@ func TestExecAgentCommandRunnerWritesLifecycleLog(t *testing.T) {
 	for process.Alive() && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
+	if err := process.Stop(); err != nil {
+		t.Fatalf("stopping an exited process should be idempotent: %v", err)
+	}
 	data, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatal(err)

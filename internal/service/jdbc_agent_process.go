@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -172,7 +173,14 @@ func (p *execAgentProcess) Stop() error {
 	if p.cmd == nil || p.cmd.Process == nil {
 		return nil
 	}
-	return p.cmd.Process.Kill()
+	if !p.Alive() {
+		return nil
+	}
+	err := p.cmd.Process.Kill()
+	if errors.Is(err, os.ErrProcessDone) {
+		return nil
+	}
+	return err
 }
 
 func (p *execAgentProcess) Alive() bool {
