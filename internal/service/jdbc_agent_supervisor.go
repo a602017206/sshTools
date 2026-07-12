@@ -16,6 +16,10 @@ type JDBCAgentStarter interface {
 	Stop() error
 }
 
+type JDBCAgentHealthChecker interface {
+	Health(ctx context.Context) error
+}
+
 type JDBCAgentDialer interface {
 	Dial(ctx context.Context, host string, port int) (JdbcAgentClient, func() error, error)
 }
@@ -30,6 +34,7 @@ type JDBCAgentSupervisor struct {
 	starter  JDBCAgentStarter
 	dialer   JDBCAgentDialer
 	agentJar string
+	agentLog string
 
 	mu          sync.Mutex
 	connection  *JDBCAgentConnection
@@ -38,15 +43,20 @@ type JDBCAgentSupervisor struct {
 	status      JDBCAgentStatus
 }
 
-func NewJDBCAgentSupervisor(runtime JDBCRuntimeSelector, starter JDBCAgentStarter, dialer JDBCAgentDialer, agentJar string) *JDBCAgentSupervisor {
+func NewJDBCAgentSupervisor(runtime JDBCRuntimeSelector, starter JDBCAgentStarter, dialer JDBCAgentDialer, agentJar string, agentLog ...string) *JDBCAgentSupervisor {
 	if dialer == nil {
 		dialer = grpcJDBCAgentDialer{}
+	}
+	logPath := ""
+	if len(agentLog) > 0 {
+		logPath = agentLog[0]
 	}
 	return &JDBCAgentSupervisor{
 		runtime:  runtime,
 		starter:  starter,
 		dialer:   dialer,
 		agentJar: agentJar,
+		agentLog: logPath,
 		status:   JDBCAgentStatus{State: JDBCAgentStateStopped, RuntimeKind: RuntimeKindMissing},
 	}
 }
@@ -55,6 +65,34 @@ func (s *JDBCAgentSupervisor) Status() JDBCAgentStatus {
 	s.statusMu.RLock()
 	defer s.statusMu.RUnlock()
 	return s.status
+}
+
+func (s *JDBCAgentSupervisor) RefreshStatus(ctx context.Context) JDBCAgentStatus {
+	status := s.Status()
+	if status.State != JDBCAgentStateRunning {
+		return status
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status = s.Status()
+	if status.State != JDBCAgentStateRunning {
+		return status
+	}
+	checker, ok := s.starter.(JDBCAgentHealthChecker)
+	if !ok {
+		return status
+	}
+	if err := checker.Health(ctx); err != nil {
+		if s.closeClient != nil {
+			_ = s.closeClient()
+		}
+		_ = s.starter.Stop()
+		s.connection = nil
+		s.closeClient = nil
+		s.setStatus(JDBCAgentStateFailed, status.RuntimeKind, err.Error())
+		return s.Status()
+	}
+	return status
 }
 
 func (s *JDBCAgentSupervisor) Client(ctx context.Context) (*JDBCAgentConnection, error) {
@@ -115,6 +153,7 @@ func (s *JDBCAgentSupervisor) clientLocked(ctx context.Context) (*JDBCAgentConne
 	handle, err := s.starter.StartAgent(context.Background(), AgentProcessConfig{
 		JavaPath: selected.JavaPath,
 		AgentJar: s.agentJar,
+		LogPath:  s.agentLog,
 	})
 	if err != nil {
 		mapped := &JDBCError{Code: JDBCErrorAgentUnavailable, Message: err.Error(), Err: err}

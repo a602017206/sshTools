@@ -6,14 +6,18 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type AgentProcessConfig struct {
 	JavaPath string
 	AgentJar string
+	LogPath  string
 }
 
 type AgentProcessHandle struct {
@@ -24,10 +28,15 @@ type AgentProcessHandle struct {
 
 type AgentProcess interface {
 	Stop() error
+	Alive() bool
 }
 
 type AgentCommandRunner interface {
 	Start(ctx context.Context, name string, args ...string) (AgentProcess, error)
+}
+
+type AgentCommandOutputRunner interface {
+	StartWithOutput(ctx context.Context, name, logPath string, args ...string) (AgentProcess, error)
 }
 
 type AgentProcessManager struct {
@@ -69,16 +78,13 @@ func (m *AgentProcessManager) startLocked(ctx context.Context, config AgentProce
 	if err != nil {
 		return nil, err
 	}
-	process, err := m.runner.Start(
-		ctx,
-		config.JavaPath,
-		"-jar",
-		config.AgentJar,
-		"--port",
-		strconv.Itoa(port),
-		"--token",
-		token,
-	)
+	args := []string{"-jar", config.AgentJar, "--port", strconv.Itoa(port), "--token", token}
+	var process AgentProcess
+	if outputRunner, ok := m.runner.(AgentCommandOutputRunner); ok && config.LogPath != "" {
+		process, err = outputRunner.StartWithOutput(ctx, config.JavaPath, config.LogPath, args...)
+	} else {
+		process, err = m.runner.Start(ctx, config.JavaPath, args...)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("启动 JDBC agent 失败: %w", err)
 	}
@@ -101,8 +107,12 @@ func (m *AgentProcessManager) Stop() error {
 func (m *AgentProcessManager) Health(context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.handle == nil {
+	if m.handle == nil || m.handle.Process == nil {
 		return fmt.Errorf("JDBC agent 未启动")
+	}
+	if !m.handle.Process.Alive() {
+		m.handle = nil
+		return fmt.Errorf("JDBC agent 进程已退出")
 	}
 	return nil
 }
@@ -110,22 +120,71 @@ func (m *AgentProcessManager) Health(context.Context) error {
 type execAgentCommandRunner struct{}
 
 func (execAgentCommandRunner) Start(ctx context.Context, name string, args ...string) (AgentProcess, error) {
+	return startExecAgentProcess(ctx, name, nil, args...)
+}
+
+func (execAgentCommandRunner) StartWithOutput(ctx context.Context, name, logPath string, args ...string) (AgentProcess, error) {
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+		return nil, fmt.Errorf("创建 JDBC agent 日志目录失败: %w", err)
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("打开 JDBC agent 日志失败: %w", err)
+	}
+	return startExecAgentProcess(ctx, name, logFile, args...)
+}
+
+func startExecAgentProcess(ctx context.Context, name string, logFile *os.File, args ...string) (AgentProcess, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	if logFile != nil {
+		if _, err := fmt.Fprintf(logFile, "%s JDBC agent 启动: executable=%s\n", time.Now().Format(time.RFC3339), name); err != nil {
+			_ = logFile.Close()
+			return nil, fmt.Errorf("写入 JDBC agent 启动日志失败: %w", err)
+		}
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+	}
 	if err := cmd.Start(); err != nil {
+		if logFile != nil {
+			_ = logFile.Close()
+		}
 		return nil, err
 	}
-	return execAgentProcess{cmd: cmd}, nil
+	process := &execAgentProcess{cmd: cmd, done: make(chan struct{}), logFile: logFile}
+	go func() {
+		waitErr := cmd.Wait()
+		if process.logFile != nil {
+			_, _ = fmt.Fprintf(process.logFile, "%s JDBC agent 退出: %v\n", time.Now().Format(time.RFC3339), waitErr)
+			_ = process.logFile.Close()
+		}
+		close(process.done)
+	}()
+	return process, nil
 }
 
 type execAgentProcess struct {
-	cmd *exec.Cmd
+	cmd     *exec.Cmd
+	done    chan struct{}
+	logFile *os.File
 }
 
-func (p execAgentProcess) Stop() error {
+func (p *execAgentProcess) Stop() error {
 	if p.cmd == nil || p.cmd.Process == nil {
 		return nil
 	}
 	return p.cmd.Process.Kill()
+}
+
+func (p *execAgentProcess) Alive() bool {
+	if p == nil || p.done == nil {
+		return false
+	}
+	select {
+	case <-p.done:
+		return false
+	default:
+		return true
+	}
 }
 
 func chooseLocalPort() (int, error) {

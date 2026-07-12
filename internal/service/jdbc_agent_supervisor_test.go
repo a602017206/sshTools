@@ -12,7 +12,7 @@ func TestJDBCAgentSupervisorStartsOnceAndReturnsAuthenticatedClient(t *testing.T
 	}
 	starter := &supervisorAgentStarter{}
 	dialer := &supervisorAgentDialer{}
-	supervisor := NewJDBCAgentSupervisor(runtimeSelector, starter, dialer, "/agent/jdbc-agent.jar")
+	supervisor := NewJDBCAgentSupervisor(runtimeSelector, starter, dialer, "/agent/jdbc-agent.jar", "/logs/jdbc-agent.log")
 
 	first, err := supervisor.Client(context.Background())
 	if err != nil {
@@ -37,6 +37,9 @@ func TestJDBCAgentSupervisorStartsOnceAndReturnsAuthenticatedClient(t *testing.T
 	}
 	if starter.lastConfig.JavaPath != "/managed/bin/java" || starter.lastConfig.AgentJar != "/agent/jdbc-agent.jar" {
 		t.Fatalf("unexpected process config: %+v", starter.lastConfig)
+	}
+	if starter.lastConfig.LogPath != "/logs/jdbc-agent.log" {
+		t.Fatalf("unexpected agent log path: %q", starter.lastConfig.LogPath)
 	}
 }
 
@@ -74,6 +77,26 @@ func TestJDBCAgentSupervisorRestartClosesClientAndRotatesProcess(t *testing.T) {
 	}
 }
 
+func TestJDBCAgentSupervisorRefreshStatusDetectsExitedProcess(t *testing.T) {
+	runtimeSelector := &supervisorRuntimeSelector{
+		selection: &RuntimeSelection{Kind: RuntimeKindManaged, JavaPath: "/managed/bin/java", Version: "21"},
+	}
+	starter := &supervisorAgentStarter{}
+	supervisor := NewJDBCAgentSupervisor(runtimeSelector, starter, &supervisorAgentDialer{}, "/agent/jdbc-agent.jar")
+	if _, err := supervisor.Client(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	starter.healthErr = fmt.Errorf("JDBC agent 进程已退出")
+	status := supervisor.RefreshStatus(context.Background())
+	if status.State != JDBCAgentStateFailed || status.LastError == "" {
+		t.Fatalf("expected failed status after process exit, got %+v", status)
+	}
+	if supervisor.connection != nil {
+		t.Fatal("dead agent connection was not cleared")
+	}
+}
+
 type supervisorRuntimeSelector struct {
 	selection *RuntimeSelection
 	err       error
@@ -89,6 +112,7 @@ type supervisorAgentStarter struct {
 	startCalls int
 	stopCalls  int
 	lastConfig AgentProcessConfig
+	healthErr  error
 }
 
 func (s *supervisorAgentStarter) StartAgent(_ context.Context, config AgentProcessConfig) (*AgentProcessHandle, error) {
@@ -97,13 +121,17 @@ func (s *supervisorAgentStarter) StartAgent(_ context.Context, config AgentProce
 	return &AgentProcessHandle{
 		Port:    47000 + s.startCalls,
 		Token:   fmt.Sprintf("token-%d", s.startCalls),
-		Process: fakeAgentProcess{},
+		Process: &fakeAgentProcess{alive: true},
 	}, nil
 }
 
 func (s *supervisorAgentStarter) Stop() error {
 	s.stopCalls++
 	return nil
+}
+
+func (s *supervisorAgentStarter) Health(context.Context) error {
+	return s.healthErr
 }
 
 type supervisorAgentDialer struct {

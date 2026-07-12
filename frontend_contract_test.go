@@ -60,3 +60,18 @@ func TestJDBCDriverManagerAlwaysExposesRuntimeSwitching(t *testing.T) {
 		}
 	}
 }
+
+func TestJDBCDriverManagerAlwaysExposesAgentLog(t *testing.T) {
+	data, err := os.ReadFile("frontend/src/components/JDBCDriverManager.svelte")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	headerEnd := strings.Index(source, "{#if errorMessage}")
+	if headerEnd < 0 {
+		t.Fatal("JDBC manager missing error section")
+	}
+	if !strings.Contains(source[:headerEnd], "on:click={openAgentLog}") {
+		t.Fatal("normal agent status missing log action")
+	}
+}

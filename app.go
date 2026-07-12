@@ -190,7 +190,7 @@ func buildJDBCServices(root string, agentJar []byte, deps jdbcServiceDependencie
 	if starter == nil {
 		starter = service.NewAgentProcessManager(nil, service.AgentProcessConfig{})
 	}
-	supervisor := service.NewJDBCAgentSupervisor(runtimeService, starter, deps.dialer, agentPath)
+	supervisor := service.NewJDBCAgentSupervisor(runtimeService, starter, deps.dialer, agentPath, service.NewJDBCLogPaths(paths).Agent)
 	gateway := service.NewManagedJDBCGateway(supervisor)
 	gateway.SetProfileResolver(func(ctx context.Context, cfg config.DatabaseConfig) (config.JDBCDriverProfile, error) {
 		driver, profile, err := catalog.GetRecommendedProfile(cfg.DBType)
@@ -1190,7 +1190,7 @@ func (a *App) GetJDBCAgentStatus() (service.JDBCAgentStatus, error) {
 	if a.jdbcAgentSupervisor == nil {
 		return service.JDBCAgentStatus{}, &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: "JDBC agent supervisor 未初始化"}
 	}
-	status := a.jdbcAgentSupervisor.Status()
+	status := a.jdbcAgentSupervisor.RefreshStatus(context.Background())
 	if a.jdbcRuntime != nil {
 		selected, err := a.jdbcRuntime.SelectRuntime()
 		if err != nil {
