@@ -57,6 +57,37 @@ func TestManagedJDBCGatewayReconnectsSessionAfterAgentUnavailable(t *testing.T) 
 	}
 }
 
+func TestManagedJDBCGatewayListsMySQLDatabasesThroughQuery(t *testing.T) {
+	client := &managedGatewayClient{queryResult: &jdbcproto.QueryResult{
+		Columns: []string{"Database"},
+		Rows: []*jdbcproto.Row{
+			{Values: []string{"information_schema"}},
+			{Values: []string{"app"}},
+		},
+	}}
+	supervisor := &managedGatewaySupervisor{
+		current: &JDBCAgentConnection{Client: client, Token: "token"},
+	}
+	gateway := NewManagedJDBCGateway(supervisor)
+	gateway.SetProfileResolver(func(context.Context, config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return config.JDBCDriverProfile{ID: "mysql", DriverClass: "com.mysql.cj.jdbc.Driver"}, nil
+	})
+	if err := gateway.ConnectDatabase(context.Background(), "mysql-session", config.DatabaseConfig{DBType: "mysql"}); err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+
+	databases, err := gateway.ListDatabases(context.Background(), "mysql-session")
+	if err != nil {
+		t.Fatalf("list databases failed: %v", err)
+	}
+	if len(databases) != 2 || databases[0] != "information_schema" || databases[1] != "app" {
+		t.Fatalf("unexpected databases: %v", databases)
+	}
+	if len(client.queryRequests) != 1 || client.queryRequests[0].GetSql() != "SHOW DATABASES" {
+		t.Fatalf("unexpected database query: %+v", client.queryRequests)
+	}
+}
+
 type managedGatewaySupervisor struct {
 	current      *JDBCAgentConnection
 	restarted    *JDBCAgentConnection
@@ -74,10 +105,11 @@ func (s *managedGatewaySupervisor) Restart(context.Context) (*JDBCAgentConnectio
 }
 
 type managedGatewayClient struct {
-	openRequests []*jdbcproto.OpenSessionRequest
-	queryErr     error
-	queryResult  *jdbcproto.QueryResult
-	queryCalls   int
+	openRequests  []*jdbcproto.OpenSessionRequest
+	queryRequests []*jdbcproto.ExecuteQueryRequest
+	queryErr      error
+	queryResult   *jdbcproto.QueryResult
+	queryCalls    int
 }
 
 func (c *managedGatewayClient) OpenSession(_ context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error) {
@@ -85,8 +117,9 @@ func (c *managedGatewayClient) OpenSession(_ context.Context, request *jdbcproto
 	return &jdbcproto.OpenSessionResponse{SessionId: request.GetSessionId()}, nil
 }
 
-func (c *managedGatewayClient) ExecuteQuery(context.Context, *jdbcproto.ExecuteQueryRequest) (*jdbcproto.QueryResult, error) {
+func (c *managedGatewayClient) ExecuteQuery(_ context.Context, request *jdbcproto.ExecuteQueryRequest) (*jdbcproto.QueryResult, error) {
 	c.queryCalls++
+	c.queryRequests = append(c.queryRequests, request)
 	if c.queryErr != nil {
 		return nil, c.queryErr
 	}

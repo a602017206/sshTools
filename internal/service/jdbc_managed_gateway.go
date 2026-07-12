@@ -68,9 +68,32 @@ func (s *ManagedJDBCGateway) ListTables(ctx context.Context, sessionID, database
 }
 
 func (s *ManagedJDBCGateway) ListDatabases(ctx context.Context, sessionID string) ([]string, error) {
-	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) ([]string, error) {
-		return gateway.ListDatabases(ctx, sessionID)
-	})
+	cfg, ok := s.sessionConfig(sessionID)
+	if !ok {
+		return nil, fmt.Errorf("JDBC session 不存在: %s", sessionID)
+	}
+
+	var query string
+	switch cfg.DBType {
+	case "mysql":
+		query = "SHOW DATABASES"
+	case "postgresql":
+		query = "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
+	default:
+		return nil, fmt.Errorf("数据库类型 %s 暂不支持列出数据库", cfg.DBType)
+	}
+
+	result, err := s.ExecuteQuery(ctx, sessionID, query)
+	if err != nil {
+		return nil, err
+	}
+	databases := make([]string, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		if len(row) > 0 {
+			databases = append(databases, fmt.Sprint(row[0]))
+		}
+	}
+	return databases, nil
 }
 
 func (s *ManagedJDBCGateway) GetTableSchema(ctx context.Context, sessionID, table string) (*config.TableSchema, error) {
