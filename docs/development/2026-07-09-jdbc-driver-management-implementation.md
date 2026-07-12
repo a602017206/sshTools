@@ -2,7 +2,7 @@
 
 ## 实施状态
 
-初始实施计划和后续补全计划均已按任务顺序执行。Go、Java agent、H2 端到端、崩溃恢复、前端和 Wails 生产构建均通过。推荐驱动在线安装、托管 JRE 安装与归档导入、真实文件选择器、Agent 状态和 session 自动恢复已经接线。
+初始实施计划和后续补全计划均已按任务顺序执行。Go、Java agent、H2 端到端、崩溃恢复、前端和 Wails 生产构建均通过。推荐驱动在线安装、托管 JRE 安装与归档导入、真实文件选择器、Agent 状态和 session 自动恢复已经接线。运行时模式与系统 Java 路径现已持久化，启动时按已保存模式恢复；切换操作采用“应用、保存、重启”事务，并在界面中增加 2 秒状态轮询和 Agent 日志查看。
 
 ## 已实现架构
 
@@ -11,6 +11,8 @@
 - 原有 Wails 数据库 API 保持不变，`DatabaseService` 可把连接、查询、元数据和关闭请求委托给 JDBC gateway。
 - Wails 暴露驱动列表、在线安装、离线导入、校验、删除、托管 JRE 安装、运行时归档导入、文件选择、Agent 状态和重启 API。
 - Svelte JDBC 驱动管理页使用系统文件选择器，展示运行时和 Agent 实际状态，并提供错误分类后的恢复操作。
+- 运行时模式和系统 Java 路径写入应用配置；启动恢复严格遵循已保存模式，切换后持久化并重启 Agent。
+- Agent 进程存活性由 supervisor 刷新，页面每 2 秒更新状态；stdout、stderr 和生命周期记录追加到固定日志，应用内可读取受限尾部。
 - H2 集成脚本覆盖离线包导入、真实 Java 子进程、gRPC、SQL、元数据、会话关闭和进程崩溃后的 session 恢复。
 
 ## 错误与日志
@@ -62,6 +64,8 @@
 | Agent 崩溃恢复 | 通过 | `TestJDBCAgentRecoversSessionAfterCrash` 杀死真实 Java 进程后重新查询成功 |
 | 前端生产构建 | 通过 | `cd frontend && npm run build` |
 | Wails 生产构建 | 通过 | `/Users/dingwei/go/bin/wails build` |
+| 运行时恢复桌面验收 | 通过 | 系统 Java 与托管 JRE 均完成切换、重启恢复和 Agent 即时启动验证 |
+| Agent 状态与日志桌面验收 | 通过 | 进程退出自动刷新、日志读取/刷新/复制/截断和应用退出清理均通过 |
 
 Wails 产物位于 `build/bin/AHaSSHTools.app`。前端仍有仓库既有的 Svelte 可访问性、大分块和静态/动态导入警告；Gradle 仍提示部分特性在 Gradle 9 将不兼容。
 
@@ -74,9 +78,10 @@ Wails 产物位于 `build/bin/AHaSSHTools.app`。前端仍有仓库既有的 Sve
 | 驱动页安装、校验、卸载、重新导入 | 自动验证通过 | 在线下载原子提交、离线导入、校验、删除和文件选择已接线；未执行真实桌面点击。 |
 | 连接表单选择首批 JDBC 类型 | 通过 | 表单包含 MySQL、PostgreSQL、SQLite、Oracle、SQL Server、达梦、人大金仓和 openGauss，前端构建通过。 |
 | agent 崩溃后恢复 session | 通过 | 集成测试杀死真实 agent 后由 supervisor 启动新进程、重新打开文件模式 H2 session 并完成原查询。 |
+| 运行时选择持久化与日志诊断 | 通过 | 真实 Wails 桌面验收完成，详细证据见 `docs/changes/features/2026-07-11-jdbc-runtime-recovery-completion.md`。 |
 
 ## 后续工作
 
-1. 在发布候选包上执行真实 Wails 桌面点击验收，覆盖文件选择器、在线下载进度、错误提示和状态刷新。
-2. 为系统 Java 与托管 JRE 的选择增加持久化配置，避免每次启动重新选择。
+1. 在发布候选包上继续覆盖在线驱动下载进度、离线包选择和数据库连接错误提示。
+2. 为 Agent 追加日志轮转和保留策略，避免长期运行导致日志持续增长。
 3. 处理仓库既有的 Svelte 可访问性和大分块告警，并评估 Gradle 9 升级。
