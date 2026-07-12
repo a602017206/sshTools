@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -10,6 +11,8 @@ import (
 
 	"AHaSSHTools/internal/config"
 	"github.com/go-sql-driver/mysql"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type DatabaseSession struct {
@@ -181,6 +184,40 @@ func (ds *DatabaseService) ConnectDatabase(sessionID, host string, port int, use
 	ds.mu.Unlock()
 
 	return nil
+}
+
+func jdbcTestConnectionProperties(dbType string) map[string]string {
+	if dbType != "mysql" {
+		return nil
+	}
+	return map[string]string{
+		"connectTimeout": "8000",
+		"socketTimeout":  "8000",
+	}
+}
+
+func explainJDBCTestConnectionError(err error, cfg config.DatabaseConfig) error {
+	if err == nil || cfg.DBType != "mysql" {
+		return err
+	}
+	message := strings.ToLower(err.Error())
+	handshakeTimeout := errors.Is(err, context.DeadlineExceeded) ||
+		status.Code(err) == codes.DeadlineExceeded ||
+		strings.Contains(message, "deadlineexceeded") ||
+		(strings.Contains(message, "communications link failure") &&
+			strings.Contains(message, "has not received any packets"))
+	if !handshakeTimeout {
+		return err
+	}
+	return &JDBCError{
+		Code: JDBCErrorDBConnectFailed,
+		Message: fmt.Sprintf(
+			"连接 MySQL %s:%d 超时：未收到 MySQL 服务端握手。请确认目标是 MySQL 原生端口；如果经过 TCP 代理或端口转发，代理必须在客户端发送数据前转发服务端握手。",
+			cfg.Host,
+			cfg.Port,
+		),
+		Err: err,
+	}
 }
 
 func (ds *DatabaseService) ExecuteQuery(sessionID, query string) (*QueryResult, error) {
@@ -508,20 +545,21 @@ func (ds *DatabaseService) TestConnection(host string, port int, user, password,
 		databaseName = "postgres"
 	}
 	cfg := config.DatabaseConfig{
-		Host:     host,
-		Port:     port,
-		User:     user,
-		Password: password,
-		DBType:   normalizedType,
-		Database: databaseName,
-		Timeout:  10 * time.Second,
+		Host:       host,
+		Port:       port,
+		User:       user,
+		Password:   password,
+		DBType:     normalizedType,
+		Database:   databaseName,
+		Timeout:    10 * time.Second,
+		Properties: jdbcTestConnectionProperties(normalizedType),
 	}
 	if ds.gateway != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 		defer cancel()
 		sessionID := fmt.Sprintf("jdbc-connection-test-%d", time.Now().UnixNano())
 		if err := ds.gateway.ConnectDatabase(ctx, sessionID, cfg); err != nil {
-			return err
+			return explainJDBCTestConnectionError(err, cfg)
 		}
 		if err := ds.gateway.CloseDatabase(ctx, sessionID); err != nil {
 			return fmt.Errorf("关闭 JDBC 测试连接失败: %w", err)

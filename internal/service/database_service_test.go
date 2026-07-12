@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"strings"
 	"testing"
 
 	"AHaSSHTools/internal/config"
@@ -109,16 +111,60 @@ func TestDatabaseServiceTestConnectionUsesGateway(t *testing.T) {
 	}
 }
 
+func TestDatabaseServiceTestConnectionAddsMySQLHandshakeTimeouts(t *testing.T) {
+	gateway := &fakeJdbcGateway{}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+
+	if err := ds.TestConnection("db.example", 3306, "root", "secret", "mysql", "app"); err != nil {
+		t.Fatal(err)
+	}
+	if gateway.lastConfig.Properties["connectTimeout"] != "8000" {
+		t.Fatalf("unexpected MySQL connect timeout: %+v", gateway.lastConfig.Properties)
+	}
+	if gateway.lastConfig.Properties["socketTimeout"] != "8000" {
+		t.Fatalf("unexpected MySQL socket timeout: %+v", gateway.lastConfig.Properties)
+	}
+}
+
+func TestDatabaseServiceTestConnectionExplainsMySQLHandshakeTimeout(t *testing.T) {
+	gateway := &fakeJdbcGateway{connectErr: context.DeadlineExceeded}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+
+	err := ds.TestConnection("192.168.121.158", 22306, "root", "secret", "mysql", "")
+	var jdbcErr *JDBCError
+	if !errors.As(err, &jdbcErr) || jdbcErr.Code != JDBCErrorDBConnectFailed {
+		t.Fatalf("expected DB_CONNECT_FAILED, got %v", err)
+	}
+	for _, expected := range []string{"192.168.121.158:22306", "MySQL 服务端握手", "TCP 代理或端口转发"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("error missing %q: %v", expected, err)
+		}
+	}
+}
+
+func TestDatabaseServiceTestConnectionExplainsMySQLNoPacketsError(t *testing.T) {
+	gateway := &fakeJdbcGateway{connectErr: errors.New("Communications link failure: The driver has not received any packets from the server")}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+
+	err := ds.TestConnection("db.example", 22306, "root", "secret", "mysql", "")
+	if err == nil || !strings.Contains(err.Error(), "未收到 MySQL 服务端握手") {
+		t.Fatalf("expected MySQL handshake diagnosis, got %v", err)
+	}
+}
+
 type fakeJdbcGateway struct {
 	lastDBType   string
+	lastConfig   config.DatabaseConfig
 	connectCalls int
 	closeCalls   int
+	connectErr   error
 }
 
 func (g *fakeJdbcGateway) ConnectDatabase(ctx context.Context, sessionID string, cfg config.DatabaseConfig) error {
 	g.connectCalls++
 	g.lastDBType = cfg.DBType
-	return nil
+	g.lastConfig = cfg
+	return g.connectErr
 }
 
 func (g *fakeJdbcGateway) ExecuteQuery(ctx context.Context, sessionID string, query string) (*QueryResult, error) {
