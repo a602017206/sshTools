@@ -16,6 +16,7 @@ const (
 	NativeDatabaseTypeMemcached     NativeDatabaseType = "memcached"
 	NativeDatabaseTypeCassandra     NativeDatabaseType = "cassandra"
 	NativeDatabaseTypeCouchbase     NativeDatabaseType = "couchbase"
+	NativeDatabaseTypeInfluxDB      NativeDatabaseType = "influxdb"
 )
 
 type NativeResourceKind string
@@ -188,6 +189,8 @@ func nativeDatabaseTypeName(databaseType NativeDatabaseType) string {
 		return "Cassandra"
 	case NativeDatabaseTypeCouchbase:
 		return "Couchbase"
+	case NativeDatabaseTypeInfluxDB:
+		return "InfluxDB"
 	default:
 		return string(databaseType)
 	}
