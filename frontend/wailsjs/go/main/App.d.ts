@@ -18,6 +18,8 @@ export function CloseSSH(arg1:string):Promise<void>;
 
 export function ConnectDatabase(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string):Promise<void>;
 
+export function ConnectDatabaseWithProfile(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<void>;
+
 export function ConnectLocalShell(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
 
 export function ConnectSSH(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:number,arg9:number):Promise<void>;

@@ -30,6 +30,10 @@ export function ConnectDatabase(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['main']['App']['ConnectDatabase'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
+export function ConnectDatabaseWithProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['ConnectDatabaseWithProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
 export function ConnectLocalShell(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ConnectLocalShell'](arg1, arg2, arg3, arg4);
 }

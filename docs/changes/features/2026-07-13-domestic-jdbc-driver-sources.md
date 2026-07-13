@@ -32,6 +32,7 @@
 - `go test ./internal/service -run TestDriverCatalogProvidesVerifiedDomesticOnlineProfiles -v`
 - `go test . -run TestBuildJDBCServicesUsesConfiguredDriverProfile -v`
 - `go test ./internal/service -run TestDatabaseServiceConnectDatabaseWithProfilePassesDriverProfileID -v`
+- 临时受控测试在 `t.TempDir()` 中分别安装达梦 DM8 `8.1.5.45`、人大金仓 V8 `8.6.1` 与 V9 `9.0.1`，三者均完成 jar SHA-256 校验、原子安装及 `driver.json` 写入；测试产物已删除。
 
 在隔离 worktree 首次执行 `cd frontend && npm run build` 时，因不存在 `frontend/node_modules` 而找不到 `vite`。最小修复方案是在该 worktree 的 `frontend/` 运行 `npm install` 安装项目锁定依赖后重跑原构建命令；该步骤不修改应用源码或依赖声明。
 
