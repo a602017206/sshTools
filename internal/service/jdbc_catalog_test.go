@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"AHaSSHTools/internal/config"
@@ -86,6 +87,40 @@ func TestDriverCatalogLoadsManifestAndSelectsRecommendedProfile(t *testing.T) {
 	}
 	if profile.DefaultPort != 1521 {
 		t.Fatalf("unexpected default port: %d", profile.DefaultPort)
+	}
+}
+
+func TestDriverCatalogProvidesVerifiedDomesticOnlineProfiles(t *testing.T) {
+	root := t.TempDir()
+	catalog := NewDriverCatalogService(filepath.Join(root, "manifest.json"), filepath.Join(root, "drivers"))
+	if _, err := catalog.ListDriversWithInstallStatus(); err != nil {
+		t.Fatalf("bootstrap manifest failed: %v", err)
+	}
+
+	for _, wanted := range []struct {
+		driverID string
+		version  string
+		class    string
+	}{
+		{driverID: "dm", version: "8.1.5.45", class: "dm.jdbc.driver.DmDriver"},
+		{driverID: "kingbase", version: "8.6.1", class: "com.kingbase8.Driver"},
+		{driverID: "kingbase", version: "9.0.1", class: "com.kingbase8.Driver"},
+	} {
+		_, profile, err := catalog.GetProfile(wanted.driverID, wanted.version)
+		if err != nil {
+			t.Fatalf("get profile %s %s failed: %v", wanted.driverID, wanted.version, err)
+		}
+		if profile.DriverClass != wanted.class {
+			t.Fatalf("profile %s driver class = %q, want %q", profile.ID, profile.DriverClass, wanted.class)
+		}
+		for _, jar := range profile.Jars {
+			if !strings.HasPrefix(jar.URL, "https://repo.maven.apache.org/") {
+				t.Fatalf("profile %s jar URL = %q", profile.ID, jar.URL)
+			}
+			if len(jar.SHA256) != 64 {
+				t.Fatalf("profile %s jar SHA-256 = %q", profile.ID, jar.SHA256)
+			}
+		}
 	}
 }
 
