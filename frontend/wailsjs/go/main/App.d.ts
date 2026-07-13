@@ -14,6 +14,8 @@ export function ChangeDirectory(arg1:string,arg2:string):Promise<void>;
 
 export function CloseDatabase(arg1:string):Promise<void>;
 
+export function CloseNativeDatabase(arg1:string):Promise<void>;
+
 export function CloseSSH(arg1:string):Promise<void>;
 
 export function ConnectDatabase(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string):Promise<void>;
@@ -21,6 +23,8 @@ export function ConnectDatabase(arg1:string,arg2:string,arg3:number,arg4:string,
 export function ConnectDatabaseWithProfile(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<void>;
 
 export function ConnectLocalShell(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
+
+export function ConnectNativeDatabase(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string):Promise<void>;
 
 export function ConnectSSH(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:number,arg9:number):Promise<void>;
 
@@ -126,6 +130,10 @@ export function ListFiles(arg1:string,arg2:string):Promise<Array<ssh.FileInfo>>;
 
 export function ListJDBCDrivers():Promise<Array<service.DriverView>>;
 
+export function ListNativeDatabaseChildResources(arg1:string,arg2:string):Promise<Array<service.NativeResource>>;
+
+export function ListNativeDatabaseResources(arg1:string):Promise<Array<service.NativeResource>>;
+
 export function ListSSHSessions():Promise<Array<string>>;
 
 export function MinifyJSON(arg1:string):Promise<string>;
@@ -185,6 +193,8 @@ export function ShowQuestionDialog(arg1:string,arg2:string):Promise<boolean>;
 export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function TestDatabaseConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
+
+export function TestNativeDatabaseConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function TimestampToDateTime(arg1:number,arg2:string):Promise<string>;
 

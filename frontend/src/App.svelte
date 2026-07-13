@@ -324,7 +324,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
     }
 
     try {
-      const { ConnectDatabase, ConnectDatabaseWithProfile, TestDatabaseConnection, HasPassword, GetPassword, SavePassword } = window.wailsBindings;
+      const { ConnectDatabase, ConnectDatabaseWithProfile, TestDatabaseConnection, ConnectNativeDatabase, TestNativeDatabaseConnection, HasPassword, GetPassword, SavePassword } = window.wailsBindings;
       const sessionId = asset.dbSessionId || `db-${asset.id}`;
       const host = asset.host;
       const port = asset.port;
@@ -377,15 +377,20 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
 
       console.log('Connecting to database:', { sessionId, host, port, user, dbType, database });
 
-      if (typeof TestDatabaseConnection === 'function') {
-        await TestDatabaseConnection(host, port, user, password, dbType, database);
+      const isNativeDatabase = ['redis', 'mongodb', 'elasticsearch'].includes(dbType);
+      if (isNativeDatabase) {
+        await TestNativeDatabaseConnection(host, port, user, password, dbType, database);
+        await ConnectNativeDatabase(sessionId, host, port, user, password, dbType, database);
+      } else {
+        if (typeof TestDatabaseConnection === 'function') {
+          await TestDatabaseConnection(host, port, user, password, dbType, database);
+        }
+        if (typeof ConnectDatabaseWithProfile === 'function') {
+          await ConnectDatabaseWithProfile(sessionId, host, port, user, password, dbType, database, driverProfileID);
+        } else {
+          await ConnectDatabase(sessionId, host, port, user, password, dbType, database);
+        }
       }
-
-	  if (typeof ConnectDatabaseWithProfile === 'function') {
-		await ConnectDatabaseWithProfile(sessionId, host, port, user, password, dbType, database, driverProfileID);
-	  } else {
-		await ConnectDatabase(sessionId, host, port, user, password, dbType, database);
-	  }
 
       assetsStore.update(items => items.map(item => {
         if (item.id === asset.id) {

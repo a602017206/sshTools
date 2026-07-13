@@ -1,6 +1,7 @@
 <script>
   import Dialog from './ui/Dialog.svelte';
   import { assetsStore } from '../stores.js';
+  import { isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
 
   export let isOpen = false;
   export let onAdd = () => {};
@@ -30,7 +31,10 @@
     { value: 'sqlserver', label: 'SQL Server', port: '1433' },
     { value: 'dm', label: '达梦 DM', port: '5236' },
     { value: 'kingbase', label: '人大金仓 Kingbase', port: '54321' },
-    { value: 'opengauss', label: 'openGauss', port: '5432' }
+    { value: 'opengauss', label: 'openGauss', port: '5432' },
+    { value: 'redis', label: 'Redis / KeyDB', port: '6379' },
+    { value: 'mongodb', label: 'MongoDB', port: '27017' },
+    { value: 'elasticsearch', label: 'Elasticsearch / OpenSearch', port: '9200' }
   ];
 
   // Group selector state
@@ -74,6 +78,7 @@
     ? [...filteredGroups, formData.group]
     : filteredGroups;
   $: isSQLiteDatabase = assetType === 'database' && formData.dbType === 'sqlite';
+  $: isNativeDatabase = assetType === 'database' && isNativeDatabaseType(formData.dbType);
   $: selectedJDBCDriver = jdbcDrivers.find(driver => driver.id === formData.dbType);
   $: jdbcProfiles = selectedJDBCDriver?.profiles || [];
   $: selectedJDBCProfile =
@@ -81,7 +86,7 @@
     jdbcProfiles.find(profile => profile.version === selectedJDBCDriver?.recommendedVersion) ||
     jdbcProfiles[0] ||
     null;
-  $: selectedJDBCProfileMissing = assetType === 'database' && selectedJDBCProfile && !selectedJDBCProfile.installed;
+  $: selectedJDBCProfileMissing = assetType === 'database' && !isNativeDatabase && selectedJDBCProfile && !selectedJDBCProfile.installed;
 
   async function handleTestConnection() {
     if (!window.wailsBindings) {
@@ -119,7 +124,16 @@
     testResult = '';
 
     try {
-      if (assetType === 'database') {
+      if (assetType === 'database' && isNativeDatabase) {
+        await window.wailsBindings.TestNativeDatabaseConnection(
+          formData.host,
+          parseInt(formData.port),
+          formData.username,
+          formData.password,
+          formData.dbType,
+          formData.database
+        );
+      } else if (assetType === 'database') {
         await window.wailsBindings.TestDatabaseConnection(
           isSQLiteDatabase ? '' : formData.host,
           parseInt(formData.port),
@@ -336,8 +350,11 @@
   }
 
   function handleDatabaseTypeChange(event) {
-	const driver = jdbcDrivers.find(item => item.id === event.currentTarget.value);
-	formData.driverProfileID = driver?.profiles?.find(profile => profile.version === driver.recommendedVersion)?.id || driver?.profiles?.[0]?.id || '';
+    const databaseType = event.currentTarget.value;
+	const driver = jdbcDrivers.find(item => item.id === databaseType);
+	formData.driverProfileID = isNativeDatabaseType(databaseType)
+      ? ''
+      : (driver?.profiles?.find(profile => profile.version === driver.recommendedVersion)?.id || driver?.profiles?.[0]?.id || '');
     if (!editingAsset && assetType === 'database') {
       formData.port = getDefaultPortFor('database', event.currentTarget.value);
     }
@@ -400,7 +417,7 @@
     loadConnectionData();
   }
 
-  $: if (isOpen && assetType === 'database' && !jdbcDriversLoaded) {
+  $: if (isOpen && assetType === 'database' && !isNativeDatabase && !jdbcDriversLoaded) {
     loadJDBCDrivers();
   }
 
@@ -696,7 +713,7 @@
            请先在全局设置中安装 {selectedJDBCDriver.name} {selectedJDBCProfile.version} JDBC 驱动。
          </div>
        {/if}
-	   {#if jdbcProfiles.length > 0}
+	   {#if !isNativeDatabase && jdbcProfiles.length > 0}
 		 <div>
 		   <label class={labelClass} for="database-driver-profile">JDBC 驱动版本</label>
 		   <select id="database-driver-profile" bind:value={formData.driverProfileID} class={inputClass}>

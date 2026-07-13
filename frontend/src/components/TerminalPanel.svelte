@@ -3,6 +3,7 @@
   import Terminal from './Terminal.svelte';
   import DatabaseListPanel from './DatabaseListPanel.svelte';
   import DatabaseTablePanel from './DatabaseTablePanel.svelte';
+  import NativeDatabasePanel from './NativeDatabasePanel.svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
@@ -34,6 +35,7 @@
   $: sessionsList = $connectionsStore ? Array.from($connectionsStore.values()) : [];
 
   function buildDbListSession(asset, sessionId) {
+    const isNativeDatabase = ['redis', 'mongodb', 'elasticsearch'].includes(asset?.metadata?.db_type);
     return {
       sessionId,
       connection: asset,
@@ -41,7 +43,7 @@
       createdAt: Date.now(),
       lastActivity: Date.now(),
       type: 'database',
-      panelType: 'database-list',
+      panelType: isNativeDatabase ? 'native-database' : 'database-list',
       dbSessionId: sessionId,
       tabName: `${asset.name} · 数据库`
     };
@@ -372,6 +374,7 @@
   async function removeSession(sessionId, { closeBackend = true } = {}) {
     const session = $connectionsStore.get(sessionId);
     const isDatabaseListPanel = session?.type === 'database' && session?.panelType === 'database-list';
+    const isNativeDatabasePanel = session?.type === 'database' && session?.panelType === 'native-database';
     const isDatabaseTablePanel = session?.type === 'database' && session?.panelType === 'database-table';
 
     // 取消订阅
@@ -389,11 +392,12 @@
     // 释放终端引用
     delete terminalRefs[sessionId];
 
-    if (closeBackend && isDatabaseListPanel) {
-      const { CloseDatabase } = window.wailsBindings || {};
-      if (typeof CloseDatabase === 'function') {
+    if (closeBackend && (isDatabaseListPanel || isNativeDatabasePanel)) {
+      const { CloseDatabase, CloseNativeDatabase } = window.wailsBindings || {};
+      const close = isNativeDatabasePanel ? CloseNativeDatabase : CloseDatabase;
+      if (typeof close === 'function') {
         try {
-          await CloseDatabase(sessionId);
+          await close(sessionId);
         } catch (error) {
           console.error('Failed to close database session:', error);
         }
@@ -413,7 +417,7 @@
     connectionsStore.update(conns => {
       conns.delete(sessionId);
 
-      if (isDatabaseListPanel) {
+      if (isDatabaseListPanel || isNativeDatabasePanel) {
         const relatedPanels = Array.from(conns.entries())
           .filter(([_, value]) => value?.type === 'database' && value?.dbSessionId === sessionId)
           .map(([key]) => key);
@@ -1101,6 +1105,8 @@
                 数据库列表 · {session.connection.name}
               {:else if session.type === 'database' && session.panelType === 'database-table'}
                 表数据 · {session.databaseName ? `${session.databaseName}.` : ''}{session.tableName}
+              {:else if session.type === 'database' && session.panelType === 'native-database'}
+                原生数据库 · {session.connection.name}
               {:else}
                 {session.connection.username}@{session.connection.host}:{session.connection.port}
               {/if}
@@ -1147,6 +1153,8 @@
                 databaseName={session.databaseName}
                 tableName={session.tableName}
               />
+            {:else if session.type === 'database' && session.panelType === 'native-database'}
+              <NativeDatabasePanel sessionId={session.sessionId} dbConfig={session.connection} />
             {:else}
               <Terminal
                 bind:this={terminalRefs[session.sessionId]}

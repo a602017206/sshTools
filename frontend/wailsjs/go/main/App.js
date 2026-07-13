@@ -22,6 +22,10 @@ export function CloseDatabase(arg1) {
   return window['go']['main']['App']['CloseDatabase'](arg1);
 }
 
+export function CloseNativeDatabase(arg1) {
+  return window['go']['main']['App']['CloseNativeDatabase'](arg1);
+}
+
 export function CloseSSH(arg1) {
   return window['go']['main']['App']['CloseSSH'](arg1);
 }
@@ -36,6 +40,10 @@ export function ConnectDatabaseWithProfile(arg1, arg2, arg3, arg4, arg5, arg6, a
 
 export function ConnectLocalShell(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ConnectLocalShell'](arg1, arg2, arg3, arg4);
+}
+
+export function ConnectNativeDatabase(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['ConnectNativeDatabase'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function ConnectSSH(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
@@ -246,6 +254,14 @@ export function ListJDBCDrivers() {
   return window['go']['main']['App']['ListJDBCDrivers']();
 }
 
+export function ListNativeDatabaseChildResources(arg1, arg2) {
+  return window['go']['main']['App']['ListNativeDatabaseChildResources'](arg1, arg2);
+}
+
+export function ListNativeDatabaseResources(arg1) {
+  return window['go']['main']['App']['ListNativeDatabaseResources'](arg1);
+}
+
 export function ListSSHSessions() {
   return window['go']['main']['App']['ListSSHSessions']();
 }
@@ -364,6 +380,10 @@ export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
 
 export function TestDatabaseConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['TestDatabaseConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function TestNativeDatabaseConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['TestNativeDatabaseConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function TimestampToDateTime(arg1, arg2) {

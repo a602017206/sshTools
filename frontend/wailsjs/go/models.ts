@@ -9,7 +9,7 @@ export namespace config {
 	    static createFrom(source: any = {}) {
 	        return new FileManagerSettings(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.directory_tracking = source["directory_tracking"];
@@ -42,11 +42,11 @@ export namespace config {
 	    file_manager_sort_by: string;
 	    file_manager_sort_order: string;
 	    file_manager_per_connection?: Record<string, FileManagerSettings>;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.theme = source["theme"];
@@ -73,7 +73,7 @@ export namespace config {
 	        this.file_manager_sort_order = source["file_manager_sort_order"];
 	        this.file_manager_per_connection = this.convertValues(source["file_manager_per_connection"], FileManagerSettings, true);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -103,11 +103,11 @@ export namespace config {
 	    tags?: string[];
 	    metadata?: Record<string, string>;
 	    type?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ConnectionConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -122,16 +122,16 @@ export namespace config {
 	        this.type = source["type"];
 	    }
 	}
-	
+
 	export class JDBCProp {
 	    name: string;
 	    defaultValue?: string;
 	    required?: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new JDBCProp(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -143,11 +143,11 @@ export namespace config {
 	    name: string;
 	    sha256: string;
 	    url?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new JDBCJar(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -167,11 +167,11 @@ export namespace config {
 	    source?: string;
 	    installed?: boolean;
 	    installPath?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new JDBCDriverProfile(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -186,7 +186,7 @@ export namespace config {
 	        this.installed = source["installed"];
 	        this.installPath = source["installPath"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -205,23 +205,23 @@ export namespace config {
 		    return a;
 		}
 	}
-	
+
 
 }
 
 export namespace service {
-	
+
 	export class DriverView {
 	    id: string;
 	    name: string;
 	    recommendedVersion: string;
 	    installed: boolean;
 	    profiles: config.JDBCDriverProfile[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new DriverView(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -230,7 +230,7 @@ export namespace service {
 	        this.installed = source["installed"];
 	        this.profiles = this.convertValues(source["profiles"], config.JDBCDriverProfile);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -285,11 +285,11 @@ export namespace service {
 	    kind: string;
 	    javaPath: string;
 	    version: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new RuntimeStatus(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.kind = source["kind"];
@@ -343,16 +343,30 @@ export namespace service {
 	        this.error = source["error"];
 	    }
 	}
+	export class NativeResource {
+	    kind: string;
+	    name: string;
+
+	    static createFrom(source: any = {}) {
+	        return new NativeResource(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	    }
+	}
 
 	export class TableDDL {
 	    table_name: string;
 	    ddl: string;
 	    db_type: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new TableDDL(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.table_name = source["table_name"];
@@ -364,11 +378,11 @@ export namespace service {
 	    decoded: string;
 	    params?: Record<string, string>;
 	    component?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new URLDecodeResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.decoded = source["decoded"];
@@ -380,11 +394,11 @@ export namespace service {
 	    encoded: string;
 	    fullUrl?: string;
 	    component?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new URLEncodeResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.encoded = source["encoded"];
@@ -394,9 +408,8 @@ export namespace service {
 	}
 
 }
-
 export namespace ssh {
-	
+
 	export class CPUMetrics {
 	    overall: number;
 	    user: number;
@@ -405,11 +418,11 @@ export namespace ssh {
 	    idle: number;
 	    per_core: number[];
 	    load_average: number[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CPUMetrics(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.overall = source["overall"];
@@ -427,11 +440,11 @@ export namespace ssh {
 	    used: number;
 	    free: number;
 	    used_percent: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new PartitionInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.mount_point = source["mount_point"];
@@ -443,16 +456,16 @@ export namespace ssh {
 	}
 	export class DiskMetrics {
 	    partitions: PartitionInfo[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new DiskMetrics(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.partitions = this.convertValues(source["partitions"], PartitionInfo);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -480,11 +493,11 @@ export namespace ssh {
 	    is_dir: boolean;
 	    is_symlink: boolean;
 	    link_target?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new FileInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -506,11 +519,11 @@ export namespace ssh {
 	    swap_total: number;
 	    swap_used: number;
 	    swap_free: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new MemoryMetrics(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.total = source["total"];
@@ -528,11 +541,11 @@ export namespace ssh {
 	    total_tx_bytes: number;
 	    rx_rate: number;
 	    tx_rate: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new NetworkMetrics(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.total_rx_bytes = source["total_rx_bytes"];
@@ -548,11 +561,11 @@ export namespace ssh {
 	    kernel: string;
 	    username: string;
 	    processes: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SystemInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.hostname = source["hostname"];
@@ -570,11 +583,11 @@ export namespace ssh {
 	    memory: MemoryMetrics;
 	    network: NetworkMetrics;
 	    disk: DiskMetrics;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new MonitoringData(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.timestamp = source["timestamp"];
@@ -584,7 +597,7 @@ export namespace ssh {
 	        this.network = this.convertValues(source["network"], NetworkMetrics);
 	        this.disk = this.convertValues(source["disk"], DiskMetrics);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -603,17 +616,17 @@ export namespace ssh {
 		    return a;
 		}
 	}
-	
-	
+
+
 	export class SearchResult {
 	    path: string;
 	    name: string;
 	    depth: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SearchResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
@@ -621,7 +634,7 @@ export namespace ssh {
 	        this.depth = source["depth"];
 	    }
 	}
-	
+
 	export class TransferProgress {
 	    transfer_id: string;
 	    session_id: string;
@@ -632,11 +645,11 @@ export namespace ssh {
 	    speed: number;
 	    status: string;
 	    error?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new TransferProgress(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.transfer_id = source["transfer_id"];
