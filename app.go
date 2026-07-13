@@ -193,7 +193,7 @@ func buildJDBCServices(root string, agentJar []byte, deps jdbcServiceDependencie
 	supervisor := service.NewJDBCAgentSupervisor(runtimeService, starter, deps.dialer, agentPath, service.NewJDBCLogPaths(paths).Agent)
 	gateway := service.NewManagedJDBCGateway(supervisor)
 	gateway.SetProfileResolver(func(ctx context.Context, cfg config.DatabaseConfig) (config.JDBCDriverProfile, error) {
-		driver, profile, err := catalog.GetRecommendedProfile(cfg.DBType)
+		driver, profile, err := catalog.GetProfile(cfg.DBType, cfg.DriverProfileID)
 		if err != nil {
 			return config.JDBCDriverProfile{}, err
 		}

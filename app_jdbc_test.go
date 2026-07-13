@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/service"
 	"AHaSSHTools/internal/service/jdbcproto"
 )
@@ -30,6 +31,34 @@ func TestBuildJDBCServicesInjectsManagedGateway(t *testing.T) {
 	}
 	if string(content) != "embedded-agent-jar" {
 		t.Fatalf("unexpected installed agent: %q", content)
+	}
+}
+
+func TestBuildJDBCServicesUsesConfiguredDriverProfile(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".sshtools")
+	client := &profileRecordingJdbcClient{}
+	bundle, err := buildJDBCServices(root, []byte("agent"), jdbcServiceDependencies{
+		starter: &activationAgentStarter{},
+		dialer:  profileRecordingDialer{client: client},
+	})
+	if err != nil {
+		t.Fatalf("build services failed: %v", err)
+	}
+
+	if err := bundle.gateway.ConnectDatabase(context.Background(), "kingbase-v9", config.DatabaseConfig{
+		DBType: "kingbase", DriverProfileID: "kingbase-9.0.1",
+	}); err != nil {
+		t.Fatalf("connect with configured profile failed: %v", err)
+	}
+	if client.openRequest.GetProfile().GetId() != "kingbase-9.0.1" {
+		t.Fatalf("configured profile = %q", client.openRequest.GetProfile().GetId())
+	}
+
+	if err := bundle.gateway.ConnectDatabase(context.Background(), "kingbase-default", config.DatabaseConfig{DBType: "kingbase"}); err != nil {
+		t.Fatalf("connect with default profile failed: %v", err)
+	}
+	if client.openRequest.GetProfile().GetId() != "kingbase-8.6.1" {
+		t.Fatalf("default profile = %q", client.openRequest.GetProfile().GetId())
 	}
 }
 
@@ -313,6 +342,24 @@ func (activationJdbcClient) ListColumns(context.Context, *jdbcproto.ListColumnsR
 }
 func (activationJdbcClient) CloseSession(context.Context, *jdbcproto.CloseSessionRequest) (*jdbcproto.CloseSessionResponse, error) {
 	return &jdbcproto.CloseSessionResponse{}, nil
+}
+
+type profileRecordingDialer struct {
+	client *profileRecordingJdbcClient
+}
+
+func (d profileRecordingDialer) Dial(context.Context, string, int) (service.JdbcAgentClient, func() error, error) {
+	return d.client, func() error { return nil }, nil
+}
+
+type profileRecordingJdbcClient struct {
+	activationJdbcClient
+	openRequest *jdbcproto.OpenSessionRequest
+}
+
+func (c *profileRecordingJdbcClient) OpenSession(_ context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error) {
+	c.openRequest = request
+	return &jdbcproto.OpenSessionResponse{}, nil
 }
 
 func newRuntimeActivationTestApp(t *testing.T, dialer service.JDBCAgentDialer) (*App, *fakeJDBCRuntimeSettingsStore, *activationAgentStarter) {
