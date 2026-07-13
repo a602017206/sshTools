@@ -13,18 +13,18 @@
 - `npm run build`：通过，包含 Vite 和 Gradle JDBC agent 打包。
 - `GOOS=windows GOARCH=amd64 go test -c -o /tmp/sshTools-windows.test .`：通过。
 - `GOOS=linux GOARCH=amd64 go test -c -o /tmp/sshTools-linux.test .`：通过。
-- `wails build -platform darwin/arm64`：未通过，详见工具链阻塞。
+- `wails build -platform darwin/arm64`：通过，已生成 `build/bin/AHaSSHTools.app`。
 
 单元测试覆盖 provider 的连接委派、资源排序、错误传播与关闭。未执行各服务的真实手工连接，因为当前环境未提供 Redis、MongoDB、Elasticsearch、Memcached、Cassandra、Couchbase、InfluxDB、Neo4j 或 Kafka 的可用地址与凭据。
 
-## Wails 工具链阻塞
+## Wails 工具链阻塞与修复
 
 `wails build -platform darwin/arm64` 在绑定生成阶段失败，报错为：`package "github.com/neo4j/neo4j-go-driver/v6/neo4j" without types was imported from "AHaSSHTools/internal/service"`。
 
-Wails 和命令行 Go 均使用 `go1.24.4`，因此不是 Go 可执行文件版本不一致。最小修复方案是升级或修补 Wails 使用的 `go/packages`/类型加载依赖，使其能够加载 Neo4j v6；修复后必须重新运行不跳过 bindings 的 `wails build -platform darwin/arm64`。本次不使用 `-skipbindings` 绕开该失败。
+Wails 和命令行 Go 均使用 `go1.24.4`，因此不是 Go 可执行文件版本不一致。实际采用的最小修复是将 Neo4j 官方驱动从 v6 改为 v5 LTS 分支；该分支仍兼容目标服务器版本，并避免触发 Wails v2.11 的类型加载缺陷。修复后不跳过 bindings 重新运行 `wails build -platform darwin/arm64`，绑定生成、前端编译和应用编译均通过。
 
 ## 剩余风险
 
 - 真实服务连通性、认证、TLS、代理和权限策略需在目标环境逐类验证。
 - Kafka 首版仅支持单一明文 broker；Couchbase、InfluxDB 和 Neo4j 的 TLS/云端高级认证尚未暴露到表单。
-- Wails 构建在 Neo4j v6 的绑定类型加载问题修复前不能完成 macOS 发行包验证。
+- 真实数据库与 Kafka 的 TLS、代理及细粒度权限仍需在目标环境验证。

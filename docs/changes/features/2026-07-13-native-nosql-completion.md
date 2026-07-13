@@ -15,8 +15,8 @@
 
 ## 验证
 
-`go test ./...`、前端状态测试、`npm run build` 和 Windows/Linux Go 交叉编译均通过。`wails build -platform darwin/arm64` 在 Neo4j v6 绑定类型加载阶段失败，未使用跳过 bindings 的方式绕过。
+`go test ./...`、前端状态测试、`npm run build` 和 Windows/Linux Go 交叉编译均通过。首次 Wails 构建在 Neo4j v6 绑定类型加载阶段失败；改用 Neo4j 官方 v5 LTS 后，未跳过 bindings 的 `wails build -platform darwin/arm64` 通过。
 
 ## 剩余风险
 
-需修复 Wails 类型加载依赖并重跑 macOS 构建；真实数据库与 Kafka 服务的连接、资源浏览和关闭仍需使用目标环境地址及凭据手工验证。
+真实数据库与 Kafka 服务的连接、资源浏览和关闭仍需使用目标环境地址及凭据手工验证。
