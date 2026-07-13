@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "drivers": [
     {"id":"mysql","name":"MySQL","recommendedVersion":"8.4.0","profiles":[{"id":"mysql-8.4.0","version":"8.4.0","driverClass":"com.mysql.cj.jdbc.Driver","urlTemplate":"jdbc:mysql://{host}:{port}/{database}","defaultPort":3306,"jre":">=17","source":"Maven Central","jars":[{"name":"mysql-connector-j-8.4.0.jar","sha256":"d77962877d010777cff997015da90ee689f0f4bb76848340e1488f2b83332af5","url":"https://repo.maven.apache.org/maven2/com/mysql/mysql-connector-j/8.4.0/mysql-connector-j-8.4.0.jar"}]}]},
     {"id":"postgresql","name":"PostgreSQL","recommendedVersion":"42.7.7","profiles":[{"id":"postgresql-42.7.7","version":"42.7.7","driverClass":"org.postgresql.Driver","urlTemplate":"jdbc:postgresql://{host}:{port}/{database}","defaultPort":5432,"jre":">=17","source":"Maven Central","jars":[{"name":"postgresql-42.7.7.jar","sha256":"157963d60ae66d607e09466e8c0cdf8087e9cb20d0159899ffca96bca2528460","url":"https://repo.maven.apache.org/maven2/org/postgresql/postgresql/42.7.7/postgresql-42.7.7.jar"}]}]},

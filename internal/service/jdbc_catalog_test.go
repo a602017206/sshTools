@@ -124,6 +124,49 @@ func TestDriverCatalogProvidesVerifiedDomesticOnlineProfiles(t *testing.T) {
 	}
 }
 
+func TestDriverCatalogMigratesOutdatedBuiltinProfiles(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "manifest.json")
+	historicalManifest := `{
+	  "version": 1,
+	  "drivers": [
+	    {"id":"dm","name":"达梦数据库","recommendedVersion":"8","profiles":[{"id":"dm-8","version":"8","driverClass":"dm.jdbc.driver.DmDriver","urlTemplate":"jdbc:dm://{host}:{port}/{database}","defaultPort":5236,"jre":">=17","jars":[{"name":"DmJdbcDriver18.jar","sha256":""}]}]},
+	    {"id":"kingbase","name":"人大金仓","recommendedVersion":"8","profiles":[{"id":"kingbase-8","version":"8","driverClass":"com.kingbase8.Driver","urlTemplate":"jdbc:kingbase8://{host}:{port}/{database}","defaultPort":54321,"jre":">=17","jars":[{"name":"kingbase8.jar","sha256":""}]}]},
+	    {"id":"private","name":"私有驱动","recommendedVersion":"1.0","profiles":[{"id":"private-1.0","version":"1.0","driverClass":"example.Driver","urlTemplate":"jdbc:private:{database}","jars":[{"name":"private.jar","sha256":"abc"}]}]}
+	  ]
+	}`
+	if err := os.WriteFile(manifestPath, []byte(historicalManifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	catalog := NewDriverCatalogService(manifestPath, filepath.Join(root, "drivers"))
+	if _, err := catalog.LoadManifest(); err != nil {
+		t.Fatalf("load migrated manifest failed: %v", err)
+	}
+	_, dm, err := catalog.GetProfile("dm", "8.1.5.45")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, kingbaseV8, err := catalog.GetProfile("kingbase", "8.6.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, kingbaseV9, err := catalog.GetProfile("kingbase", "9.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, custom, err := catalog.GetProfile("private", "1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dm.Jars[0].URL == "" || kingbaseV8.Jars[0].URL == "" || kingbaseV9.Jars[0].URL == "" {
+		t.Fatal("migration did not add online installation sources")
+	}
+	if custom.ID != "private-1.0" {
+		t.Fatalf("custom profile = %q", custom.ID)
+	}
+}
+
 func TestDriverManagerListsDriversWithInstallStatus(t *testing.T) {
 	root := t.TempDir()
 	manifestPath := filepath.Join(root, "manifest.json")

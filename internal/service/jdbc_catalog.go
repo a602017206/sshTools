@@ -38,13 +38,65 @@ func (s *DriverCatalogService) LoadManifest() (*config.JDBCManifest, error) {
 }
 
 func (s *DriverCatalogService) ensureManifest() error {
-	if _, err := os.Stat(s.manifestPath); err == nil {
-		return nil
-	} else if !os.IsNotExist(err) {
+	var builtin config.JDBCManifest
+	if err := json.Unmarshal(builtinJDBCManifest, &builtin); err != nil {
+		return fmt.Errorf("解析内置 JDBC 驱动清单失败: %w", err)
+	}
+
+	data, err := os.ReadFile(s.manifestPath)
+	if os.IsNotExist(err) {
+		return s.writeManifest(&builtin)
+	}
+	if err != nil {
 		return fmt.Errorf("检查 JDBC 驱动清单失败: %w", err)
 	}
+	var current config.JDBCManifest
+	if err := json.Unmarshal(data, &current); err != nil {
+		return fmt.Errorf("解析 JDBC 驱动清单失败: %w", err)
+	}
+	if current.Version >= builtin.Version {
+		return nil
+	}
+	return s.writeManifest(mergeJDBCManifest(builtin, current))
+}
+
+func mergeJDBCManifest(builtin, current config.JDBCManifest) *config.JDBCManifest {
+	merged := builtin
+	currentByID := make(map[string]config.JDBCDriver, len(current.Drivers))
+	for _, driver := range current.Drivers {
+		currentByID[driver.ID] = driver
+	}
+	for i := range merged.Drivers {
+		currentDriver, ok := currentByID[merged.Drivers[i].ID]
+		if !ok {
+			continue
+		}
+		knownProfiles := make(map[string]struct{}, len(merged.Drivers[i].Profiles))
+		for _, profile := range merged.Drivers[i].Profiles {
+			knownProfiles[profile.ID] = struct{}{}
+		}
+		for _, profile := range currentDriver.Profiles {
+			if _, exists := knownProfiles[profile.ID]; !exists {
+				merged.Drivers[i].Profiles = append(merged.Drivers[i].Profiles, profile)
+			}
+		}
+		delete(currentByID, merged.Drivers[i].ID)
+	}
+	for _, driver := range current.Drivers {
+		if _, custom := currentByID[driver.ID]; custom {
+			merged.Drivers = append(merged.Drivers, driver)
+		}
+	}
+	return &merged
+}
+
+func (s *DriverCatalogService) writeManifest(manifest *config.JDBCManifest) error {
 	if err := os.MkdirAll(filepath.Dir(s.manifestPath), 0o700); err != nil {
 		return fmt.Errorf("创建 JDBC 驱动清单目录失败: %w", err)
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化 JDBC 驱动清单失败: %w", err)
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(s.manifestPath), ".jdbc-manifest-*.tmp")
 	if err != nil {
@@ -52,7 +104,7 @@ func (s *DriverCatalogService) ensureManifest() error {
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if _, err := temporary.Write(builtinJDBCManifest); err != nil {
+	if _, err := temporary.Write(data); err != nil {
 		_ = temporary.Close()
 		return fmt.Errorf("写入 JDBC 驱动清单失败: %w", err)
 	}
