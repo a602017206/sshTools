@@ -95,6 +95,19 @@ func TestDatabaseServiceDelegatesConnectToJdbcGateway(t *testing.T) {
 	}
 }
 
+func TestDatabaseServiceConnectDatabaseWithProfilePassesDriverProfileID(t *testing.T) {
+	gateway := &fakeJdbcGateway{}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+
+	err := ds.ConnectDatabaseWithProfile("db-test", "localhost", 54321, "system", "secret", "kingbase", "test", "kingbase-9.0.1")
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	if gateway.lastConfig.DriverProfileID != "kingbase-9.0.1" {
+		t.Fatalf("driver profile ID = %q", gateway.lastConfig.DriverProfileID)
+	}
+}
+
 func TestDatabaseServiceTestConnectionUsesGateway(t *testing.T) {
 	gateway := &fakeJdbcGateway{}
 	ds := NewDatabaseServiceWithGateway(nil, gateway)

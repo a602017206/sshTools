@@ -93,3 +93,20 @@ func TestAddAssetDialogPersistsSelectedJDBCProfile(t *testing.T) {
 		}
 	}
 }
+
+func TestAppPassesSavedJDBCProfileToDatabaseConnection(t *testing.T) {
+	data, err := os.ReadFile("frontend/src/App.svelte")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	for _, required := range []string{
+		"ConnectDatabaseWithProfile",
+		"asset.metadata?.driver_profile_id || ''",
+		"ConnectDatabaseWithProfile(sessionId, host, port, user, password, dbType, database, driverProfileID)",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("database connection flow missing %q", required)
+		}
+	}
+}

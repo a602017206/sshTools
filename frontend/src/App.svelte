@@ -324,13 +324,14 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
     }
 
     try {
-      const { ConnectDatabase, TestDatabaseConnection, HasPassword, GetPassword, SavePassword } = window.wailsBindings;
+      const { ConnectDatabase, ConnectDatabaseWithProfile, TestDatabaseConnection, HasPassword, GetPassword, SavePassword } = window.wailsBindings;
       const sessionId = asset.dbSessionId || `db-${asset.id}`;
       const host = asset.host;
       const port = asset.port;
       const user = asset.username;
       const dbType = asset.metadata?.db_type || asset.dbType || 'mysql';
       const database = asset.metadata?.database || '';
+	  const driverProfileID = asset.metadata?.driver_profile_id || '';
 
       let password = '';
       try {
@@ -380,7 +381,11 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
         await TestDatabaseConnection(host, port, user, password, dbType, database);
       }
 
-      await ConnectDatabase(sessionId, host, port, user, password, dbType, database);
+	  if (typeof ConnectDatabaseWithProfile === 'function') {
+		await ConnectDatabaseWithProfile(sessionId, host, port, user, password, dbType, database, driverProfileID);
+	  } else {
+		await ConnectDatabase(sessionId, host, port, user, password, dbType, database);
+	  }
 
       assetsStore.update(items => items.map(item => {
         if (item.id === asset.id) {

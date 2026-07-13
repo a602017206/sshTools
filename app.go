@@ -1079,6 +1079,10 @@ func (a *App) ConnectDatabase(sessionID, host string, port int, user, password, 
 	return a.databaseService.ConnectDatabase(sessionID, host, port, user, password, dbType, database)
 }
 
+func (a *App) ConnectDatabaseWithProfile(sessionID, host string, port int, user, password, dbType, database, driverProfileID string) error {
+	return a.databaseService.ConnectDatabaseWithProfile(sessionID, host, port, user, password, dbType, database, driverProfileID)
+}
+
 func (a *App) ExecuteDatabaseQuery(sessionID, query string) (string, error) {
 	result, err := a.databaseService.ExecuteQuery(sessionID, query)
 	if err != nil {

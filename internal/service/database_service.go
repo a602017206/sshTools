@@ -110,6 +110,10 @@ func (ds *DatabaseService) GetDriverName(dbType string) string {
 }
 
 func (ds *DatabaseService) ConnectDatabase(sessionID, host string, port int, user, password, dbType, database string) error {
+	return ds.ConnectDatabaseWithProfile(sessionID, host, port, user, password, dbType, database, "")
+}
+
+func (ds *DatabaseService) ConnectDatabaseWithProfile(sessionID, host string, port int, user, password, dbType, database, driverProfileID string) error {
 	if sessionID == "" {
 		return fmt.Errorf("session ID is required")
 	}
@@ -120,13 +124,14 @@ func (ds *DatabaseService) ConnectDatabase(sessionID, host string, port int, use
 		databaseName = "postgres"
 	}
 	cfg := config.DatabaseConfig{
-		Host:     host,
-		Port:     port,
-		User:     user,
-		Password: password,
-		DBType:   normalizedType,
-		Database: databaseName,
-		Timeout:  10 * time.Second,
+		Host:            host,
+		Port:            port,
+		User:            user,
+		Password:        password,
+		DBType:          normalizedType,
+		Database:        databaseName,
+		Timeout:         10 * time.Second,
+		DriverProfileID: strings.TrimSpace(driverProfileID),
 	}
 
 	if ds.gateway != nil {
