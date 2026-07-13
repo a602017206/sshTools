@@ -17,6 +17,7 @@
     SetJDBCRuntimeMode,
     ValidateJDBCDriver
   } from '../../wailsjs/go/main/App.js';
+  import { jdbcProfileActionState } from '../lib/jdbcDriverProfileState.js';
 
   let drivers = [];
   let runtimeStatus = null;
@@ -63,6 +64,9 @@
     profiles.find((profile) => profile.version === selectedDriver?.recommendedVersion) ||
     profiles[0] ||
     null;
+  $: selectedProfileActions = jdbcProfileActionState({
+    profileInstalled: selectedProfile?.installed
+  });
 
   $: agentStatusLabel = activeTaskMessage ? activeTaskMessage : agentStateLabel(agentStatus?.state);
 
@@ -179,6 +183,7 @@
       'RUNTIME_MISSING',
       'DRIVER_MISSING',
       'DRIVER_INVALID',
+      'DRIVER_IN_USE',
       'AGENT_UNAVAILABLE',
       'DB_CONNECT_FAILED'
     ];
@@ -197,6 +202,8 @@
         return '所需 JDBC 驱动尚未安装';
       case 'DRIVER_INVALID':
         return 'JDBC 驱动文件校验失败';
+      case 'DRIVER_IN_USE':
+        return '该 JDBC 驱动正在被已保存连接或活动会话使用';
       case 'AGENT_UNAVAILABLE':
         return 'JDBC agent 当前不可用';
       default:
@@ -347,6 +354,8 @@
           <button type="button" disabled={isBusy} on:click={installSelected}>重新安装</button>
           <button type="button" on:click={() => showResource(selectedProfile?.installPath || '~/.sshtools/drivers')}>查看文件</button>
           <button type="button" disabled={isBusy} on:click={removeSelected}>删除</button>
+        {:else if errorCode === 'DRIVER_IN_USE'}
+          <button type="button" on:click={() => (showRawError = !showRawError)}>查看引用详情</button>
         {:else if errorCode === 'AGENT_UNAVAILABLE'}
           <button type="button" disabled={isBusy} on:click={restartAgent}>重启 agent</button>
           <button type="button" on:click={openAgentLog}>查看日志</button>
@@ -401,7 +410,7 @@
             <p>{selectedDriver.id} · 推荐版本 {selectedDriver.recommendedVersion || '未指定'}</p>
           </div>
           <div class="jdbc-manager__detail-actions">
-            {#if selectedDriver.installed}
+            {#if selectedProfileActions.canValidate}
               <button type="button" class="jdbc-manager__button" disabled={isBusy} on:click={validateSelected}>校验</button>
               <button type="button" class="jdbc-manager__button" disabled={isBusy} on:click={installSelected}>重新安装</button>
               <button type="button" class="jdbc-manager__button jdbc-manager__button--danger" disabled={isBusy} on:click={removeSelected}>卸载</button>

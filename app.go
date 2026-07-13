@@ -1145,7 +1145,7 @@ func (a *App) RemoveJDBCDriver(driverID, version string) error {
 		return err
 	}
 	if len(users) > 0 {
-		return fmt.Errorf("JDBC 驱动 %s %s 正被使用：%s。请先修改这些连接的驱动版本或关闭活动会话后再卸载", driverID, profile.Version, strings.Join(users, "；"))
+		return fmt.Errorf("[DRIVER_IN_USE] JDBC 驱动 %s %s 正被使用：%s。请先修改这些连接的驱动版本或关闭活动会话后再卸载", driverID, profile.Version, strings.Join(users, "；"))
 	}
 	installPath := filepath.Join(a.jdbcPaths.DriversDir, driverID, version)
 	if err := os.RemoveAll(installPath); err != nil {
