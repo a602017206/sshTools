@@ -24,6 +24,10 @@ JDBC 驱动清单首次创建后持久化到 `~/.sshtools/drivers/manifest.json`
 - `go test ./internal/service -run 'TestDriverCatalog(MigratesOutdatedBuiltinProfiles|ProvidesVerifiedDomesticOnlineProfiles)' -v`
 - `go test ./...`
 
+隔离 worktree 首次运行 `cd frontend && npm run build` 时不存在 `frontend/node_modules`，Vite 无法加载。最小修复方案是在该 worktree 的 `frontend/` 执行 `npm install` 安装项目依赖，再重跑原命令；不修改依赖声明或源码。
+
+依赖安装后 Vite 编译通过，但 JDBC agent staging 调用 Gradle wrapper 时，沙箱无法访问 `~/.gradle/wrapper/dists/gradle-8.5-bin/5t9huq95ubn472n8rpzujfbqh/gradle-8.5-bin.zip.lck`。最小修复方案是不修改 Gradle、proto 或 Java agent，仅授权访问现有 Gradle 缓存后重跑相同命令。
+
 ## 剩余风险
 
 自定义 profile 若与未来内置 profile 使用相同 ID，会以内置 profile 为准。需要保留同 ID 自定义定义时，应使用不同 profile ID。
