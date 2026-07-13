@@ -27,6 +27,10 @@
 - `go test ./internal/service -run TestDriverCatalogProvidesVerifiedDomesticOnlineProfiles -v`
 - `go test . -run TestBuildJDBCServicesUsesConfiguredDriverProfile -v`
 
+在隔离 worktree 首次执行 `cd frontend && npm run build` 时，因不存在 `frontend/node_modules` 而找不到 `vite`。最小修复方案是在该 worktree 的 `frontend/` 运行 `npm install` 安装项目锁定依赖后重跑原构建命令；该步骤不修改应用源码或依赖声明。
+
+重跑后，Vite 编译成功，但 JDBC agent staging 调用 Gradle wrapper 时因沙箱无法访问 `~/.gradle/wrapper/dists/gradle-8.5-bin/5t9huq95ubn472n8rpzujfbqh/gradle-8.5-bin.zip.lck` 而停止。最小修复方案是不修改 Gradle、proto 或 Java agent，只在已授权访问现有 Gradle 缓存的环境中重跑相同命令。
+
 ## 剩余风险
 
 未使用真实达梦或人大金仓服务器执行连接验证。驱动与服务端相差较大、启用读写分离或使用厂商特定参数时，用户应选择匹配的 V8/V9 profile，必要时通过离线导入厂商配套版本。

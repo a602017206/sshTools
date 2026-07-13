@@ -52,6 +52,7 @@
     passphrase: '',
     group: '',
     dbType: 'mysql',
+    driverProfileID: '',
     database: '',
   };
 
@@ -74,7 +75,13 @@
     : filteredGroups;
   $: isSQLiteDatabase = assetType === 'database' && formData.dbType === 'sqlite';
   $: selectedJDBCDriver = jdbcDrivers.find(driver => driver.id === formData.dbType);
-  $: selectedJDBCDriverMissing = assetType === 'database' && selectedJDBCDriver && !selectedJDBCDriver.installed;
+  $: jdbcProfiles = selectedJDBCDriver?.profiles || [];
+  $: selectedJDBCProfile =
+    jdbcProfiles.find(profile => profile.id === formData.driverProfileID) ||
+    jdbcProfiles.find(profile => profile.version === selectedJDBCDriver?.recommendedVersion) ||
+    jdbcProfiles[0] ||
+    null;
+  $: selectedJDBCProfileMissing = assetType === 'database' && selectedJDBCProfile && !selectedJDBCProfile.installed;
 
   async function handleTestConnection() {
     if (!window.wailsBindings) {
@@ -87,8 +94,8 @@
       return;
     }
 
-    if (selectedJDBCDriverMissing) {
-      testResult = `请先在全局设置中安装 ${selectedJDBCDriver.name} JDBC 驱动`;
+    if (selectedJDBCProfileMissing) {
+	  testResult = `请先在全局设置中安装 ${selectedJDBCDriver.name} ${selectedJDBCProfile.version} JDBC 驱动`;
       return;
     }
 
@@ -174,8 +181,8 @@
       return;
     }
 
-    if (selectedJDBCDriverMissing) {
-      alert(`请先在全局设置中安装 ${selectedJDBCDriver.name} JDBC 驱动`);
+    if (selectedJDBCProfileMissing) {
+	  alert(`请先在全局设置中安装 ${selectedJDBCDriver.name} ${selectedJDBCProfile.version} JDBC 驱动`);
       return;
     }
 
@@ -211,7 +218,8 @@
         type: assetType,
         metadata: {
           database: formData.database || undefined,
-          db_type: formData.dbType
+          db_type: formData.dbType,
+          driver_profile_id: formData.driverProfileID || undefined
         }
       };
 
@@ -263,6 +271,7 @@
       passphrase: '',
       group: '',
       dbType: 'mysql',
+      driverProfileID: '',
       database: '',
     };
     testResult = '';
@@ -327,6 +336,8 @@
   }
 
   function handleDatabaseTypeChange(event) {
+	const driver = jdbcDrivers.find(item => item.id === event.currentTarget.value);
+	formData.driverProfileID = driver?.profiles?.find(profile => profile.version === driver.recommendedVersion)?.id || driver?.profiles?.[0]?.id || '';
     if (!editingAsset && assetType === 'database') {
       formData.port = getDefaultPortFor('database', event.currentTarget.value);
     }
@@ -361,6 +372,7 @@
           passphrase: '',
           group: conn.tags?.[0] || '',
           dbType: conn.metadata?.db_type || 'mysql',
+		  driverProfileID: conn.metadata?.driver_profile_id || '',
           database: conn.metadata?.database || '',
         };
         assetType = conn.type || 'ssh';
@@ -484,6 +496,10 @@
     }
     try {
       jdbcDrivers = await window.wailsBindings.ListJDBCDrivers();
+	  if (!formData.driverProfileID) {
+		const driver = jdbcDrivers.find(item => item.id === formData.dbType);
+		formData.driverProfileID = driver?.profiles?.find(profile => profile.version === driver.recommendedVersion)?.id || driver?.profiles?.[0]?.id || '';
+	  }
       jdbcDriversLoaded = true;
     } catch (error) {
       console.warn('Failed to load JDBC driver status:', error);
@@ -675,11 +691,21 @@
             {/each}
          </select>
        </div>
-       {#if selectedJDBCDriverMissing}
+	   {#if selectedJDBCProfileMissing}
          <div class="p-2 rounded-md text-xs ops-status-error">
-           请先在全局设置中安装 {selectedJDBCDriver.name} JDBC 驱动。
+           请先在全局设置中安装 {selectedJDBCDriver.name} {selectedJDBCProfile.version} JDBC 驱动。
          </div>
        {/if}
+	   {#if jdbcProfiles.length > 0}
+		 <div>
+		   <label class={labelClass} for="database-driver-profile">JDBC 驱动版本</label>
+		   <select id="database-driver-profile" bind:value={formData.driverProfileID} class={inputClass}>
+			 {#each jdbcProfiles as profile}
+			   <option value={profile.id}>{profile.version}{profile.installed ? '' : '（未安装）'}</option>
+			 {/each}
+		   </select>
+		 </div>
+	   {/if}
      {/if}
 
      {#if !isSQLiteDatabase}

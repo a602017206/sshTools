@@ -75,3 +75,21 @@ func TestJDBCDriverManagerAlwaysExposesAgentLog(t *testing.T) {
 		t.Fatal("normal agent status missing log action")
 	}
 }
+
+func TestAddAssetDialogPersistsSelectedJDBCProfile(t *testing.T) {
+	data, err := os.ReadFile("frontend/src/components/AddAssetDialog.svelte")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	for _, required := range []string{
+		"driverProfileID: ''",
+		"selectedJDBCDriver?.profiles",
+		"driver_profile_id: formData.driverProfileID || undefined",
+		"metadata?.driver_profile_id",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("database connection form missing %q", required)
+		}
+	}
+}
