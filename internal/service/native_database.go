@@ -14,6 +14,7 @@ const (
 	NativeDatabaseTypeMongoDB       NativeDatabaseType = "mongodb"
 	NativeDatabaseTypeElasticsearch NativeDatabaseType = "elasticsearch"
 	NativeDatabaseTypeMemcached     NativeDatabaseType = "memcached"
+	NativeDatabaseTypeCassandra     NativeDatabaseType = "cassandra"
 )
 
 type NativeResourceKind string
@@ -24,6 +25,7 @@ const (
 	NativeResourceKindCollection NativeResourceKind = "collection"
 	NativeResourceKindIndex      NativeResourceKind = "index"
 	NativeResourceKindStatistic  NativeResourceKind = "statistic"
+	NativeResourceKindTable      NativeResourceKind = "table"
 )
 
 type NativeDatabaseConfig struct {
@@ -179,6 +181,10 @@ func nativeDatabaseTypeName(databaseType NativeDatabaseType) string {
 		return "MongoDB"
 	case NativeDatabaseTypeElasticsearch:
 		return "Elasticsearch"
+	case NativeDatabaseTypeMemcached:
+		return "Memcached"
+	case NativeDatabaseTypeCassandra:
+		return "Cassandra"
 	default:
 		return string(databaseType)
 	}

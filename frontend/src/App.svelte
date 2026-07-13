@@ -16,6 +16,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
   import { formatFileSize, formatSpeed, getTransferPercentage } from './stores/uploadStore.js';
   import { CancelTransfer } from '../wailsjs/go/main/App.js';
   import { applyAppearanceSettings, getDefaultAppSettings, resolveTheme } from './settings/appearance.js';
+  import { isNativeDatabaseType } from './lib/nativeDatabaseTypes.js';
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
@@ -377,7 +378,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
 
       console.log('Connecting to database:', { sessionId, host, port, user, dbType, database });
 
-      const isNativeDatabase = ['redis', 'mongodb', 'elasticsearch'].includes(dbType);
+      const isNativeDatabase = isNativeDatabaseType(dbType);
       if (isNativeDatabase) {
         await TestNativeDatabaseConnection(host, port, user, password, dbType, database);
         await ConnectNativeDatabase(sessionId, host, port, user, password, dbType, database);

@@ -8,6 +8,7 @@
   import InputDialog from './ui/InputDialog.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
+  import { isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
 
   let terminalRefs = {};
   let sessionsList = [];
@@ -35,7 +36,7 @@
   $: sessionsList = $connectionsStore ? Array.from($connectionsStore.values()) : [];
 
   function buildDbListSession(asset, sessionId) {
-    const isNativeDatabase = ['redis', 'mongodb', 'elasticsearch'].includes(asset?.metadata?.db_type);
+    const isNativeDatabase = isNativeDatabaseType(asset?.metadata?.db_type);
     return {
       sessionId,
       connection: asset,

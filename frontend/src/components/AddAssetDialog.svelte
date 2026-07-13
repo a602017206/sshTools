@@ -34,7 +34,9 @@
     { value: 'opengauss', label: 'openGauss', port: '5432' },
     { value: 'redis', label: 'Redis / KeyDB', port: '6379' },
     { value: 'mongodb', label: 'MongoDB', port: '27017' },
-    { value: 'elasticsearch', label: 'Elasticsearch / OpenSearch', port: '9200' }
+    { value: 'elasticsearch', label: 'Elasticsearch / OpenSearch', port: '9200' },
+    { value: 'memcached', label: 'Memcached', port: '11211' },
+    { value: 'cassandra', label: 'Cassandra / ScyllaDB', port: '9042' }
   ];
 
   // Group selector state

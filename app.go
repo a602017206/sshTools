@@ -128,6 +128,8 @@ func (a *App) startup(ctx context.Context) {
 		service.NativeDatabaseTypeRedis:         service.NewDefaultRedisNativeProvider(),
 		service.NativeDatabaseTypeMongoDB:       service.NewDefaultMongoNativeProvider(),
 		service.NativeDatabaseTypeElasticsearch: service.NewDefaultElasticsearchNativeProvider(),
+		service.NativeDatabaseTypeMemcached:     service.NewDefaultMemcachedNativeProvider(),
+		service.NativeDatabaseTypeCassandra:     service.NewDefaultCassandraNativeProvider(),
 	})
 }
 

@@ -7,6 +7,8 @@ test('原生数据库类型不需要 JDBC profile', () => {
   assert.equal(isNativeDatabaseType('redis'), true);
   assert.equal(isNativeDatabaseType('mongodb'), true);
   assert.equal(isNativeDatabaseType('elasticsearch'), true);
+  assert.equal(isNativeDatabaseType('memcached'), true);
+  assert.equal(isNativeDatabaseType('cassandra'), true);
   assert.equal(isNativeDatabaseType('mysql'), false);
 });
 
@@ -22,5 +24,13 @@ test('原生数据库类型提供默认端口和资源标签', () => {
   assert.deepEqual(databaseTypeConfig('elasticsearch'), {
     port: '9200',
     resourceLabel: '索引'
+  });
+  assert.deepEqual(databaseTypeConfig('memcached'), {
+    port: '11211',
+    resourceLabel: '统计项'
+  });
+  assert.deepEqual(databaseTypeConfig('cassandra'), {
+    port: '9042',
+    resourceLabel: '表'
   });
 });
