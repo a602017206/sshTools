@@ -34,22 +34,23 @@ type App struct {
 	ctx context.Context
 
 	// Services
-	connectionService   *service.ConnectionService
-	sessionService      *service.SessionService
-	sftpService         *service.SFTPService
-	monitorService      *service.MonitorService
-	settingsService     *service.SettingsService
-	devToolsService     *service.DevToolsService
-	databaseService     *service.DatabaseService
-	jdbcPaths           service.JDBCPaths
-	jdbcCatalog         *service.DriverCatalogService
-	jdbcInstaller       *service.DriverInstallService
-	jdbcRuntime         *service.RuntimeService
-	jdbcAgentSupervisor *service.JDBCAgentSupervisor
-	jdbcGateway         *service.ManagedJDBCGateway
-	jdbcFileDialogs     jdbcFileDialogs
-	jdbcRuntimeSettings jdbcRuntimeSettingsStore
-	configManager       *config.ConfigManager
+	connectionService     *service.ConnectionService
+	sessionService        *service.SessionService
+	sftpService           *service.SFTPService
+	monitorService        *service.MonitorService
+	settingsService       *service.SettingsService
+	devToolsService       *service.DevToolsService
+	databaseService       *service.DatabaseService
+	nativeDatabaseService *service.NativeDatabaseService
+	jdbcPaths             service.JDBCPaths
+	jdbcCatalog           *service.DriverCatalogService
+	jdbcInstaller         *service.DriverInstallService
+	jdbcRuntime           *service.RuntimeService
+	jdbcAgentSupervisor   *service.JDBCAgentSupervisor
+	jdbcGateway           *service.ManagedJDBCGateway
+	jdbcFileDialogs       jdbcFileDialogs
+	jdbcRuntimeSettings   jdbcRuntimeSettingsStore
+	configManager         *config.ConfigManager
 }
 
 type jdbcRuntimeSettingsStore interface {
@@ -123,6 +124,11 @@ func (a *App) startup(ctx context.Context) {
 		fmt.Printf("Failed to initialize JDBC services: %v\n", err)
 	}
 	a.databaseService = service.NewDatabaseServiceWithGateway(a.configManager, a.jdbcGateway)
+	a.nativeDatabaseService = service.NewNativeDatabaseService(map[service.NativeDatabaseType]service.NativeDatabaseProvider{
+		service.NativeDatabaseTypeRedis:         service.NewDefaultRedisNativeProvider(),
+		service.NativeDatabaseTypeMongoDB:       service.NewDefaultMongoNativeProvider(),
+		service.NativeDatabaseTypeElasticsearch: service.NewDefaultElasticsearchNativeProvider(),
+	})
 }
 
 func (a *App) initJDBCServices(agentJar []byte) error {
@@ -1107,6 +1113,69 @@ func (a *App) ListDatabases(sessionID string) ([]string, error) {
 
 func (a *App) ListDatabaseTablesInDatabase(sessionID, database string) ([]string, error) {
 	return a.databaseService.ListTablesInDatabase(sessionID, database)
+}
+
+func (a *App) TestNativeDatabaseConnection(host string, port int, user, password, databaseType, database string) error {
+	service, cfg, ctx, cancel, err := a.nativeDatabaseRequest(host, port, user, password, databaseType, database)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	return service.TestConnection(ctx, cfg)
+}
+
+func (a *App) ConnectNativeDatabase(sessionID, host string, port int, user, password, databaseType, database string) error {
+	service, cfg, ctx, cancel, err := a.nativeDatabaseRequest(host, port, user, password, databaseType, database)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	return service.Connect(ctx, sessionID, cfg)
+}
+
+func (a *App) ListNativeDatabaseResources(sessionID string) ([]service.NativeResource, error) {
+	if a.nativeDatabaseService == nil {
+		return nil, fmt.Errorf("原生数据库服务尚未初始化")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.nativeDatabaseService.ListPrimaryResources(ctx, sessionID)
+}
+
+func (a *App) ListNativeDatabaseChildResources(sessionID, parent string) ([]service.NativeResource, error) {
+	if a.nativeDatabaseService == nil {
+		return nil, fmt.Errorf("原生数据库服务尚未初始化")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.nativeDatabaseService.ListSecondaryResources(ctx, sessionID, parent)
+}
+
+func (a *App) CloseNativeDatabase(sessionID string) error {
+	if a.nativeDatabaseService == nil {
+		return fmt.Errorf("原生数据库服务尚未初始化")
+	}
+	return a.nativeDatabaseService.Close(sessionID)
+}
+
+func (a *App) nativeDatabaseRequest(host string, port int, user, password, databaseType, database string) (*service.NativeDatabaseService, service.NativeDatabaseConfig, context.Context, context.CancelFunc, error) {
+	if a.nativeDatabaseService == nil {
+		return nil, service.NativeDatabaseConfig{}, nil, nil, fmt.Errorf("原生数据库服务尚未初始化")
+	}
+	databaseType = strings.TrimSpace(databaseType)
+	if databaseType == "" {
+		return nil, service.NativeDatabaseConfig{}, nil, nil, fmt.Errorf("原生数据库类型不能为空")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	return a.nativeDatabaseService, service.NativeDatabaseConfig{
+		Type:     service.NativeDatabaseType(databaseType),
+		Host:     host,
+		Port:     port,
+		User:     user,
+		Password: password,
+		Database: database,
+		Timeout:  10 * time.Second,
+	}, ctx, cancel, nil
 }
 
 func (a *App) ListJDBCDrivers() ([]service.DriverView, error) {
