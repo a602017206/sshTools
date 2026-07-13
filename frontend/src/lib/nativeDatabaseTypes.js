@@ -1,5 +1,5 @@
 const nativeTypes = {
-  redis: { port: '6379', resourceLabel: '键' },
+  redis: { port: '6379', resourceLabel: '键', requiresUsername: false },
   mongodb: { port: '27017', resourceLabel: '集合' },
   elasticsearch: { port: '9200', resourceLabel: '索引' },
   memcached: { port: '11211', resourceLabel: '统计项' },
@@ -16,4 +16,8 @@ export function isNativeDatabaseType(databaseType) {
 
 export function databaseTypeConfig(databaseType) {
   return nativeTypes[databaseType] || null;
+}
+
+export function databaseTypeRequiresUsername(databaseType) {
+  return databaseTypeConfig(databaseType)?.requiresUsername !== false;
 }

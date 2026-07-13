@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { databaseTypeConfig, isNativeDatabaseType } from '../src/lib/nativeDatabaseTypes.js';
+import { databaseTypeConfig, databaseTypeRequiresUsername, isNativeDatabaseType } from '../src/lib/nativeDatabaseTypes.js';
 
 test('原生数据库类型不需要 JDBC profile', () => {
   assert.equal(isNativeDatabaseType('redis'), true);
@@ -19,7 +19,8 @@ test('原生数据库类型不需要 JDBC profile', () => {
 test('原生数据库类型提供默认端口和资源标签', () => {
   assert.deepEqual(databaseTypeConfig('redis'), {
     port: '6379',
-    resourceLabel: '键'
+    resourceLabel: '键',
+    requiresUsername: false
   });
   assert.deepEqual(databaseTypeConfig('mongodb'), {
     port: '27017',
@@ -44,4 +45,9 @@ test('原生数据库类型提供默认端口和资源标签', () => {
   assert.deepEqual(databaseTypeConfig('influxdb'), { port: '8086', resourceLabel: '资源' });
   assert.deepEqual(databaseTypeConfig('neo4j'), { port: '7687', resourceLabel: '资源' });
   assert.deepEqual(databaseTypeConfig('kafka'), { port: '9092', resourceLabel: '主题' });
+});
+
+test('Redis 使用仅密码认证，其他原生数据库默认需要用户名', () => {
+  assert.equal(databaseTypeRequiresUsername('redis'), false);
+  assert.equal(databaseTypeRequiresUsername('mongodb'), true);
 });

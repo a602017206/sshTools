@@ -1,7 +1,7 @@
 <script>
   import Dialog from './ui/Dialog.svelte';
   import { assetsStore } from '../stores.js';
-  import { isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
+  import { databaseTypeRequiresUsername, isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
 
   export let isOpen = false;
   export let onAdd = () => {};
@@ -85,6 +85,7 @@
     : filteredGroups;
   $: isSQLiteDatabase = assetType === 'database' && formData.dbType === 'sqlite';
   $: isNativeDatabase = assetType === 'database' && isNativeDatabaseType(formData.dbType);
+  $: requiresDatabaseUsername = !isSQLiteDatabase && (!isNativeDatabase || databaseTypeRequiresUsername(formData.dbType));
   $: selectedJDBCDriver = jdbcDrivers.find(driver => driver.id === formData.dbType);
   $: jdbcProfiles = selectedJDBCDriver?.profiles || [];
   $: selectedJDBCProfile =
@@ -115,7 +116,7 @@
       return;
     }
 
-    if (authType === 'password' && !isSQLiteDatabase && !formData.username) {
+    if (authType === 'password' && requiresDatabaseUsername && !formData.username) {
       testResult = '请填写用户名';
       return;
     }
@@ -206,7 +207,7 @@
       return;
     }
 
-    if (authType === 'password' && !isSQLiteDatabase && !formData.username) {
+    if (authType === 'password' && requiresDatabaseUsername && !formData.username) {
       alert('密码认证需要填写用户名');
       return;
     }
@@ -762,15 +763,15 @@
        </div>
      {/if}
 
-      {#if (authType === 'password' || assetType === 'database' || assetType === 'docker') && !isSQLiteDatabase}
+      {#if (authType === 'password' || assetType === 'docker' || (assetType === 'database' && requiresDatabaseUsername)) && !isSQLiteDatabase}
         <div>
           <label class={labelClass} for="connection-username">
-            用户名 <span class="ops-required">*</span>
+            用户名 {#if requiresDatabaseUsername}<span class="ops-required">*</span>{/if}
           </label>
           <input
             type="text"
             id="connection-username"
-            required
+            required={requiresDatabaseUsername}
             bind:value={formData.username}
             placeholder="root"
             class={inputClass}
