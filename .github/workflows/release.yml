@@ -35,6 +35,13 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
