@@ -6,7 +6,8 @@ const nativeTypes = {
   cassandra: { port: '9042', resourceLabel: '表' },
   couchbase: { port: '8091', resourceLabel: '集合' },
   influxdb: { port: '8086', resourceLabel: '资源' },
-  neo4j: { port: '7687', resourceLabel: '资源' }
+  neo4j: { port: '7687', resourceLabel: '资源' },
+  kafka: { port: '9092', resourceLabel: '主题' }
 };
 
 export function isNativeDatabaseType(databaseType) {
