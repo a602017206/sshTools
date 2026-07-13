@@ -13,6 +13,7 @@ const (
 	NativeDatabaseTypeRedis         NativeDatabaseType = "redis"
 	NativeDatabaseTypeMongoDB       NativeDatabaseType = "mongodb"
 	NativeDatabaseTypeElasticsearch NativeDatabaseType = "elasticsearch"
+	NativeDatabaseTypeMemcached     NativeDatabaseType = "memcached"
 )
 
 type NativeResourceKind string
@@ -22,6 +23,7 @@ const (
 	NativeResourceKindKey        NativeResourceKind = "key"
 	NativeResourceKindCollection NativeResourceKind = "collection"
 	NativeResourceKindIndex      NativeResourceKind = "index"
+	NativeResourceKindStatistic  NativeResourceKind = "statistic"
 )
 
 type NativeDatabaseConfig struct {
