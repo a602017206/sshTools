@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**目标：** 安全卸载未被引用的 JDBC profile，并为 Redis、MongoDB、Elasticsearch 提供不依赖 JDBC 的只读连接和资源浏览。
+**目标：** 安全卸载未被引用的 JDBC profile，并为常用 NoSQL 和 Kafka 提供跨 Windows、macOS、Linux 的不依赖 JDBC 的只读连接和资源浏览。
 
-**架构：** JDBC 卸载在 `App` 层检查已保存连接和活动 gateway 会话。原生服务由独立的 `NativeDatabaseService` 和各协议适配器实现，通过 Wails API 暴露连接与资源浏览；前端按 `metadata.db_type` 路由到原生资源面板。
+**架构：** JDBC 卸载在 `App` 层检查已保存连接和活动 gateway 会话。原生服务由独立的 `NativeDatabaseService` 和内置 provider 注册表实现，通过 Wails API 暴露连接与资源浏览；前端按 `metadata.db_type` 路由到原生资源面板。
 
-**技术栈：** Go、Wails、Svelte、`github.com/redis/go-redis/v9`、`go.mongodb.org/mongo-driver`、`github.com/elastic/go-elasticsearch/v9`、Go `testing`。
+**技术栈：** Go、Wails、Svelte、`github.com/redis/go-redis/v9`、`go.mongodb.org/mongo-driver`、`github.com/elastic/go-elasticsearch/v9`、Couchbase/InfluxDB/Neo4j/Kafka Go 客户端、Go `testing`。
 
 ---
 
@@ -16,6 +16,7 @@
 - 新增或修改文档正文全部使用中文。
 - 任何 Gradle、protoc、gRPC 或 Java agent 工具链阻塞，先在对应变更记录说明阻塞点和最小修复方案，再重试命令。
 - 原生 NoSQL 不调用 JDBC agent，不安装 JDBC 驱动。
+- 本次不实现外部插件加载；provider 接口与注册表作为后续扩展点。
 
 ### 任务 1：保护被引用的 JDBC profile
 
@@ -113,3 +114,24 @@
 2. 对每种服务完成手工连接、资源浏览、关闭和保存连接检查；对 JDBC profile 完成“被引用禁止卸载”和“未引用可卸载”检查。
 3. 记录实际验证结果、工具链阻塞（如有）和剩余风险。
 4. 提交 `docs: verify native nosql connections and jdbc driver removal`。
+
+### 任务 10：实现跨平台内置 provider 注册表
+
+**文件：** 创建 `internal/service/native_database_registry.go`、对应测试；创建 `docs/changes/features/2026-07-13-native-nosql-provider-registry.md`。
+
+1. 写失败测试，覆盖内置 provider 注册、重复 ID 拒绝、类型查找和跨平台不变的 provider ID。
+2. 运行 `go test ./internal/service -run TestNativeDatabaseRegistry -v`，确认失败。
+3. 实现 provider 注册表，不使用 Go `plugin`、动态库或 Unix 专有机制。
+4. 再次运行同一命令，确认通过。
+5. 写中文变更记录并运行 `go test ./internal/service`。
+6. 提交 `feat: add cross-platform nosql provider registry`。
+
+### 任务 11：实现首批常用 NoSQL provider
+
+**文件：** 创建各 provider 与测试、修改 `go.mod`/`go.sum`；创建每类 provider 的中文变更记录。
+
+1. 依次为 Redis/KeyDB、MongoDB、Elasticsearch/OpenSearch、Memcached、Cassandra、Couchbase、InfluxDB、Neo4j、Kafka 写失败测试。
+2. 每个 provider 独立运行对应测试确认失败。
+3. 逐个实现连接测试与只读资源浏览，优先使用厂商官方 SDK；无官方 Go SDK 时封装稳定公开协议并注明来源。
+4. 每个 provider 独立确认通过、记录中文变更并提交。
+5. 完成后运行 `go test ./internal/service`。
