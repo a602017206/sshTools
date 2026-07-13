@@ -18,6 +18,8 @@
     ValidateJDBCDriver
   } from '../../wailsjs/go/main/App.js';
   import { jdbcProfileActionState } from '../lib/jdbcDriverProfileState.js';
+  import { jdbcDriverRemovalConfirmation } from '../lib/jdbcDriverRemovalState.js';
+  import ConfirmDialog from './ui/ConfirmDialog.svelte';
 
   let drivers = [];
   let runtimeStatus = null;
@@ -41,6 +43,7 @@
   let agentLogBusy = false;
   let agentLogError = '';
   let agentLogCopyStatus = '';
+  let pendingRemoval = null;
 
   $: filteredDrivers = drivers.filter((driver) => {
     const text = `${driver.name || ''} ${driver.id || ''}`.toLowerCase();
@@ -158,12 +161,25 @@
     });
   }
 
-  async function removeSelected() {
+  function removeSelected() {
     if (!selectedDriver || !selectedProfile) return;
-    const confirmed = window.confirm(`卸载 ${selectedDriver.name} ${selectedProfile.version}？`);
-    if (!confirmed) return;
+    pendingRemoval = {
+      driver: selectedDriver,
+      profile: selectedProfile,
+      confirmation: jdbcDriverRemovalConfirmation(selectedDriver, selectedProfile)
+    };
+  }
+
+  function cancelRemoveSelected() {
+    pendingRemoval = null;
+  }
+
+  async function confirmRemoveSelected() {
+    const removal = pendingRemoval;
+    pendingRemoval = null;
+    if (!removal) return;
     await runTask('正在卸载驱动', async () => {
-      await RemoveJDBCDriver(selectedDriver.id, selectedProfile.version);
+      await RemoveJDBCDriver(removal.driver.id, removal.profile.version);
       await loadData();
     });
   }
@@ -518,6 +534,17 @@
     </div>
   {/if}
 </div>
+
+<ConfirmDialog
+  isOpen={Boolean(pendingRemoval)}
+  title={pendingRemoval?.confirmation?.title || ''}
+  message={pendingRemoval?.confirmation?.message || ''}
+  confirmText={pendingRemoval?.confirmation?.confirmText || '卸载'}
+  cancelText="取消"
+  type="danger"
+  onConfirm={confirmRemoveSelected}
+  onCancel={cancelRemoveSelected}
+/>
 
 <style>
   .jdbc-manager {
