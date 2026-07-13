@@ -686,6 +686,28 @@ func (ds *DatabaseService) GetTableDDL(sessionID, database, table string) (*Tabl
 	if err != nil {
 		return nil, err
 	}
+	if ds.gateway != nil {
+		if session.Config.DBType != "mysql" {
+			return nil, fmt.Errorf("JDBC 模式暂不支持获取 %s 表结构", session.Config.DBType)
+		}
+		escapedTable := escapeMySQLIdentifier(table)
+		query := fmt.Sprintf("SHOW CREATE TABLE `%s`", escapedTable)
+		if database != "" {
+			query = fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`", escapeMySQLIdentifier(database), escapedTable)
+		}
+		result, err := ds.ExecuteQuery(sessionID, query)
+		if err != nil {
+			return nil, fmt.Errorf("获取表结构失败: %w", err)
+		}
+		if len(result.Rows) == 0 || len(result.Rows[0]) < 2 {
+			return nil, fmt.Errorf("表 %s 未返回有效 DDL", table)
+		}
+		return &TableDDL{
+			TableName: fmt.Sprint(result.Rows[0][0]),
+			DDL:       fmt.Sprint(result.Rows[0][1]),
+			DBType:    "mysql",
+		}, nil
+	}
 
 	if session.DB == nil {
 		return nil, fmt.Errorf("database connection not available: %s", sessionID)

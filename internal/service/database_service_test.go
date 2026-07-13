@@ -155,6 +155,8 @@ func TestDatabaseServiceTestConnectionExplainsMySQLNoPacketsError(t *testing.T) 
 type fakeJdbcGateway struct {
 	lastDBType   string
 	lastConfig   config.DatabaseConfig
+	lastQuery    string
+	queryResult  *QueryResult
 	connectCalls int
 	closeCalls   int
 	connectErr   error
@@ -168,6 +170,10 @@ func (g *fakeJdbcGateway) ConnectDatabase(ctx context.Context, sessionID string,
 }
 
 func (g *fakeJdbcGateway) ExecuteQuery(ctx context.Context, sessionID string, query string) (*QueryResult, error) {
+	g.lastQuery = query
+	if g.queryResult != nil {
+		return g.queryResult, nil
+	}
 	return &QueryResult{}, nil
 }
 
@@ -186,6 +192,30 @@ func (g *fakeJdbcGateway) GetTableSchema(ctx context.Context, sessionID, table s
 func (g *fakeJdbcGateway) CloseDatabase(ctx context.Context, sessionID string) error {
 	g.closeCalls++
 	return nil
+}
+
+func TestDatabaseServiceGetTableDDLUsesJDBCGatewayForMySQL(t *testing.T) {
+	gateway := &fakeJdbcGateway{queryResult: &QueryResult{
+		Columns: []string{"Table", "Create Table"},
+		Rows:    [][]interface{}{{"users", "CREATE TABLE `users` (`id` bigint NOT NULL)"}},
+	}}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+	ds.sessionStore["mysql-session"] = &DatabaseSession{
+		ID:        "mysql-session",
+		Config:    config.DatabaseConfig{DBType: "mysql"},
+		Connected: true,
+	}
+
+	ddl, err := ds.GetTableDDL("mysql-session", "app", "users")
+	if err != nil {
+		t.Fatalf("get table DDL failed: %v", err)
+	}
+	if gateway.lastQuery != "SHOW CREATE TABLE `app`.`users`" {
+		t.Fatalf("unexpected query: %s", gateway.lastQuery)
+	}
+	if ddl.TableName != "users" || ddl.DDL != "CREATE TABLE `users` (`id` bigint NOT NULL)" || ddl.DBType != "mysql" {
+		t.Fatalf("unexpected DDL: %+v", ddl)
+	}
 }
 
 func TestDatabaseService_ListDatabases_MySQL(t *testing.T) {

@@ -26,7 +26,8 @@
       ddlData = result;
     } catch (error) {
       console.error('Failed to load table DDL:', error);
-      errorMessage = `加载表结构失败: ${error.message || '未知错误'}`;
+      const detail = error?.message || String(error || '未知错误');
+      errorMessage = `加载表结构失败: ${detail}`;
     } finally {
       isLoading = false;
     }
