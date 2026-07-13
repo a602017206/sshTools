@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,6 +61,107 @@ func TestBuildJDBCServicesUsesConfiguredDriverProfile(t *testing.T) {
 	if client.openRequest.GetProfile().GetId() != "kingbase-8.6.1" {
 		t.Fatalf("default profile = %q", client.openRequest.GetProfile().GetId())
 	}
+}
+
+func TestRemoveJDBCDriverRejectsSavedConnectionUsingExplicitProfile(t *testing.T) {
+	app, profile := newJDBCDriverRemovalTestApp(t)
+	if err := app.connectionService.AddConnection(config.ConnectionConfig{
+		ID:   "mysql-explicit",
+		Name: "生产 MySQL",
+		Type: "database",
+		Metadata: map[string]string{
+			"db_type":           "mysql",
+			"driver_profile_id": profile.ID,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := app.RemoveJDBCDriver("mysql", profile.Version)
+	if err == nil {
+		t.Fatal("expected removal to be rejected while a saved connection uses the profile")
+	}
+	if !strings.Contains(err.Error(), "生产 MySQL") {
+		t.Fatalf("expected the blocking connection name, got: %v", err)
+	}
+}
+
+func TestRemoveJDBCDriverRejectsLegacyConnectionUsingRecommendedProfile(t *testing.T) {
+	app, profile := newJDBCDriverRemovalTestApp(t)
+	if err := app.connectionService.AddConnection(config.ConnectionConfig{
+		ID:       "mysql-legacy",
+		Name:     "旧版 MySQL",
+		Type:     "database",
+		Metadata: map[string]string{"db_type": "mysql"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := app.RemoveJDBCDriver("mysql", profile.Version)
+	if err == nil {
+		t.Fatal("expected removal to be rejected while a legacy connection uses the recommended profile")
+	}
+	if !strings.Contains(err.Error(), "旧版 MySQL") {
+		t.Fatalf("expected the blocking connection name, got: %v", err)
+	}
+}
+
+func TestRemoveJDBCDriverRejectsActiveSessionUsingProfile(t *testing.T) {
+	app, profile := newJDBCDriverRemovalTestApp(t)
+	if err := app.jdbcGateway.ConnectDatabase(context.Background(), "mysql-active", config.DatabaseConfig{
+		DBType:          "mysql",
+		DriverProfileID: profile.ID,
+	}); err != nil {
+		t.Fatalf("connect active JDBC session: %v", err)
+	}
+
+	err := app.RemoveJDBCDriver("mysql", profile.Version)
+	if err == nil {
+		t.Fatal("expected removal to be rejected while an active JDBC session uses the profile")
+	}
+	if !strings.Contains(err.Error(), "mysql-active") {
+		t.Fatalf("expected the blocking session ID, got: %v", err)
+	}
+}
+
+func TestRemoveJDBCDriverRemovesUnreferencedProfile(t *testing.T) {
+	app, profile := newJDBCDriverRemovalTestApp(t)
+	installPath := filepath.Join(app.jdbcPaths.DriversDir, "mysql", profile.Version)
+
+	if err := app.RemoveJDBCDriver("mysql", profile.Version); err != nil {
+		t.Fatalf("remove unreferenced profile: %v", err)
+	}
+	if _, err := os.Stat(installPath); !os.IsNotExist(err) {
+		t.Fatalf("driver directory still exists after removal: %v", err)
+	}
+}
+
+func newJDBCDriverRemovalTestApp(t *testing.T) (*App, config.JDBCDriverProfile) {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), ".sshtools")
+	javaPath := writeTestJava(t, filepath.Join(root, "jdk", "bin", "java"))
+	bundle, err := buildJDBCServices(root, []byte("agent"), jdbcServiceDependencies{
+		systemJavaPath: javaPath,
+		starter:        &activationAgentStarter{},
+		dialer:         activationAgentDialer{},
+	})
+	if err != nil {
+		t.Fatalf("build JDBC services: %v", err)
+	}
+	_, profile, err := bundle.catalog.GetRecommendedProfile("mysql")
+	if err != nil {
+		t.Fatalf("get MySQL profile: %v", err)
+	}
+	installPath := filepath.Join(bundle.paths.DriversDir, "mysql", profile.Version)
+	if err := os.MkdirAll(installPath, 0o700); err != nil {
+		t.Fatalf("create installed driver directory: %v", err)
+	}
+	return &App{
+		connectionService: service.NewConnectionService(config.NewFallbackConfigManager(), nil),
+		jdbcPaths:         bundle.paths,
+		jdbcCatalog:       bundle.catalog,
+		jdbcGateway:       bundle.gateway,
+	}, *profile
 }
 
 func TestBuildJDBCServicesRestoresPersistedRuntimeMode(t *testing.T) {

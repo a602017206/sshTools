@@ -113,6 +113,17 @@ func (s *ManagedJDBCGateway) CloseDatabase(ctx context.Context, sessionID string
 	return err
 }
 
+// ActiveSessionConfigs returns a snapshot of JDBC session configurations.
+func (s *ManagedJDBCGateway) ActiveSessionConfigs() map[string]config.DatabaseConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	sessions := make(map[string]config.DatabaseConfig, len(s.sessions))
+	for sessionID, cfg := range s.sessions {
+		sessions[sessionID] = cfg
+	}
+	return sessions
+}
+
 func managedGatewayCall[T any](s *ManagedJDBCGateway, ctx context.Context, sessionID string, call func(*JdbcGatewayService) (T, error)) (T, error) {
 	var zero T
 	gateway, err := s.gateway(ctx, false)

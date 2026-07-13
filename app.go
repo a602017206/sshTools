@@ -1136,11 +1136,76 @@ func (a *App) ValidateJDBCDriver(driverID, version string) error {
 }
 
 func (a *App) RemoveJDBCDriver(driverID, version string) error {
+	profile, err := a.jdbcDriverProfile(driverID, version)
+	if err != nil {
+		return err
+	}
+	users, err := a.jdbcDriverUsers(driverID, *profile)
+	if err != nil {
+		return err
+	}
+	if len(users) > 0 {
+		return fmt.Errorf("JDBC 驱动 %s %s 正被使用：%s。请先修改这些连接的驱动版本或关闭活动会话后再卸载", driverID, profile.Version, strings.Join(users, "；"))
+	}
 	installPath := filepath.Join(a.jdbcPaths.DriversDir, driverID, version)
 	if err := os.RemoveAll(installPath); err != nil {
 		return fmt.Errorf("删除 JDBC 驱动失败: %w", err)
 	}
 	return nil
+}
+
+func (a *App) jdbcDriverProfile(driverID, version string) (*config.JDBCDriverProfile, error) {
+	if a.jdbcCatalog == nil {
+		return nil, fmt.Errorf("JDBC 驱动目录尚未初始化")
+	}
+	_, profile, err := a.jdbcCatalog.GetProfile(driverID, version)
+	if err != nil {
+		return nil, err
+	}
+	return profile, nil
+}
+
+func (a *App) jdbcDriverUsers(driverID string, target config.JDBCDriverProfile) ([]string, error) {
+	users := make([]string, 0)
+	if a.connectionService != nil {
+		connections, err := a.connectionService.GetConnections()
+		if err != nil {
+			return nil, fmt.Errorf("检查 JDBC 驱动连接引用失败: %w", err)
+		}
+		for _, connection := range connections {
+			if !isJDBCDriverProfileInUse(driverID, target, connection.Metadata["db_type"], connection.Metadata["driver_profile_id"], a.jdbcCatalog) {
+				continue
+			}
+			name := strings.TrimSpace(connection.Name)
+			if name == "" {
+				name = connection.ID
+			}
+			users = append(users, "已保存连接 "+name)
+		}
+	}
+	if a.jdbcGateway != nil {
+		for sessionID, session := range a.jdbcGateway.ActiveSessionConfigs() {
+			if isJDBCDriverProfileInUse(driverID, target, session.DBType, session.DriverProfileID, a.jdbcCatalog) {
+				users = append(users, "活动会话 "+sessionID)
+			}
+		}
+	}
+	return users, nil
+}
+
+func isJDBCDriverProfileInUse(driverID string, target config.JDBCDriverProfile, databaseType, profileID string, catalog *service.DriverCatalogService) bool {
+	if databaseType != driverID {
+		return false
+	}
+	profileID = strings.TrimSpace(profileID)
+	if profileID != "" {
+		return profileID == target.ID || profileID == target.Version
+	}
+	if catalog == nil {
+		return false
+	}
+	_, recommended, err := catalog.GetRecommendedProfile(driverID)
+	return err == nil && (recommended.ID == target.ID || recommended.Version == target.Version)
 }
 
 func (a *App) GetJDBCRuntimeStatus() (service.RuntimeStatus, error) {
