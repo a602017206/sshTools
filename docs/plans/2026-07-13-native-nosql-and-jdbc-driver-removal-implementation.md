@@ -106,16 +106,7 @@
 5. 写中文变更记录，运行 `npm run build` 与 `go test ./...`；若 Java agent 构建受阻，先记录阻塞。
 6. 提交 `feat: add native nosql connection interface`。
 
-### 任务 9：端到端验证与开发记录
-
-**文件：** 创建 `docs/development/2026-07-13-native-nosql-and-jdbc-driver-removal.md`、`docs/changes/features/2026-07-13-native-nosql-completion.md`。
-
-1. 运行完整 Go 测试、前端构建和必要的 Wails 构建。
-2. 对每种服务完成手工连接、资源浏览、关闭和保存连接检查；对 JDBC profile 完成“被引用禁止卸载”和“未引用可卸载”检查。
-3. 记录实际验证结果、工具链阻塞（如有）和剩余风险。
-4. 提交 `docs: verify native nosql connections and jdbc driver removal`。
-
-### 任务 10：实现跨平台内置 provider 注册表
+### 任务 9：实现跨平台内置 provider 注册表
 
 **文件：** 创建 `internal/service/native_database_registry.go`、对应测试；创建 `docs/changes/features/2026-07-13-native-nosql-provider-registry.md`。
 
@@ -126,7 +117,7 @@
 5. 写中文变更记录并运行 `go test ./internal/service`。
 6. 提交 `feat: add cross-platform nosql provider registry`。
 
-### 任务 11：实现首批常用 NoSQL provider
+### 任务 10：实现首批常用 NoSQL provider
 
 **文件：** 创建各 provider 与测试、修改 `go.mod`/`go.sum`；创建每类 provider 的中文变更记录。
 
@@ -135,3 +126,12 @@
 3. 逐个实现连接测试与只读资源浏览，优先使用厂商官方 SDK；无官方 Go SDK 时封装稳定公开协议并注明来源。
 4. 每个 provider 独立确认通过、记录中文变更并提交。
 5. 完成后运行 `go test ./internal/service`。
+
+### 任务 11：端到端验证与开发记录
+
+**文件：** 创建 `docs/development/2026-07-13-native-nosql-and-jdbc-driver-removal.md`、`docs/changes/features/2026-07-13-native-nosql-completion.md`。
+
+1. 运行完整 Go 测试、前端构建和必要的 Wails 构建。
+2. 对每种已实现服务完成手工连接、资源浏览、关闭和保存连接检查；对 JDBC profile 完成“被引用禁止卸载”和“未引用可卸载”检查。
+3. 记录实际验证结果、工具链阻塞（如有）和剩余风险。
+4. 提交 `docs: verify native nosql connections and jdbc driver removal`。
