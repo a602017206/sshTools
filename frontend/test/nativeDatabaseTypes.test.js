@@ -11,6 +11,7 @@ test('原生数据库类型不需要 JDBC profile', () => {
   assert.equal(isNativeDatabaseType('cassandra'), true);
   assert.equal(isNativeDatabaseType('couchbase'), true);
   assert.equal(isNativeDatabaseType('influxdb'), true);
+  assert.equal(isNativeDatabaseType('neo4j'), true);
   assert.equal(isNativeDatabaseType('mysql'), false);
 });
 
@@ -40,4 +41,5 @@ test('原生数据库类型提供默认端口和资源标签', () => {
     resourceLabel: '集合'
   });
   assert.deepEqual(databaseTypeConfig('influxdb'), { port: '8086', resourceLabel: '资源' });
+  assert.deepEqual(databaseTypeConfig('neo4j'), { port: '7687', resourceLabel: '资源' });
 });

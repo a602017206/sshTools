@@ -132,6 +132,7 @@ func (a *App) startup(ctx context.Context) {
 		service.NativeDatabaseTypeCassandra:     service.NewDefaultCassandraNativeProvider(),
 		service.NativeDatabaseTypeCouchbase:     service.NewDefaultCouchbaseNativeProvider(),
 		service.NativeDatabaseTypeInfluxDB:      service.NewDefaultInfluxDBNativeProvider(),
+		service.NativeDatabaseTypeNeo4j:         service.NewDefaultNeo4jNativeProvider(),
 	})
 }
 

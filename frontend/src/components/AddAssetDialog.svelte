@@ -38,7 +38,8 @@
     { value: 'memcached', label: 'Memcached', port: '11211' },
     { value: 'cassandra', label: 'Cassandra / ScyllaDB', port: '9042' },
     { value: 'couchbase', label: 'Couchbase', port: '8091' },
-    { value: 'influxdb', label: 'InfluxDB', port: '8086' }
+    { value: 'influxdb', label: 'InfluxDB', port: '8086' },
+    { value: 'neo4j', label: 'Neo4j', port: '7687' }
   ];
 
   // Group selector state
