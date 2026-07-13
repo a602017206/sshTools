@@ -9,6 +9,7 @@ test('原生数据库类型不需要 JDBC profile', () => {
   assert.equal(isNativeDatabaseType('elasticsearch'), true);
   assert.equal(isNativeDatabaseType('memcached'), true);
   assert.equal(isNativeDatabaseType('cassandra'), true);
+  assert.equal(isNativeDatabaseType('couchbase'), true);
   assert.equal(isNativeDatabaseType('mysql'), false);
 });
 
@@ -32,5 +33,9 @@ test('原生数据库类型提供默认端口和资源标签', () => {
   assert.deepEqual(databaseTypeConfig('cassandra'), {
     port: '9042',
     resourceLabel: '表'
+  });
+  assert.deepEqual(databaseTypeConfig('couchbase'), {
+    port: '8091',
+    resourceLabel: '集合'
   });
 });

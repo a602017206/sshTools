@@ -36,7 +36,8 @@
     { value: 'mongodb', label: 'MongoDB', port: '27017' },
     { value: 'elasticsearch', label: 'Elasticsearch / OpenSearch', port: '9200' },
     { value: 'memcached', label: 'Memcached', port: '11211' },
-    { value: 'cassandra', label: 'Cassandra / ScyllaDB', port: '9042' }
+    { value: 'cassandra', label: 'Cassandra / ScyllaDB', port: '9042' },
+    { value: 'couchbase', label: 'Couchbase', port: '8091' }
   ];
 
   // Group selector state

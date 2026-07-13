@@ -3,7 +3,8 @@ const nativeTypes = {
   mongodb: { port: '27017', resourceLabel: '集合' },
   elasticsearch: { port: '9200', resourceLabel: '索引' },
   memcached: { port: '11211', resourceLabel: '统计项' },
-  cassandra: { port: '9042', resourceLabel: '表' }
+  cassandra: { port: '9042', resourceLabel: '表' },
+  couchbase: { port: '8091', resourceLabel: '集合' }
 };
 
 export function isNativeDatabaseType(databaseType) {

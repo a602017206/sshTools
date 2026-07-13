@@ -130,6 +130,7 @@ func (a *App) startup(ctx context.Context) {
 		service.NativeDatabaseTypeElasticsearch: service.NewDefaultElasticsearchNativeProvider(),
 		service.NativeDatabaseTypeMemcached:     service.NewDefaultMemcachedNativeProvider(),
 		service.NativeDatabaseTypeCassandra:     service.NewDefaultCassandraNativeProvider(),
+		service.NativeDatabaseTypeCouchbase:     service.NewDefaultCouchbaseNativeProvider(),
 	})
 }
 
