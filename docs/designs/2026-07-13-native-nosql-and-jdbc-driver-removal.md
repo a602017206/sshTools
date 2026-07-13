@@ -36,7 +36,7 @@ Redis、MongoDB、Elasticsearch 及其他常用 NoSQL 是通用网络协议服�
 | --- | --- | --- | --- |
 | Redis | 逻辑数据库编号 | 键名 | `github.com/redis/go-redis/v9` |
 | MongoDB | 数据库 | 集合 | `go.mongodb.org/mongo-driver` |
-| Elasticsearch | 索引 | 无 | `github.com/elastic/go-elasticsearch/v9` |
+| Elasticsearch | 索引 | 无 | `github.com/elastic/go-elasticsearch/v8` |
 | Memcached | 服务统计项 | 无 | 文本协议 provider |
 | Cassandra | 键空间 | 表 | CQL provider |
 | Couchbase | Bucket | Scope/Collection | Couchbase Go SDK provider |

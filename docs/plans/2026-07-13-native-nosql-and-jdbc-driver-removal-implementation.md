@@ -6,7 +6,7 @@
 
 **架构：** JDBC 卸载在 `App` 层检查已保存连接和活动 gateway 会话。原生服务由独立的 `NativeDatabaseService` 和内置 provider 注册表实现，通过 Wails API 暴露连接与资源浏览；前端按 `metadata.db_type` 路由到原生资源面板。
 
-**技术栈：** Go、Wails、Svelte、`github.com/redis/go-redis/v9`、`go.mongodb.org/mongo-driver`、`github.com/elastic/go-elasticsearch/v9`、Couchbase/InfluxDB/Neo4j/Kafka Go 客户端、Go `testing`。
+**技术栈：** Go、Wails、Svelte、`github.com/redis/go-redis/v9`、`go.mongodb.org/mongo-driver`、`github.com/elastic/go-elasticsearch/v8`、Couchbase/InfluxDB/Neo4j/Kafka Go 客户端、Go `testing`。
 
 ---
 
