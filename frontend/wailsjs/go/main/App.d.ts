@@ -122,9 +122,13 @@ export function InstallJDBCDriver(arg1:string,arg2:string):Promise<void>;
 
 export function InstallJDBCManagedRuntime():Promise<service.JDBCRuntimeActivationResult>;
 
+export function ListDatabaseSchemas(arg1:string,arg2:string):Promise<Array<string>>;
+
 export function ListDatabaseTables(arg1:string):Promise<Array<string>>;
 
 export function ListDatabaseTablesInDatabase(arg1:string,arg2:string):Promise<Array<string>>;
+
+export function ListDatabaseTablesInSchema(arg1:string,arg2:string,arg3:string):Promise<Array<string>>;
 
 export function ListDatabases(arg1:string):Promise<Array<string>>;
 

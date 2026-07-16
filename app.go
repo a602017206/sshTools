@@ -1121,6 +1121,14 @@ func (a *App) ListDatabaseTablesInDatabase(sessionID, database string) ([]string
 	return a.databaseService.ListTablesInDatabase(sessionID, database)
 }
 
+func (a *App) ListDatabaseSchemas(sessionID, database string) ([]string, error) {
+	return a.databaseService.ListSchemas(sessionID, database)
+}
+
+func (a *App) ListDatabaseTablesInSchema(sessionID, database, schema string) ([]string, error) {
+	return a.databaseService.ListTablesInSchema(sessionID, database, schema)
+}
+
 func (a *App) TestNativeDatabaseConnection(host string, port int, user, password, databaseType, database string) error {
 	service, cfg, ctx, cancel, err := a.nativeDatabaseRequest(host, port, user, password, databaseType, database)
 	if err != nil {

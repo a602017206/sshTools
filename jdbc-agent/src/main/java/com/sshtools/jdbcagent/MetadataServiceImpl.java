@@ -5,6 +5,8 @@ import com.sshtools.jdbcagent.proto.CloseSessionResponse;
 import com.sshtools.jdbcagent.proto.Column;
 import com.sshtools.jdbcagent.proto.ListColumnsRequest;
 import com.sshtools.jdbcagent.proto.ListColumnsResponse;
+import com.sshtools.jdbcagent.proto.ListSchemasRequest;
+import com.sshtools.jdbcagent.proto.ListSchemasResponse;
 import com.sshtools.jdbcagent.proto.ListTablesRequest;
 import com.sshtools.jdbcagent.proto.ListTablesResponse;
 import io.grpc.Status;
@@ -22,6 +24,34 @@ public class MetadataServiceImpl extends QueryServiceImpl {
     public MetadataServiceImpl(String token, ConnectionRegistry registry, DriverLoader driverLoader) {
         super(token, registry, driverLoader);
         this.registry = registry;
+    }
+
+    @Override
+    public void listSchemas(ListSchemasRequest request, StreamObserver<ListSchemasResponse> responseObserver) {
+        if (!isAuthorized(request.getToken(), responseObserver)) {
+            return;
+        }
+
+        try {
+            Connection connection = registry.get(request.getSessionId());
+            DatabaseMetaData metaData = connection.getMetaData();
+            ListSchemasResponse.Builder response = ListSchemasResponse.newBuilder();
+            try (ResultSet schemas = metaData.getSchemas(emptyToNull(request.getCatalog()), null)) {
+                while (schemas.next()) {
+                    String schema = schemas.getString("TABLE_SCHEM");
+                    if (schema != null && !schema.isBlank()) {
+                        response.addSchemas(schema);
+                    }
+                }
+            }
+            responseObserver.onNext(response.build());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(Status.fromThrowable(e)
+                    .withDescription(e.getMessage())
+                    .withCause(e)
+                    .asRuntimeException());
+        }
     }
 
     @Override

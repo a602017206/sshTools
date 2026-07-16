@@ -7,6 +7,8 @@ import com.sshtools.jdbcagent.proto.DriverProfile;
 import com.sshtools.jdbcagent.proto.ExecuteQueryRequest;
 import com.sshtools.jdbcagent.proto.ListColumnsRequest;
 import com.sshtools.jdbcagent.proto.ListColumnsResponse;
+import com.sshtools.jdbcagent.proto.ListSchemasRequest;
+import com.sshtools.jdbcagent.proto.ListSchemasResponse;
 import com.sshtools.jdbcagent.proto.ListTablesRequest;
 import com.sshtools.jdbcagent.proto.ListTablesResponse;
 import com.sshtools.jdbcagent.proto.OpenSessionRequest;
@@ -48,6 +50,13 @@ class MetadataServiceImplTest {
                 .setSchema("PUBLIC")
                 .build(), tablesObserver);
         assertTrue(tablesObserver.value.getTablesList().contains("USERS"));
+
+        RecordingObserver<ListSchemasResponse> schemasObserver = new RecordingObserver<>();
+        service.listSchemas(ListSchemasRequest.newBuilder()
+                .setToken("secret")
+                .setSessionId("h2-meta")
+                .build(), schemasObserver);
+        assertTrue(schemasObserver.value.getSchemasList().contains("PUBLIC"));
 
         RecordingObserver<ListColumnsResponse> columnsObserver = new RecordingObserver<>();
         service.listColumns(ListColumnsRequest.newBuilder()

@@ -3,6 +3,7 @@
   import Terminal from './Terminal.svelte';
   import DatabaseListPanel from './DatabaseListPanel.svelte';
   import MySQLObjectTree from './MySQLObjectTree.svelte';
+  import GenericJDBCObjectTree from './GenericJDBCObjectTree.svelte';
   import PostgreSQLObjectTree from './PostgreSQLObjectTree.svelte';
   import DatabaseTablePanel from './DatabaseTablePanel.svelte';
   import NativeDatabasePanel from './NativeDatabasePanel.svelte';
@@ -1154,7 +1155,7 @@
               {:else if String(session.connection?.metadata?.db_type || session.connection?.dbType || '').toLowerCase() === 'mysql'}
                 <MySQLObjectTree sessionId={session.sessionId} dbConfig={session.connection} />
               {:else}
-                <DatabaseListPanel sessionId={session.sessionId} dbConfig={session.connection} />
+                <GenericJDBCObjectTree sessionId={session.sessionId} dbConfig={session.connection} />
               {/if}
             {:else if session.type === 'database' && session.panelType === 'database-table'}
               <DatabaseTablePanel

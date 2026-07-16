@@ -13,6 +13,7 @@ import (
 type JdbcAgentClient interface {
 	OpenSession(ctx context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error)
 	ExecuteQuery(ctx context.Context, request *jdbcproto.ExecuteQueryRequest) (*jdbcproto.QueryResult, error)
+	ListSchemas(ctx context.Context, request *jdbcproto.ListSchemasRequest) (*jdbcproto.ListSchemasResponse, error)
 	ListTables(ctx context.Context, request *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error)
 	ListColumns(ctx context.Context, request *jdbcproto.ListColumnsRequest) (*jdbcproto.ListColumnsResponse, error)
 	CloseSession(ctx context.Context, request *jdbcproto.CloseSessionRequest) (*jdbcproto.CloseSessionResponse, error)
@@ -93,6 +94,11 @@ func (s *JdbcGatewayService) ExecuteQuery(ctx context.Context, sessionID string,
 }
 
 func (s *JdbcGatewayService) ListTables(ctx context.Context, sessionID, database string) ([]string, error) {
+	return s.ListTablesInSchema(ctx, sessionID, database, "")
+}
+
+// ListTablesInSchema returns tables visible under a catalog and schema.
+func (s *JdbcGatewayService) ListTablesInSchema(ctx context.Context, sessionID, database, schema string) ([]string, error) {
 	if s.client == nil {
 		return nil, MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
 	}
@@ -100,11 +106,24 @@ func (s *JdbcGatewayService) ListTables(ctx context.Context, sessionID, database
 		Token:     s.token,
 		SessionId: sessionID,
 		Catalog:   database,
+		Schema:    schema,
 	})
 	if err != nil {
 		return nil, mapJdbcGatewayError(err)
 	}
 	return result.GetTables(), nil
+}
+
+// ListSchemas returns schemas reported by the active JDBC driver.
+func (s *JdbcGatewayService) ListSchemas(ctx context.Context, sessionID, database string) ([]string, error) {
+	if s.client == nil {
+		return nil, MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
+	}
+	result, err := s.client.ListSchemas(ctx, &jdbcproto.ListSchemasRequest{Token: s.token, SessionId: sessionID, Catalog: database})
+	if err != nil {
+		return nil, mapJdbcGatewayError(err)
+	}
+	return result.GetSchemas(), nil
 }
 
 func (s *JdbcGatewayService) ListDatabases(context.Context, string) ([]string, error) {

@@ -87,6 +87,7 @@ func TestJdbcGatewayMapsDriverMissingError(t *testing.T) {
 type fakeJdbcAgentClient struct {
 	openRequest    *jdbcproto.OpenSessionRequest
 	columnsRequest *jdbcproto.ListColumnsRequest
+	schemasRequest *jdbcproto.ListSchemasRequest
 	querySQL       string
 	queryResult    *jdbcproto.QueryResult
 	openErr        error
@@ -106,6 +107,11 @@ func (f *fakeJdbcAgentClient) ExecuteQuery(ctx context.Context, request *jdbcpro
 		return f.queryResult, nil
 	}
 	return &jdbcproto.QueryResult{}, nil
+}
+
+func (f *fakeJdbcAgentClient) ListSchemas(ctx context.Context, request *jdbcproto.ListSchemasRequest) (*jdbcproto.ListSchemasResponse, error) {
+	f.schemasRequest = request
+	return &jdbcproto.ListSchemasResponse{Schemas: []string{"PUBLIC"}}, nil
 }
 
 func (f *fakeJdbcAgentClient) ListTables(ctx context.Context, request *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
@@ -130,6 +136,22 @@ func TestJdbcGatewayGetTableSchemaInSchemaPassesSchemaToAgent(t *testing.T) {
 	}
 	if client.columnsRequest.GetSchema() != "pems" {
 		t.Fatalf("schema = %q, want pems", client.columnsRequest.GetSchema())
+	}
+}
+
+func TestJdbcGatewayListSchemasPassesCatalogToAgent(t *testing.T) {
+	client := &fakeJdbcAgentClient{}
+	gateway := NewJdbcGatewayService(client, "test-token")
+
+	schemas, err := gateway.ListSchemas(context.Background(), "session-1", "app")
+	if err != nil {
+		t.Fatalf("list schemas failed: %v", err)
+	}
+	if len(schemas) != 1 || schemas[0] != "PUBLIC" {
+		t.Fatalf("schemas = %v", schemas)
+	}
+	if client.schemasRequest.GetCatalog() != "app" {
+		t.Fatalf("catalog = %q, want app", client.schemasRequest.GetCatalog())
 	}
 }
 

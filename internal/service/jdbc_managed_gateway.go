@@ -67,6 +67,18 @@ func (s *ManagedJDBCGateway) ListTables(ctx context.Context, sessionID, database
 	})
 }
 
+func (s *ManagedJDBCGateway) ListTablesInSchema(ctx context.Context, sessionID, database, schema string) ([]string, error) {
+	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) ([]string, error) {
+		return gateway.ListTablesInSchema(ctx, sessionID, database, schema)
+	})
+}
+
+func (s *ManagedJDBCGateway) ListSchemas(ctx context.Context, sessionID, database string) ([]string, error) {
+	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) ([]string, error) {
+		return gateway.ListSchemas(ctx, sessionID, database)
+	})
+}
+
 func (s *ManagedJDBCGateway) ListDatabases(ctx context.Context, sessionID string) ([]string, error) {
 	cfg, ok := s.sessionConfig(sessionID)
 	if !ok {

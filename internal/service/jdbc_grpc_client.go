@@ -31,6 +31,10 @@ func (c grpcJdbcAgentClient) ExecuteQuery(ctx context.Context, request *jdbcprot
 	return c.client.ExecuteQuery(ctx, request)
 }
 
+func (c grpcJdbcAgentClient) ListSchemas(ctx context.Context, request *jdbcproto.ListSchemasRequest) (*jdbcproto.ListSchemasResponse, error) {
+	return c.client.ListSchemas(ctx, request)
+}
+
 func (c grpcJdbcAgentClient) ListTables(ctx context.Context, request *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
 	return c.client.ListTables(ctx, request)
 }

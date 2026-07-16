@@ -11,6 +11,7 @@ service JdbcAgent {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
   rpc ExecuteQuery(ExecuteQueryRequest) returns (QueryResult);
+  rpc ListSchemas(ListSchemasRequest) returns (ListSchemasResponse);
   rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
   rpc ListColumns(ListColumnsRequest) returns (ListColumnsResponse);
   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
@@ -64,6 +65,16 @@ message QueryResult {
 
 message Row {
   repeated string values = 1;
+}
+
+message ListSchemasRequest {
+  string token = 1;
+  string session_id = 2;
+  string catalog = 3;
+}
+
+message ListSchemasResponse {
+  repeated string schemas = 1;
 }
 
 message ListTablesRequest {

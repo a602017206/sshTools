@@ -238,12 +238,20 @@ export function InstallJDBCManagedRuntime() {
   return window['go']['main']['App']['InstallJDBCManagedRuntime']();
 }
 
+export function ListDatabaseSchemas(arg1, arg2) {
+  return window['go']['main']['App']['ListDatabaseSchemas'](arg1, arg2);
+}
+
 export function ListDatabaseTables(arg1) {
   return window['go']['main']['App']['ListDatabaseTables'](arg1);
 }
 
 export function ListDatabaseTablesInDatabase(arg1, arg2) {
   return window['go']['main']['App']['ListDatabaseTablesInDatabase'](arg1, arg2);
+}
+
+export function ListDatabaseTablesInSchema(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ListDatabaseTablesInSchema'](arg1, arg2, arg3);
 }
 
 export function ListDatabases(arg1) {

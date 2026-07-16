@@ -160,6 +160,10 @@ func (c *managedGatewayClient) ExecuteQuery(_ context.Context, request *jdbcprot
 	return &jdbcproto.QueryResult{}, nil
 }
 
+func (c *managedGatewayClient) ListSchemas(context.Context, *jdbcproto.ListSchemasRequest) (*jdbcproto.ListSchemasResponse, error) {
+	return &jdbcproto.ListSchemasResponse{}, nil
+}
+
 func (c *managedGatewayClient) ListTables(context.Context, *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
 	return &jdbcproto.ListTablesResponse{}, nil
 }
