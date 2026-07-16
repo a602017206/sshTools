@@ -36,6 +36,10 @@ export function databaseSidebarCategories() {
   ];
 }
 
+export function defaultDatabaseObjectCategory() {
+  return 'tables';
+}
+
 export function buildPostgreSQLSchemaQuery() {
   return `
     SELECT nspname

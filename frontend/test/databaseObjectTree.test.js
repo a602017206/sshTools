@@ -6,7 +6,8 @@ import {
   buildPostgreSQLObjectQuery,
   buildPostgreSQLSchemaQuery,
   databaseObjectCategories,
-  databaseSidebarCategories
+  databaseSidebarCategories,
+  defaultDatabaseObjectCategory
 } from '../src/lib/databaseObjectTree.js';
 
 test('PostgreSQL 兼容数据库通过系统目录读取 schema', () => {
@@ -46,4 +47,8 @@ test('左侧对象树分类携带标准 JDBC 元数据类型或例程类型', ()
     { id: 'procedures', label: '存储过程', icon: '▤', functions: false },
     { id: 'functions', label: '函数', icon: 'ƒ', functions: true }
   ]);
+});
+
+test('对象浏览器默认打开表分类', () => {
+  assert.equal(defaultDatabaseObjectCategory(), 'tables');
 });
