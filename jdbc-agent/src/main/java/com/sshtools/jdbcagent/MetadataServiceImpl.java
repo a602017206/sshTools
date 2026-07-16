@@ -7,6 +7,8 @@ import com.sshtools.jdbcagent.proto.ListColumnsRequest;
 import com.sshtools.jdbcagent.proto.ListColumnsResponse;
 import com.sshtools.jdbcagent.proto.ListSchemasRequest;
 import com.sshtools.jdbcagent.proto.ListSchemasResponse;
+import com.sshtools.jdbcagent.proto.ListRoutinesRequest;
+import com.sshtools.jdbcagent.proto.ListRoutinesResponse;
 import com.sshtools.jdbcagent.proto.ListTablesRequest;
 import com.sshtools.jdbcagent.proto.ListTablesResponse;
 import io.grpc.Status;
@@ -24,6 +26,25 @@ public class MetadataServiceImpl extends QueryServiceImpl {
     public MetadataServiceImpl(String token, ConnectionRegistry registry, DriverLoader driverLoader) {
         super(token, registry, driverLoader);
         this.registry = registry;
+    }
+
+    @Override
+    public void listRoutines(ListRoutinesRequest request, StreamObserver<ListRoutinesResponse> responseObserver) {
+        if (!isAuthorized(request.getToken(), responseObserver)) return;
+        try {
+            DatabaseMetaData metaData = registry.get(request.getSessionId()).getMetaData();
+            ListRoutinesResponse.Builder response = ListRoutinesResponse.newBuilder();
+            try (ResultSet routines = request.getFunctions()
+                    ? metaData.getFunctions(emptyToNull(request.getCatalog()), emptyToNull(request.getSchema()), null)
+                    : metaData.getProcedures(emptyToNull(request.getCatalog()), emptyToNull(request.getSchema()), null)) {
+                String nameColumn = request.getFunctions() ? "FUNCTION_NAME" : "PROCEDURE_NAME";
+                while (routines.next()) response.addRoutines(routines.getString(nameColumn));
+            }
+            responseObserver.onNext(response.build());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(Status.fromThrowable(e).withDescription(e.getMessage()).withCause(e).asRuntimeException());
+        }
     }
 
     @Override

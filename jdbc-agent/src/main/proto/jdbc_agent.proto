@@ -12,6 +12,7 @@ service JdbcAgent {
   rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
   rpc ExecuteQuery(ExecuteQueryRequest) returns (QueryResult);
   rpc ListSchemas(ListSchemasRequest) returns (ListSchemasResponse);
+  rpc ListRoutines(ListRoutinesRequest) returns (ListRoutinesResponse);
   rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
   rpc ListColumns(ListColumnsRequest) returns (ListColumnsResponse);
   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
@@ -75,6 +76,18 @@ message ListSchemasRequest {
 
 message ListSchemasResponse {
   repeated string schemas = 1;
+}
+
+message ListRoutinesRequest {
+  string token = 1;
+  string session_id = 2;
+  string catalog = 3;
+  string schema = 4;
+  bool functions = 5;
+}
+
+message ListRoutinesResponse {
+  repeated string routines = 1;
 }
 
 message ListTablesRequest {

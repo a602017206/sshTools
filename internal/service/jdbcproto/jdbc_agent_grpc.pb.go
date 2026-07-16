@@ -23,6 +23,7 @@ const (
 	JdbcAgent_OpenSession_FullMethodName  = "/sshtools.jdbc.JdbcAgent/OpenSession"
 	JdbcAgent_ExecuteQuery_FullMethodName = "/sshtools.jdbc.JdbcAgent/ExecuteQuery"
 	JdbcAgent_ListSchemas_FullMethodName  = "/sshtools.jdbc.JdbcAgent/ListSchemas"
+	JdbcAgent_ListRoutines_FullMethodName = "/sshtools.jdbc.JdbcAgent/ListRoutines"
 	JdbcAgent_ListTables_FullMethodName   = "/sshtools.jdbc.JdbcAgent/ListTables"
 	JdbcAgent_ListColumns_FullMethodName  = "/sshtools.jdbc.JdbcAgent/ListColumns"
 	JdbcAgent_CloseSession_FullMethodName = "/sshtools.jdbc.JdbcAgent/CloseSession"
@@ -36,6 +37,7 @@ type JdbcAgentClient interface {
 	OpenSession(ctx context.Context, in *OpenSessionRequest, opts ...grpc.CallOption) (*OpenSessionResponse, error)
 	ExecuteQuery(ctx context.Context, in *ExecuteQueryRequest, opts ...grpc.CallOption) (*QueryResult, error)
 	ListSchemas(ctx context.Context, in *ListSchemasRequest, opts ...grpc.CallOption) (*ListSchemasResponse, error)
+	ListRoutines(ctx context.Context, in *ListRoutinesRequest, opts ...grpc.CallOption) (*ListRoutinesResponse, error)
 	ListTables(ctx context.Context, in *ListTablesRequest, opts ...grpc.CallOption) (*ListTablesResponse, error)
 	ListColumns(ctx context.Context, in *ListColumnsRequest, opts ...grpc.CallOption) (*ListColumnsResponse, error)
 	CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error)
@@ -89,6 +91,16 @@ func (c *jdbcAgentClient) ListSchemas(ctx context.Context, in *ListSchemasReques
 	return out, nil
 }
 
+func (c *jdbcAgentClient) ListRoutines(ctx context.Context, in *ListRoutinesRequest, opts ...grpc.CallOption) (*ListRoutinesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRoutinesResponse)
+	err := c.cc.Invoke(ctx, JdbcAgent_ListRoutines_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *jdbcAgentClient) ListTables(ctx context.Context, in *ListTablesRequest, opts ...grpc.CallOption) (*ListTablesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListTablesResponse)
@@ -127,6 +139,7 @@ type JdbcAgentServer interface {
 	OpenSession(context.Context, *OpenSessionRequest) (*OpenSessionResponse, error)
 	ExecuteQuery(context.Context, *ExecuteQueryRequest) (*QueryResult, error)
 	ListSchemas(context.Context, *ListSchemasRequest) (*ListSchemasResponse, error)
+	ListRoutines(context.Context, *ListRoutinesRequest) (*ListRoutinesResponse, error)
 	ListTables(context.Context, *ListTablesRequest) (*ListTablesResponse, error)
 	ListColumns(context.Context, *ListColumnsRequest) (*ListColumnsResponse, error)
 	CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error)
@@ -151,6 +164,9 @@ func (UnimplementedJdbcAgentServer) ExecuteQuery(context.Context, *ExecuteQueryR
 }
 func (UnimplementedJdbcAgentServer) ListSchemas(context.Context, *ListSchemasRequest) (*ListSchemasResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListSchemas not implemented")
+}
+func (UnimplementedJdbcAgentServer) ListRoutines(context.Context, *ListRoutinesRequest) (*ListRoutinesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListRoutines not implemented")
 }
 func (UnimplementedJdbcAgentServer) ListTables(context.Context, *ListTablesRequest) (*ListTablesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListTables not implemented")
@@ -254,6 +270,24 @@ func _JdbcAgent_ListSchemas_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _JdbcAgent_ListRoutines_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRoutinesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JdbcAgentServer).ListRoutines(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JdbcAgent_ListRoutines_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JdbcAgentServer).ListRoutines(ctx, req.(*ListRoutinesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _JdbcAgent_ListTables_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListTablesRequest)
 	if err := dec(in); err != nil {
@@ -330,6 +364,10 @@ var JdbcAgent_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListSchemas",
 			Handler:    _JdbcAgent_ListSchemas_Handler,
+		},
+		{
+			MethodName: "ListRoutines",
+			Handler:    _JdbcAgent_ListRoutines_Handler,
 		},
 		{
 			MethodName: "ListTables",
