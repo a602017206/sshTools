@@ -164,6 +164,10 @@ func (c *managedGatewayClient) ListSchemas(context.Context, *jdbcproto.ListSchem
 	return &jdbcproto.ListSchemasResponse{}, nil
 }
 
+func (c *managedGatewayClient) ListRoutines(context.Context, *jdbcproto.ListRoutinesRequest) (*jdbcproto.ListRoutinesResponse, error) {
+	return &jdbcproto.ListRoutinesResponse{}, nil
+}
+
 func (c *managedGatewayClient) ListTables(context.Context, *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
 	return &jdbcproto.ListTablesResponse{}, nil
 }

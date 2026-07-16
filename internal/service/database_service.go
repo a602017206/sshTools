@@ -50,6 +50,7 @@ type schemaDatabaseGateway interface {
 	ListSchemas(ctx context.Context, sessionID, database string) ([]string, error)
 	ListTablesInSchema(ctx context.Context, sessionID, database, schema string) ([]string, error)
 	ListObjects(ctx context.Context, sessionID, database, schema string, types []string) ([]string, error)
+	ListRoutines(ctx context.Context, sessionID, database, schema string, functions bool) ([]string, error)
 }
 
 func NewDatabaseService(configManager *config.ConfigManager) *DatabaseService {
@@ -461,6 +462,16 @@ func (ds *DatabaseService) ListObjects(sessionID, database, schema string, types
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return gateway.ListObjects(ctx, sessionID, database, schema, types)
+}
+
+func (ds *DatabaseService) ListRoutines(sessionID, database, schema string, functions bool) ([]string, error) {
+	gateway, ok := ds.gateway.(schemaDatabaseGateway)
+	if !ok {
+		return nil, fmt.Errorf("当前数据库连接不支持例程浏览")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return gateway.ListRoutines(ctx, sessionID, database, schema, functions)
 }
 
 func (ds *DatabaseService) GetTableSchema(sessionID, table string) (*config.TableSchema, error) {

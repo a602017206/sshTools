@@ -124,6 +124,8 @@ export function InstallJDBCManagedRuntime():Promise<service.JDBCRuntimeActivatio
 
 export function ListDatabaseObjects(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<Array<string>>;
 
+export function ListDatabaseRoutines(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<Array<string>>;
+
 export function ListDatabaseSchemas(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function ListDatabaseTables(arg1:string):Promise<Array<string>>;

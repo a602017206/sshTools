@@ -14,6 +14,7 @@ type JdbcAgentClient interface {
 	OpenSession(ctx context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error)
 	ExecuteQuery(ctx context.Context, request *jdbcproto.ExecuteQueryRequest) (*jdbcproto.QueryResult, error)
 	ListSchemas(ctx context.Context, request *jdbcproto.ListSchemasRequest) (*jdbcproto.ListSchemasResponse, error)
+	ListRoutines(ctx context.Context, request *jdbcproto.ListRoutinesRequest) (*jdbcproto.ListRoutinesResponse, error)
 	ListTables(ctx context.Context, request *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error)
 	ListColumns(ctx context.Context, request *jdbcproto.ListColumnsRequest) (*jdbcproto.ListColumnsResponse, error)
 	CloseSession(ctx context.Context, request *jdbcproto.CloseSessionRequest) (*jdbcproto.CloseSessionResponse, error)
@@ -130,6 +131,17 @@ func (s *JdbcGatewayService) ListSchemas(ctx context.Context, sessionID, databas
 		return nil, mapJdbcGatewayError(err)
 	}
 	return result.GetSchemas(), nil
+}
+
+func (s *JdbcGatewayService) ListRoutines(ctx context.Context, sessionID, database, schema string, functions bool) ([]string, error) {
+	if s.client == nil {
+		return nil, MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
+	}
+	result, err := s.client.ListRoutines(ctx, &jdbcproto.ListRoutinesRequest{Token: s.token, SessionId: sessionID, Catalog: database, Schema: schema, Functions: functions})
+	if err != nil {
+		return nil, mapJdbcGatewayError(err)
+	}
+	return result.GetRoutines(), nil
 }
 
 func (s *JdbcGatewayService) ListDatabases(context.Context, string) ([]string, error) {

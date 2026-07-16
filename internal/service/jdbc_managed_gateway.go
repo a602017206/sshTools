@@ -83,6 +83,12 @@ func (s *ManagedJDBCGateway) ListSchemas(ctx context.Context, sessionID, databas
 	})
 }
 
+func (s *ManagedJDBCGateway) ListRoutines(ctx context.Context, sessionID, database, schema string, functions bool) ([]string, error) {
+	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) ([]string, error) {
+		return gateway.ListRoutines(ctx, sessionID, database, schema, functions)
+	})
+}
+
 func (s *ManagedJDBCGateway) ListDatabases(ctx context.Context, sessionID string) ([]string, error) {
 	cfg, ok := s.sessionConfig(sessionID)
 	if !ok {

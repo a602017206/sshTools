@@ -85,13 +85,14 @@ func TestJdbcGatewayMapsDriverMissingError(t *testing.T) {
 }
 
 type fakeJdbcAgentClient struct {
-	openRequest    *jdbcproto.OpenSessionRequest
-	columnsRequest *jdbcproto.ListColumnsRequest
-	schemasRequest *jdbcproto.ListSchemasRequest
-	tablesRequest  *jdbcproto.ListTablesRequest
-	querySQL       string
-	queryResult    *jdbcproto.QueryResult
-	openErr        error
+	openRequest     *jdbcproto.OpenSessionRequest
+	columnsRequest  *jdbcproto.ListColumnsRequest
+	schemasRequest  *jdbcproto.ListSchemasRequest
+	tablesRequest   *jdbcproto.ListTablesRequest
+	routinesRequest *jdbcproto.ListRoutinesRequest
+	querySQL        string
+	queryResult     *jdbcproto.QueryResult
+	openErr         error
 }
 
 func (f *fakeJdbcAgentClient) OpenSession(ctx context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error) {
@@ -113,6 +114,11 @@ func (f *fakeJdbcAgentClient) ExecuteQuery(ctx context.Context, request *jdbcpro
 func (f *fakeJdbcAgentClient) ListSchemas(ctx context.Context, request *jdbcproto.ListSchemasRequest) (*jdbcproto.ListSchemasResponse, error) {
 	f.schemasRequest = request
 	return &jdbcproto.ListSchemasResponse{Schemas: []string{"PUBLIC"}}, nil
+}
+
+func (f *fakeJdbcAgentClient) ListRoutines(ctx context.Context, request *jdbcproto.ListRoutinesRequest) (*jdbcproto.ListRoutinesResponse, error) {
+	f.routinesRequest = request
+	return &jdbcproto.ListRoutinesResponse{}, nil
 }
 
 func (f *fakeJdbcAgentClient) ListTables(ctx context.Context, request *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
@@ -167,6 +173,18 @@ func TestJdbcGatewayListObjectsPassesTypesToAgent(t *testing.T) {
 	}
 	if got := client.tablesRequest.GetTypes(); len(got) != 1 || got[0] != "VIEW" {
 		t.Fatalf("types = %v, want [VIEW]", got)
+	}
+}
+
+func TestJdbcGatewayListRoutinesPassesFunctionKindToAgent(t *testing.T) {
+	client := &fakeJdbcAgentClient{}
+	gateway := NewJdbcGatewayService(client, "test-token")
+	_, err := gateway.ListRoutines(context.Background(), "session-1", "app", "PUBLIC", true)
+	if err != nil {
+		t.Fatalf("list routines failed: %v", err)
+	}
+	if !client.routinesRequest.GetFunctions() {
+		t.Fatal("expected function request")
 	}
 }
 

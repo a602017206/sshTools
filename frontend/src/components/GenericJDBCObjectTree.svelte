@@ -14,7 +14,9 @@
   const categories = [
     { id: 'tables', label: '表', icon: '▦', types: ['TABLE'] },
     { id: 'views', label: '视图', icon: '◉', types: ['VIEW'] },
-    { id: 'system-tables', label: '系统表', icon: '▦', types: ['SYSTEM TABLE'] }
+    { id: 'system-tables', label: '系统表', icon: '▦', types: ['SYSTEM TABLE'] },
+    { id: 'procedures', label: '存储过程', icon: '▤', functions: false },
+    { id: 'functions', label: '函数', icon: 'ƒ', functions: true }
   ];
 
   async function loadSchemas() {
@@ -51,7 +53,10 @@
       return;
     }
     try {
-      objects = { ...objects, [nodeKey]: await window.wailsBindings.ListDatabaseObjects(sessionId, databaseName, schema, category.types) || [] };
+      const names = category.types
+        ? await window.wailsBindings.ListDatabaseObjects(sessionId, databaseName, schema, category.types)
+        : await window.wailsBindings.ListDatabaseRoutines(sessionId, databaseName, schema, category.functions);
+      objects = { ...objects, [nodeKey]: names || [] };
     } catch (error) {
       errorMessage = `加载${category.label}失败: ${error?.message || String(error || '未知错误')}`;
     }

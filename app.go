@@ -1133,6 +1133,10 @@ func (a *App) ListDatabaseObjects(sessionID, database, schema string, types []st
 	return a.databaseService.ListObjects(sessionID, database, schema, types)
 }
 
+func (a *App) ListDatabaseRoutines(sessionID, database, schema string, functions bool) ([]string, error) {
+	return a.databaseService.ListRoutines(sessionID, database, schema, functions)
+}
+
 func (a *App) TestNativeDatabaseConnection(host string, port int, user, password, databaseType, database string) error {
 	service, cfg, ctx, cancel, err := a.nativeDatabaseRequest(host, port, user, password, databaseType, database)
 	if err != nil {

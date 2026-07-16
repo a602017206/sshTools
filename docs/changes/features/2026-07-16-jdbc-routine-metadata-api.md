@@ -15,6 +15,12 @@ JDBC agent 新增 `ListRoutines` RPC。接口使用 `DatabaseMetaData.getProcedu
 - `jdbc-agent/src/test/java/com/sshtools/jdbcagent/MetadataServiceImplTest.java`
 - `internal/service/jdbcproto/jdbc_agent.pb.go`
 - `internal/service/jdbcproto/jdbc_agent_grpc.pb.go`
+- `internal/service/jdbc_gateway.go`
+- `internal/service/jdbc_grpc_client.go`
+- `internal/service/jdbc_managed_gateway.go`
+- `internal/service/database_service.go`
+- `app.go`
+- `frontend/src/components/GenericJDBCObjectTree.svelte`
 - 本变更记录。
 
 ## 验证
@@ -23,4 +29,4 @@ JDBC agent 新增 `ListRoutines` RPC。接口使用 `DatabaseMetaData.getProcedu
 
 ## 剩余风险
 
-当前仅完成 agent 协议和实现，Go gateway、Wails API 与对象树接入仍需后续完成。驱动可能不支持过程或函数元数据，调用失败时应由上层显示可操作错误。
+已接入 Go gateway、Wails API 与通用对象树。驱动可能不支持过程或函数元数据，调用失败时界面会显示加载错误；当前未提供例程定义查看。
