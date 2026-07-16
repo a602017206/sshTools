@@ -130,6 +130,10 @@ func (s *JdbcGatewayService) GetTableSchema(ctx context.Context, sessionID, tabl
 			Type:         column.GetType(),
 			Nullable:     column.GetNullable(),
 			IsPrimaryKey: column.GetPrimaryKey(),
+			ColumnSize: int(column.GetColumnSize()),
+			DecimalDigits: int(column.GetDecimalDigits()),
+			DefaultValue: column.GetDefaultValue(),
+			HasDefault: column.GetHasDefault(),
 		})
 	}
 	return &config.TableSchema{TableName: table, Columns: columns}, nil

@@ -24,6 +24,10 @@ type ColumnSchema struct {
 	Type         string `json:"type"`
 	Nullable     bool   `json:"nullable"`
 	IsPrimaryKey bool   `json:"is_primary_key"`
+	ColumnSize   int    `json:"column_size"`
+	DecimalDigits int   `json:"decimal_digits"`
+	DefaultValue string `json:"default_value"`
+	HasDefault   bool   `json:"has_default"`
 }
 
 func GetDefaultPort(dbType string) int {

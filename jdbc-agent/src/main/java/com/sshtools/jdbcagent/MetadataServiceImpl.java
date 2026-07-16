@@ -38,7 +38,7 @@ public class MetadataServiceImpl extends QueryServiceImpl {
                     emptyToNull(request.getCatalog()),
                     emptyToNull(request.getSchema()),
                     null,
-                    new String[]{"TABLE"})) {
+                    new String[]{"TABLE", "SYSTEM TABLE"})) {
                 while (tables.next()) {
                     response.addTables(tables.getString("TABLE_NAME"));
                 }
@@ -76,6 +76,10 @@ public class MetadataServiceImpl extends QueryServiceImpl {
                             .setType(columns.getString("TYPE_NAME"))
                             .setNullable(columns.getInt("NULLABLE") == DatabaseMetaData.columnNullable)
                             .setPrimaryKey(primaryKeys.contains(name))
+                            .setColumnSize(columns.getInt("COLUMN_SIZE"))
+                            .setDecimalDigits(columns.getInt("DECIMAL_DIGITS"))
+                            .setHasDefault(columns.getObject("COLUMN_DEF") != null)
+                            .setDefaultValue(columns.getObject("COLUMN_DEF") == null ? "" : columns.getString("COLUMN_DEF"))
                             .build());
                 }
             }

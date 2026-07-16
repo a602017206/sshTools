@@ -749,12 +749,17 @@ func postgreSQLCompatibleTableDDL(table, dbType string, schema *config.TableSche
 		if strings.TrimSpace(column.Name) == "" || strings.TrimSpace(column.Type) == "" {
 			return nil, fmt.Errorf("表 %s 包含无效字段定义", table)
 		}
-		ddl.WriteString(fmt.Sprintf("    %s %s", quotePostgreSQLIdentifier(column.Name), column.Type))
+		columnType := postgreSQLCompatibleColumnType(column)
+		ddl.WriteString(fmt.Sprintf("    %s %s", quotePostgreSQLIdentifier(column.Name), columnType))
 		if !column.Nullable {
 			ddl.WriteString(" NOT NULL")
 		}
 		if column.IsPrimaryKey {
 			ddl.WriteString(" PRIMARY KEY")
+		}
+		if column.HasDefault {
+			ddl.WriteString(" DEFAULT ")
+			ddl.WriteString(column.DefaultValue)
 		}
 		if index < len(schema.Columns)-1 {
 			ddl.WriteString(",")
@@ -763,6 +768,18 @@ func postgreSQLCompatibleTableDDL(table, dbType string, schema *config.TableSche
 	}
 	ddl.WriteString(");")
 	return &TableDDL{TableName: table, DDL: ddl.String(), DBType: dbType}, nil
+}
+
+func postgreSQLCompatibleColumnType(column config.ColumnSchema) string {
+	typeName := strings.TrimSpace(column.Type)
+	lowerType := strings.ToLower(typeName)
+	if column.ColumnSize > 0 && (strings.Contains(lowerType, "character") || strings.Contains(lowerType, "varchar")) {
+		return fmt.Sprintf("%s(%d)", typeName, column.ColumnSize)
+	}
+	if column.ColumnSize > 0 && column.DecimalDigits > 0 && (strings.Contains(lowerType, "numeric") || strings.Contains(lowerType, "decimal")) {
+		return fmt.Sprintf("%s(%d,%d)", typeName, column.ColumnSize, column.DecimalDigits)
+	}
+	return typeName
 }
 
 func quotePostgreSQLIdentifier(value string) string {

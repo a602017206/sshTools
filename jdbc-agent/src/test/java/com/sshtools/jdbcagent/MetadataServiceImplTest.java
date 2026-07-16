@@ -61,6 +61,7 @@ class MetadataServiceImplTest {
         assertEquals("INTEGER", columns.get("ID").getType());
         assertTrue(columns.get("ID").getPrimaryKey());
         assertEquals("CHARACTER VARYING", columns.get("NAME").getType());
+        assertEquals(32, columns.get("NAME").getColumnSize());
 
         RecordingObserver<CloseSessionResponse> closeObserver = new RecordingObserver<>();
         service.closeSession(CloseSessionRequest.newBuilder()

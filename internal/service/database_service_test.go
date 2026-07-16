@@ -240,7 +240,7 @@ func TestDatabaseServiceGetTableDDLUsesJDBCSchemaForKingbase(t *testing.T) {
 		TableName: "users",
 		Columns: []config.ColumnSchema{
 			{Name: "id", Type: "bigint", Nullable: false, IsPrimaryKey: true},
-			{Name: "display_name", Type: "character varying", Nullable: true},
+			{Name: "display_name", Type: "character varying", Nullable: true, ColumnSize: 64, DefaultValue: "'unknown'", HasDefault: true},
 		},
 	}}
 	ds := NewDatabaseServiceWithGateway(nil, gateway)
@@ -254,7 +254,7 @@ func TestDatabaseServiceGetTableDDLUsesJDBCSchemaForKingbase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get table DDL failed: %v", err)
 	}
-	for _, expected := range []string{"CREATE TABLE \"users\"", "\"id\" bigint NOT NULL PRIMARY KEY", "\"display_name\" character varying"} {
+	for _, expected := range []string{"CREATE TABLE \"users\"", "\"id\" bigint NOT NULL PRIMARY KEY", "\"display_name\" character varying(64) DEFAULT 'unknown'"} {
 		if !strings.Contains(ddl.DDL, expected) {
 			t.Fatalf("DDL missing %q: %s", expected, ddl.DDL)
 		}
