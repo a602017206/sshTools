@@ -40,3 +40,16 @@ export function buildTableMetadataQuery(databaseType, databaseName) {
     ORDER BY TABLE_NAME;
   `;
 }
+
+export function tableMetadataFromNames(tableNames) {
+  return (tableNames || []).map(tableName => ({
+    tableName: String(tableName || ''),
+    rowCount: null,
+    dataLength: null,
+    engine: '-',
+    createTime: '-',
+    updateTime: '-',
+    collation: '-',
+    comment: '-'
+  })).filter(table => table.tableName);
+}

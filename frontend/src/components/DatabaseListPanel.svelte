@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { buildTableMetadataQuery } from '../lib/tableMetadataQuery.js';
+  import { tableMetadataFromNames } from '../lib/tableMetadataQuery.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -52,24 +52,6 @@
     } finally {
       loadingDatabases = false;
     }
-  }
-
-  function normalizeTableMetadata(columns, row) {
-    const record = {};
-    columns.forEach((col, index) => {
-      record[String(col || '').toLowerCase()] = row[index];
-    });
-
-    return {
-      tableName: String(record.table_name || ''),
-      rowCount: record.table_rows,
-      dataLength: record.data_length,
-      engine: record.engine || '-',
-      createTime: record.create_time || '-',
-      updateTime: record.update_time || '-',
-      collation: record.table_collation || '-',
-      comment: record.table_comment || '-'
-    };
   }
 
   function formatNumber(value) {
@@ -135,15 +117,12 @@
     errorMessage = '';
 
     try {
-      const databaseType = dbConfig?.metadata?.db_type || dbConfig?.dbType || '';
-      const query = buildTableMetadataQuery(databaseType, databaseName);
-      const response = await window.wailsBindings.ExecuteDatabaseQuery(sessionId, query);
-      const parsed = JSON.parse(response || '{}');
-      const columns = parsed?.columns || [];
-      const rows = parsed?.rows || [];
-      const metaList = rows
-        .map(row => normalizeTableMetadata(columns, row))
-        .filter(item => item.tableName);
+      const { ListDatabaseTablesInDatabase } = window.wailsBindings;
+      if (typeof ListDatabaseTablesInDatabase !== 'function') {
+        throw new Error('表列表接口不可用');
+      }
+      const tableNames = await ListDatabaseTablesInDatabase(sessionId, databaseName);
+      const metaList = tableMetadataFromNames(tableNames);
 
       tableMetaByDatabase = {
         ...tableMetaByDatabase,
