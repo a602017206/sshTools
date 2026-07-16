@@ -170,6 +170,7 @@ type fakeJdbcGateway struct {
 	lastConfig   config.DatabaseConfig
 	lastQuery    string
 	queryResult  *QueryResult
+	tableSchema  *config.TableSchema
 	connectCalls int
 	closeCalls   int
 	connectErr   error
@@ -199,6 +200,9 @@ func (g *fakeJdbcGateway) ListDatabases(ctx context.Context, sessionID string) (
 }
 
 func (g *fakeJdbcGateway) GetTableSchema(ctx context.Context, sessionID, table string) (*config.TableSchema, error) {
+	if g.tableSchema != nil {
+		return g.tableSchema, nil
+	}
 	return &config.TableSchema{TableName: table}, nil
 }
 
@@ -228,6 +232,35 @@ func TestDatabaseServiceGetTableDDLUsesJDBCGatewayForMySQL(t *testing.T) {
 	}
 	if ddl.TableName != "users" || ddl.DDL != "CREATE TABLE `users` (`id` bigint NOT NULL)" || ddl.DBType != "mysql" {
 		t.Fatalf("unexpected DDL: %+v", ddl)
+	}
+}
+
+func TestDatabaseServiceGetTableDDLUsesJDBCSchemaForKingbase(t *testing.T) {
+	gateway := &fakeJdbcGateway{tableSchema: &config.TableSchema{
+		TableName: "users",
+		Columns: []config.ColumnSchema{
+			{Name: "id", Type: "bigint", Nullable: false, IsPrimaryKey: true},
+			{Name: "display_name", Type: "character varying", Nullable: true},
+		},
+	}}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+	ds.sessionStore["kingbase-session"] = &DatabaseSession{
+		ID:        "kingbase-session",
+		Config:    config.DatabaseConfig{DBType: "kingbase"},
+		Connected: true,
+	}
+
+	ddl, err := ds.GetTableDDL("kingbase-session", "pems", "users")
+	if err != nil {
+		t.Fatalf("get table DDL failed: %v", err)
+	}
+	for _, expected := range []string{"CREATE TABLE \"users\"", "\"id\" bigint NOT NULL PRIMARY KEY", "\"display_name\" character varying"} {
+		if !strings.Contains(ddl.DDL, expected) {
+			t.Fatalf("DDL missing %q: %s", expected, ddl.DDL)
+		}
+	}
+	if ddl.DBType != "kingbase" {
+		t.Fatalf("DDL type = %q, want kingbase", ddl.DBType)
 	}
 }
 

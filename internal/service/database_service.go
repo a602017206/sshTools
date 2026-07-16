@@ -692,26 +692,34 @@ func (ds *DatabaseService) GetTableDDL(sessionID, database, table string) (*Tabl
 		return nil, err
 	}
 	if ds.gateway != nil {
-		if session.Config.DBType != "mysql" {
+		switch session.Config.DBType {
+		case "mysql":
+			escapedTable := escapeMySQLIdentifier(table)
+			query := fmt.Sprintf("SHOW CREATE TABLE `%s`", escapedTable)
+			if database != "" {
+				query = fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`", escapeMySQLIdentifier(database), escapedTable)
+			}
+			result, err := ds.ExecuteQuery(sessionID, query)
+			if err != nil {
+				return nil, fmt.Errorf("获取表结构失败: %w", err)
+			}
+			if len(result.Rows) == 0 || len(result.Rows[0]) < 2 {
+				return nil, fmt.Errorf("表 %s 未返回有效 DDL", table)
+			}
+			return &TableDDL{
+				TableName: fmt.Sprint(result.Rows[0][0]),
+				DDL:       fmt.Sprint(result.Rows[0][1]),
+				DBType:    "mysql",
+			}, nil
+		case "postgresql", "kingbase", "opengauss":
+			schema, err := ds.gateway.GetTableSchema(context.Background(), sessionID, table)
+			if err != nil {
+				return nil, fmt.Errorf("获取表结构失败: %w", err)
+			}
+			return postgreSQLCompatibleTableDDL(table, session.Config.DBType, schema)
+		default:
 			return nil, fmt.Errorf("JDBC 模式暂不支持获取 %s 表结构", session.Config.DBType)
 		}
-		escapedTable := escapeMySQLIdentifier(table)
-		query := fmt.Sprintf("SHOW CREATE TABLE `%s`", escapedTable)
-		if database != "" {
-			query = fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`", escapeMySQLIdentifier(database), escapedTable)
-		}
-		result, err := ds.ExecuteQuery(sessionID, query)
-		if err != nil {
-			return nil, fmt.Errorf("获取表结构失败: %w", err)
-		}
-		if len(result.Rows) == 0 || len(result.Rows[0]) < 2 {
-			return nil, fmt.Errorf("表 %s 未返回有效 DDL", table)
-		}
-		return &TableDDL{
-			TableName: fmt.Sprint(result.Rows[0][0]),
-			DDL:       fmt.Sprint(result.Rows[0][1]),
-			DBType:    "mysql",
-		}, nil
 	}
 
 	if session.DB == nil {
@@ -729,6 +737,36 @@ func (ds *DatabaseService) GetTableDDL(sessionID, database, table string) (*Tabl
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", session.Config.DBType)
 	}
+}
+
+func postgreSQLCompatibleTableDDL(table, dbType string, schema *config.TableSchema) (*TableDDL, error) {
+	if schema == nil || len(schema.Columns) == 0 {
+		return nil, fmt.Errorf("表 %s 未返回字段定义", table)
+	}
+	var ddl strings.Builder
+	ddl.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", quotePostgreSQLIdentifier(table)))
+	for index, column := range schema.Columns {
+		if strings.TrimSpace(column.Name) == "" || strings.TrimSpace(column.Type) == "" {
+			return nil, fmt.Errorf("表 %s 包含无效字段定义", table)
+		}
+		ddl.WriteString(fmt.Sprintf("    %s %s", quotePostgreSQLIdentifier(column.Name), column.Type))
+		if !column.Nullable {
+			ddl.WriteString(" NOT NULL")
+		}
+		if column.IsPrimaryKey {
+			ddl.WriteString(" PRIMARY KEY")
+		}
+		if index < len(schema.Columns)-1 {
+			ddl.WriteString(",")
+		}
+		ddl.WriteString("\n")
+	}
+	ddl.WriteString(");")
+	return &TableDDL{TableName: table, DDL: ddl.String(), DBType: dbType}, nil
+}
+
+func quotePostgreSQLIdentifier(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
 
 func (ds *DatabaseService) getMySQLTableDDL(ctx context.Context, db *sql.DB, database, table string) (*TableDDL, error) {
