@@ -291,6 +291,33 @@ func TestDatabaseServiceGetTableDDLInSchemaUsesRequestedSchema(t *testing.T) {
 	}
 }
 
+func TestDatabaseServiceGetTableDDLUsesJDBCSchemaForGenericDriver(t *testing.T) {
+	gateway := &fakeJdbcGateway{tableSchema: &config.TableSchema{
+		TableName: "orders",
+		Columns: []config.ColumnSchema{
+			{Name: "id", Type: "NUMBER", Nullable: false, IsPrimaryKey: true},
+			{Name: "note", Type: "VARCHAR", Nullable: true, ColumnSize: 128},
+		},
+	}}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+	ds.sessionStore["oracle-session"] = &DatabaseSession{
+		ID: "oracle-session", Config: config.DatabaseConfig{DBType: "oracle"}, Connected: true,
+	}
+
+	ddl, err := ds.GetTableDDLInSchema("oracle-session", "", "APP", "orders")
+	if err != nil {
+		t.Fatalf("get table DDL failed: %v", err)
+	}
+	for _, expected := range []string{"CREATE TABLE \"orders\"", "\"id\" NUMBER NOT NULL PRIMARY KEY", "\"note\" VARCHAR(128)"} {
+		if !strings.Contains(ddl.DDL, expected) {
+			t.Fatalf("DDL missing %q: %s", expected, ddl.DDL)
+		}
+	}
+	if ddl.DBType != "oracle" {
+		t.Fatalf("DDL type = %q, want oracle", ddl.DBType)
+	}
+}
+
 func TestDatabaseService_ListDatabases_MySQL(t *testing.T) {
 	ds, mock, cleanup := newMockDatabaseService(t, "mysql", "")
 	defer cleanup()

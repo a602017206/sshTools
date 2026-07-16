@@ -57,6 +57,12 @@
     }
   }
 
+  function showStructure(schema, tableName) {
+    window.dispatchEvent(new CustomEvent('database:table-structure', {
+      detail: { sessionId, databaseName, schemaName: schema, tableName }
+    }));
+  }
+
   onMount(loadSchemas);
 </script>
 
@@ -71,7 +77,7 @@
     {:else}{#each schemas as schema}
       <div>
         <button class="w-full text-left px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700" on:click={() => toggleSchema(schema)}>{expanded.has(schema) ? '⌄' : '›'}  ▱ {schema || '默认 Schema'}</button>
-        {#if expanded.has(schema)}<div class="ml-5">{#each categories as category}{@const nodeKey = key(schema, category.id)}<button class="w-full text-left px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700" on:click={() => toggleCategory(schema, category)}>{objects[nodeKey] ? '⌄' : '›'} {category.icon} {category.label}{objects[nodeKey] ? ` (${objects[nodeKey].length})` : ''}</button>{#if objects[nodeKey]}<div class="ml-5">{#each objects[nodeKey] as object}<div class="px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/30">{category.icon} {object}</div>{/each}</div>{/if}{/each}</div>{/if}
+        {#if expanded.has(schema)}<div class="ml-5">{#each categories as category}{@const nodeKey = key(schema, category.id)}<button class="w-full text-left px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700" on:click={() => toggleCategory(schema, category)}>{objects[nodeKey] ? '⌄' : '›'} {category.icon} {category.label}{objects[nodeKey] ? ` (${objects[nodeKey].length})` : ''}</button>{#if objects[nodeKey]}<div class="ml-5">{#each objects[nodeKey] as object}{#if category.id === 'tables'}<button class="w-full text-left px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/30" on:click={() => showStructure(schema, object)}>{category.icon} {object}</button>{:else}<div class="px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/30">{category.icon} {object}</div>{/if}{/each}</div>{/if}{/each}</div>{/if}
       </div>
     {/each}{/if}
   </div>

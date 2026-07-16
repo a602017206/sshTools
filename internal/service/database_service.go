@@ -757,7 +757,11 @@ func (ds *DatabaseService) GetTableDDLInSchema(sessionID, database, schemaName, 
 			}
 			return postgreSQLCompatibleTableDDL(table, session.Config.DBType, schema)
 		default:
-			return nil, fmt.Errorf("JDBC 模式暂不支持获取 %s 表结构", session.Config.DBType)
+			schema, err := ds.gateway.GetTableSchemaInSchema(context.Background(), sessionID, schemaName, table)
+			if err != nil {
+				return nil, fmt.Errorf("获取表结构失败: %w", err)
+			}
+			return postgreSQLCompatibleTableDDL(table, session.Config.DBType, schema)
 		}
 	}
 
