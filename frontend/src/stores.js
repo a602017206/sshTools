@@ -19,6 +19,17 @@ export const groupedAssetsStore = derived(assetsStore, ($assets) => {
 export const connectionsStore = writable(new Map());
 export const activeSessionIdStore = writable(null);
 
+// 左侧数据库导航与主内容区共享当前选中的数据库。
+export const databaseNavigationStore = writable({});
+
+export function selectDatabaseNavigation(sessionId, databaseName, schemaName = '') {
+  if (!sessionId || !databaseName) return;
+  databaseNavigationStore.update(current => ({
+    ...current,
+    [sessionId]: { databaseName, schemaName }
+  }));
+}
+
 // ==================== Theme Store ====================
 
 const THEME_STORAGE_KEY = 'ssh-tools-theme';

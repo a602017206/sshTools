@@ -1,10 +1,7 @@
 <script>
   import { assetsStore, connectionsStore, activeSessionIdStore, showTableStructure } from '../stores.js';
   import Terminal from './Terminal.svelte';
-  import DatabaseListPanel from './DatabaseListPanel.svelte';
-  import MySQLObjectTree from './MySQLObjectTree.svelte';
-  import GenericJDBCObjectTree from './GenericJDBCObjectTree.svelte';
-  import PostgreSQLObjectTree from './PostgreSQLObjectTree.svelte';
+  import SelectedDatabaseObjects from './SelectedDatabaseObjects.svelte';
   import DatabaseTablePanel from './DatabaseTablePanel.svelte';
   import NativeDatabasePanel from './NativeDatabasePanel.svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
@@ -1150,13 +1147,7 @@
           <!-- 终端窗口 -->
           <div class="flex-1 overflow-hidden ops-terminal-surface border-t">
             {#if session.type === 'database' && session.panelType === 'database-list'}
-              {#if ['postgresql', 'kingbase', 'opengauss'].includes(String(session.connection?.metadata?.db_type || session.connection?.dbType || '').toLowerCase())}
-                <PostgreSQLObjectTree sessionId={session.sessionId} dbConfig={session.connection} />
-              {:else if String(session.connection?.metadata?.db_type || session.connection?.dbType || '').toLowerCase() === 'mysql'}
-                <MySQLObjectTree sessionId={session.sessionId} dbConfig={session.connection} />
-              {:else}
-                <GenericJDBCObjectTree sessionId={session.sessionId} dbConfig={session.connection} />
-              {/if}
+              <SelectedDatabaseObjects sessionId={session.sessionId} dbConfig={session.connection} />
             {:else if session.type === 'database' && session.panelType === 'database-table'}
               <DatabaseTablePanel
                 sessionId={session.dbSessionId}

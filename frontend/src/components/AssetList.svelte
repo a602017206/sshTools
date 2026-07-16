@@ -3,6 +3,7 @@
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import Dialog from './ui/Dialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
+  import DatabaseSidebarTree from './DatabaseSidebarTree.svelte';
 
   export let onConnect;
   export let onAddClick;
@@ -748,70 +749,8 @@
                 </div>
 
                 {#if asset.type === 'database' && expandedDatabaseAssets.has(asset.id)}
-                  <div class="ml-8 mr-2 mb-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-2">
-                    <div class="flex items-center justify-between text-xs text-gray-600 dark:text-gray-300 mb-2">
-                      <span>数据库</span>
-                      <button
-                        type="button"
-                        class="px-2 py-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-                        on:click|stopPropagation={() => loadDatabases(asset, true)}
-                      >
-                        刷新
-                      </button>
-                    </div>
-
-                    {#if databaseLists[asset.id]?.loading}
-                      <div class="text-xs text-gray-400">加载中...</div>
-                    {:else if databaseLists[asset.id]?.error}
-                      <div class="text-xs text-red-500">{databaseLists[asset.id].error}</div>
-                    {:else if databaseLists[asset.id]?.items?.length}
-                      <div class="space-y-1">
-                        {#each databaseLists[asset.id].items as dbName}
-                          <div>
-                            <button
-                              type="button"
-                              class="w-full flex items-center gap-2 text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-                              on:click|stopPropagation={() => toggleDatabaseName(asset, dbName)}
-                            >
-                              {#if expandedDatabaseNames[asset.id]?.has(dbName)}
-                                <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                </svg>
-                              {:else}
-                                <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                                </svg>
-                              {/if}
-                              <span class="flex-1 text-left truncate">{dbName}</span>
-                            </button>
-
-                            {#if expandedDatabaseNames[asset.id]?.has(dbName)}
-                              <div class="ml-5 mt-1 space-y-1">
-                                {#if tableLists[`${asset.id}:${dbName}`]?.loading}
-                                  <div class="text-xs text-gray-400">加载表中...</div>
-                                {:else if tableLists[`${asset.id}:${dbName}`]?.error}
-                                  <div class="text-xs text-red-500">{tableLists[`${asset.id}:${dbName}`].error}</div>
-                                {:else if tableLists[`${asset.id}:${dbName}`]?.items?.length}
-                                  {#each tableLists[`${asset.id}:${dbName}`].items as tableName}
-                                    <button
-                                      type="button"
-                                      class="w-full text-left text-xs px-2 py-1 rounded accent-soft-hover"
-                                      on:click|stopPropagation={() => handleTableSelect(asset, dbName, tableName)}
-                                    >
-                                      {tableName}
-                                    </button>
-                                  {/each}
-                                {:else}
-                                  <div class="text-xs text-gray-400">暂无表</div>
-                                {/if}
-                              </div>
-                            {/if}
-                          </div>
-                        {/each}
-                      </div>
-                    {:else}
-                      <div class="text-xs text-gray-400">暂无数据库</div>
-                    {/if}
+                  <div class="ml-8 mr-2 mb-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-1" on:click|stopPropagation>
+                    <DatabaseSidebarTree {asset} />
                   </div>
                 {/if}
               </div>
