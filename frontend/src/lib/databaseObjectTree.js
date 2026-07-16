@@ -7,12 +7,23 @@ const postgreSQLCategories = [
   { id: 'extensions', label: '扩展', icon: '◇' }
 ];
 
+const mySQLCategories = [
+  { id: 'tables', label: '表', icon: '▦' },
+  { id: 'views', label: '视图', icon: '◉' },
+  { id: 'procedures', label: '存储过程', icon: '▤' },
+  { id: 'functions', label: '函数', icon: 'ƒ' },
+  { id: 'events', label: '事件', icon: '◷' }
+];
+
 export function isPostgreSQLCompatible(databaseType) {
   return ['postgresql', 'kingbase', 'opengauss'].includes(String(databaseType || '').toLowerCase());
 }
 
 export function databaseObjectCategories(databaseType) {
-  return isPostgreSQLCompatible(databaseType) ? postgreSQLCategories : [{ id: 'tables', label: '表', icon: '▦' }];
+  const normalizedType = String(databaseType || '').toLowerCase();
+  if (isPostgreSQLCompatible(normalizedType)) return postgreSQLCategories;
+  if (normalizedType === 'mysql') return mySQLCategories;
+  return [{ id: 'tables', label: '表', icon: '▦' }];
 }
 
 export function buildPostgreSQLSchemaQuery() {
@@ -37,6 +48,18 @@ export function buildPostgreSQLObjectQuery(schema, category) {
     procedures: `SELECT proname FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = '${escapedSchema}' AND p.prokind = 'p' ORDER BY proname`,
     functions: `SELECT proname FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = '${escapedSchema}' AND p.prokind = 'f' ORDER BY proname`,
     extensions: `SELECT extname FROM pg_catalog.pg_extension ORDER BY extname`
+  };
+  return queries[category] || queries.tables;
+}
+
+export function buildMySQLObjectQuery(database, category) {
+  const escapedDatabase = escapeSqlLiteral(database);
+  const queries = {
+    tables: `SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA = '${escapedDatabase}' AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
+    views: `SELECT TABLE_NAME FROM information_schema.views WHERE TABLE_SCHEMA = '${escapedDatabase}' ORDER BY TABLE_NAME`,
+    procedures: `SELECT ROUTINE_NAME FROM information_schema.routines WHERE ROUTINE_SCHEMA = '${escapedDatabase}' AND ROUTINE_TYPE = 'PROCEDURE' ORDER BY ROUTINE_NAME`,
+    functions: `SELECT ROUTINE_NAME FROM information_schema.routines WHERE ROUTINE_SCHEMA = '${escapedDatabase}' AND ROUTINE_TYPE = 'FUNCTION' ORDER BY ROUTINE_NAME`,
+    events: `SELECT EVENT_NAME FROM information_schema.events WHERE EVENT_SCHEMA = '${escapedDatabase}' ORDER BY EVENT_NAME`
   };
   return queries[category] || queries.tables;
 }

@@ -57,6 +57,11 @@
     window.dispatchEvent(new CustomEvent('database:table-structure', { detail: { sessionId, databaseName, tableName: name, schemaName: schema } }));
   }
 
+  function openTableData(schema, category, name) {
+    if (category !== 'tables') return;
+    window.dispatchEvent(new CustomEvent('database:table-select', { detail: { sessionId, databaseName, tableName: name, schemaName: schema } }));
+  }
+
   onMount(loadSchemas);
 </script>
 
@@ -75,7 +80,7 @@
           {#each categories as category}
             {@const nodeKey = key(schema, category.id)}
             <button class="w-full text-left px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700" on:click={() => toggleCategory(schema, category.id)}>{expandedCategories.has(nodeKey) ? '⌄' : '›'}  {category.icon} {category.label}{objects[nodeKey] ? ` (${objects[nodeKey].length})` : ''}</button>
-            {#if expandedCategories.has(nodeKey)}<div class="ml-5">{#each objects[nodeKey] || [] as name}<button class="w-full text-left px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/30" on:click={() => openObject(schema, category.id, name)}>▦ {name}</button>{/each}</div>{/if}
+            {#if expandedCategories.has(nodeKey)}<div class="ml-5">{#each objects[nodeKey] || [] as name}<button class="w-full text-left px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/30" on:click={() => openObject(schema, category.id, name)} on:dblclick={() => openTableData(schema, category.id, name)}>{category.icon} {name}</button>{/each}</div>{/if}
           {/each}
         </div>{/if}
       </div>
