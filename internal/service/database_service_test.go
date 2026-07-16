@@ -171,6 +171,7 @@ type fakeJdbcGateway struct {
 	lastQuery    string
 	queryResult  *QueryResult
 	tableSchema  *config.TableSchema
+	lastSchema   string
 	connectCalls int
 	closeCalls   int
 	connectErr   error
@@ -204,6 +205,11 @@ func (g *fakeJdbcGateway) GetTableSchema(ctx context.Context, sessionID, table s
 		return g.tableSchema, nil
 	}
 	return &config.TableSchema{TableName: table}, nil
+}
+
+func (g *fakeJdbcGateway) GetTableSchemaInSchema(ctx context.Context, sessionID, schema, table string) (*config.TableSchema, error) {
+	g.lastSchema = schema
+	return g.GetTableSchema(ctx, sessionID, table)
 }
 
 func (g *fakeJdbcGateway) CloseDatabase(ctx context.Context, sessionID string) error {
@@ -261,6 +267,27 @@ func TestDatabaseServiceGetTableDDLUsesJDBCSchemaForKingbase(t *testing.T) {
 	}
 	if ddl.DBType != "kingbase" {
 		t.Fatalf("DDL type = %q, want kingbase", ddl.DBType)
+	}
+}
+
+func TestDatabaseServiceGetTableDDLInSchemaUsesRequestedSchema(t *testing.T) {
+	gateway := &fakeJdbcGateway{tableSchema: &config.TableSchema{
+		TableName: "users",
+		Columns:   []config.ColumnSchema{{Name: "id", Type: "bigint", Nullable: false}},
+	}}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+	ds.sessionStore["kingbase-session"] = &DatabaseSession{
+		ID:        "kingbase-session",
+		Config:    config.DatabaseConfig{DBType: "kingbase"},
+		Connected: true,
+	}
+
+	_, err := ds.GetTableDDLInSchema("kingbase-session", "pems", "archive", "users")
+	if err != nil {
+		t.Fatalf("get table DDL failed: %v", err)
+	}
+	if gateway.lastSchema != "archive" {
+		t.Fatalf("schema = %q, want archive", gateway.lastSchema)
 	}
 }
 

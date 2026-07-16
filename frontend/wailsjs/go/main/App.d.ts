@@ -96,6 +96,8 @@ export function GetTableColumns(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function GetTableDDL(arg1:string,arg2:string,arg3:string):Promise<service.TableDDL>;
 
+export function GetTableDDLInSchema(arg1:string,arg2:string,arg3:string,arg4:string):Promise<service.TableDDL>;
+
 export function GetTransferStatus(arg1:string):Promise<ssh.TransferProgress>;
 
 export function GetVersion():Promise<string>;

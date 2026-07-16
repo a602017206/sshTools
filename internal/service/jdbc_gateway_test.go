@@ -85,10 +85,11 @@ func TestJdbcGatewayMapsDriverMissingError(t *testing.T) {
 }
 
 type fakeJdbcAgentClient struct {
-	openRequest *jdbcproto.OpenSessionRequest
-	querySQL    string
-	queryResult *jdbcproto.QueryResult
-	openErr     error
+	openRequest    *jdbcproto.OpenSessionRequest
+	columnsRequest *jdbcproto.ListColumnsRequest
+	querySQL       string
+	queryResult    *jdbcproto.QueryResult
+	openErr        error
 }
 
 func (f *fakeJdbcAgentClient) OpenSession(ctx context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error) {
@@ -112,7 +113,24 @@ func (f *fakeJdbcAgentClient) ListTables(ctx context.Context, request *jdbcproto
 }
 
 func (f *fakeJdbcAgentClient) ListColumns(ctx context.Context, request *jdbcproto.ListColumnsRequest) (*jdbcproto.ListColumnsResponse, error) {
+	f.columnsRequest = request
 	return &jdbcproto.ListColumnsResponse{}, nil
+}
+
+func TestJdbcGatewayGetTableSchemaInSchemaPassesSchemaToAgent(t *testing.T) {
+	client := &fakeJdbcAgentClient{}
+	gateway := NewJdbcGatewayService(client, "test-token")
+
+	_, err := gateway.GetTableSchemaInSchema(context.Background(), "session-1", "pems", "users")
+	if err != nil {
+		t.Fatalf("get table schema failed: %v", err)
+	}
+	if client.columnsRequest == nil {
+		t.Fatal("expected ListColumns request")
+	}
+	if client.columnsRequest.GetSchema() != "pems" {
+		t.Fatalf("schema = %q, want pems", client.columnsRequest.GetSchema())
+	}
 }
 
 func (f *fakeJdbcAgentClient) CloseSession(ctx context.Context, request *jdbcproto.CloseSessionRequest) (*jdbcproto.CloseSessionResponse, error) {

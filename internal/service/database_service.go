@@ -42,6 +42,7 @@ type DatabaseGateway interface {
 	ListTables(ctx context.Context, sessionID, database string) ([]string, error)
 	ListDatabases(ctx context.Context, sessionID string) ([]string, error)
 	GetTableSchema(ctx context.Context, sessionID, table string) (*config.TableSchema, error)
+	GetTableSchemaInSchema(ctx context.Context, sessionID, schema, table string) (*config.TableSchema, error)
 	CloseDatabase(ctx context.Context, sessionID string) error
 }
 
@@ -687,6 +688,11 @@ type TableDDL struct {
 
 // GetTableDDL returns the CREATE TABLE statement for a given table
 func (ds *DatabaseService) GetTableDDL(sessionID, database, table string) (*TableDDL, error) {
+	return ds.GetTableDDLInSchema(sessionID, database, "", table)
+}
+
+// GetTableDDLInSchema returns the CREATE TABLE statement for a table in a specific schema.
+func (ds *DatabaseService) GetTableDDLInSchema(sessionID, database, schemaName, table string) (*TableDDL, error) {
 	session, err := ds.GetSession(sessionID)
 	if err != nil {
 		return nil, err
@@ -712,7 +718,7 @@ func (ds *DatabaseService) GetTableDDL(sessionID, database, table string) (*Tabl
 				DBType:    "mysql",
 			}, nil
 		case "postgresql", "kingbase", "opengauss":
-			schema, err := ds.gateway.GetTableSchema(context.Background(), sessionID, table)
+			schema, err := ds.gateway.GetTableSchemaInSchema(context.Background(), sessionID, schemaName, table)
 			if err != nil {
 				return nil, fmt.Errorf("获取表结构失败: %w", err)
 			}

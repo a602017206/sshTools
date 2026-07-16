@@ -112,12 +112,18 @@ func (s *JdbcGatewayService) ListDatabases(context.Context, string) ([]string, e
 }
 
 func (s *JdbcGatewayService) GetTableSchema(ctx context.Context, sessionID, table string) (*config.TableSchema, error) {
+	return s.GetTableSchemaInSchema(ctx, sessionID, "", table)
+}
+
+// GetTableSchemaInSchema loads table metadata scoped to a database schema.
+func (s *JdbcGatewayService) GetTableSchemaInSchema(ctx context.Context, sessionID, schema, table string) (*config.TableSchema, error) {
 	if s.client == nil {
 		return nil, MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
 	}
 	result, err := s.client.ListColumns(ctx, &jdbcproto.ListColumnsRequest{
 		Token:     s.token,
 		SessionId: sessionID,
+		Schema:    schema,
 		Table:     table,
 	})
 	if err != nil {
@@ -126,14 +132,14 @@ func (s *JdbcGatewayService) GetTableSchema(ctx context.Context, sessionID, tabl
 	columns := make([]config.ColumnSchema, 0, len(result.GetColumns()))
 	for _, column := range result.GetColumns() {
 		columns = append(columns, config.ColumnSchema{
-			Name:         column.GetName(),
-			Type:         column.GetType(),
-			Nullable:     column.GetNullable(),
-			IsPrimaryKey: column.GetPrimaryKey(),
-			ColumnSize: int(column.GetColumnSize()),
+			Name:          column.GetName(),
+			Type:          column.GetType(),
+			Nullable:      column.GetNullable(),
+			IsPrimaryKey:  column.GetPrimaryKey(),
+			ColumnSize:    int(column.GetColumnSize()),
 			DecimalDigits: int(column.GetDecimalDigits()),
-			DefaultValue: column.GetDefaultValue(),
-			HasDefault: column.GetHasDefault(),
+			DefaultValue:  column.GetDefaultValue(),
+			HasDefault:    column.GetHasDefault(),
 		})
 	}
 	return &config.TableSchema{TableName: table, Columns: columns}, nil

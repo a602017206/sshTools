@@ -824,6 +824,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
             sessionId={$tableStructureStore.sessionId}
             dbConfig={$tableStructureStore.dbConfig}
             databaseName={$tableStructureStore.databaseName}
+            schemaName={$tableStructureStore.schemaName}
             tableName={$tableStructureStore.tableName}
           />
         </div>

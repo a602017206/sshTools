@@ -1507,3 +1507,8 @@ func decryptWithKey(ciphertext string, key []byte) (string, error) {
 func (a *App) GetTableDDL(sessionID, database, table string) (*service.TableDDL, error) {
 	return a.databaseService.GetTableDDL(sessionID, database, table)
 }
+
+// GetTableDDLInSchema returns table DDL scoped to a PostgreSQL-compatible schema.
+func (a *App) GetTableDDLInSchema(sessionID, database, schema, table string) (*service.TableDDL, error) {
+	return a.databaseService.GetTableDDLInSchema(sessionID, database, schema, table)
+}

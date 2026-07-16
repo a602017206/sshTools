@@ -186,6 +186,10 @@ export function GetTableDDL(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetTableDDL'](arg1, arg2, arg3);
 }
 
+export function GetTableDDLInSchema(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GetTableDDLInSchema'](arg1, arg2, arg3, arg4);
+}
+
 export function GetTransferStatus(arg1) {
   return window['go']['main']['App']['GetTransferStatus'](arg1);
 }

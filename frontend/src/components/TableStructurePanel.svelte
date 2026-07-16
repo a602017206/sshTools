@@ -1,18 +1,23 @@
 <script>
-  import { onMount } from 'svelte';
-
   export let sessionId = null;
   export let dbConfig = null;
   export let databaseName = '';
+  export let schemaName = '';
   export let tableName = '';
 
   let ddlData = null;
   let isLoading = false;
   let errorMessage = '';
   let copied = false;
+  let loadedRequest = '';
 
-  $: titleName = tableName || '表结构';
+  $: titleName = schemaName && tableName ? `${schemaName}.${tableName}` : (tableName || '表结构');
   $: dbTypeLabel = dbConfig?.metadata?.db_type ? dbConfig.metadata.db_type.toUpperCase() : '';
+  $: requestKey = `${sessionId || ''}:${databaseName || ''}:${schemaName || ''}:${tableName || ''}`;
+  $: if (sessionId && tableName && requestKey !== loadedRequest) {
+    loadedRequest = requestKey;
+    loadDDL();
+  }
 
   async function loadDDL() {
     if (!sessionId || !tableName) return;
@@ -22,7 +27,9 @@
     errorMessage = '';
 
     try {
-      const result = await window.wailsBindings.GetTableDDL(sessionId, databaseName, tableName);
+      const result = schemaName
+        ? await window.wailsBindings.GetTableDDLInSchema(sessionId, databaseName, schemaName, tableName)
+        : await window.wailsBindings.GetTableDDL(sessionId, databaseName, tableName);
       ddlData = result;
     } catch (error) {
       console.error('Failed to load table DDL:', error);
@@ -46,10 +53,6 @@
       console.error('Failed to copy:', error);
     }
   }
-
-  onMount(() => {
-    loadDDL();
-  });
 </script>
 
 <div class="h-full flex flex-col bg-white dark:bg-gray-800">

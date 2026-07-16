@@ -2,6 +2,7 @@
   import { assetsStore, connectionsStore, activeSessionIdStore, showTableStructure } from '../stores.js';
   import Terminal from './Terminal.svelte';
   import DatabaseListPanel from './DatabaseListPanel.svelte';
+  import PostgreSQLObjectTree from './PostgreSQLObjectTree.svelte';
   import DatabaseTablePanel from './DatabaseTablePanel.svelte';
   import NativeDatabasePanel from './NativeDatabasePanel.svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
@@ -1007,6 +1008,7 @@
       showTableStructure({
         sessionId: detail.sessionId,
         databaseName: detail.databaseName,
+        schemaName: detail.schemaName,
         tableName: detail.tableName,
         dbConfig: parentSession?.connection
       });
@@ -1146,7 +1148,11 @@
           <!-- 终端窗口 -->
           <div class="flex-1 overflow-hidden ops-terminal-surface border-t">
             {#if session.type === 'database' && session.panelType === 'database-list'}
-              <DatabaseListPanel sessionId={session.sessionId} dbConfig={session.connection} />
+              {#if ['postgresql', 'kingbase', 'opengauss'].includes(String(session.connection?.metadata?.db_type || session.connection?.dbType || '').toLowerCase())}
+                <PostgreSQLObjectTree sessionId={session.sessionId} dbConfig={session.connection} />
+              {:else}
+                <DatabaseListPanel sessionId={session.sessionId} dbConfig={session.connection} />
+              {/if}
             {:else if session.type === 'database' && session.panelType === 'database-table'}
               <DatabaseTablePanel
                 sessionId={session.dbSessionId}
