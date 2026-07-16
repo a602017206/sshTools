@@ -77,7 +77,7 @@ func (s *ManagedJDBCGateway) ListDatabases(ctx context.Context, sessionID string
 	switch cfg.DBType {
 	case "mysql":
 		query = "SHOW DATABASES"
-	case "postgresql":
+	case "postgresql", "kingbase":
 		query = "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
 	default:
 		return nil, fmt.Errorf("数据库类型 %s 暂不支持列出数据库", cfg.DBType)

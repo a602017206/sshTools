@@ -88,6 +88,37 @@ func TestManagedJDBCGatewayListsMySQLDatabasesThroughQuery(t *testing.T) {
 	}
 }
 
+func TestManagedJDBCGatewayListsKingbaseDatabasesThroughPostgreSQLCatalog(t *testing.T) {
+	client := &managedGatewayClient{queryResult: &jdbcproto.QueryResult{
+		Columns: []string{"datname"},
+		Rows: []*jdbcproto.Row{
+			{Values: []string{"kingbase"}},
+			{Values: []string{"application"}},
+		},
+	}}
+	supervisor := &managedGatewaySupervisor{
+		current: &JDBCAgentConnection{Client: client, Token: "token"},
+	}
+	gateway := NewManagedJDBCGateway(supervisor)
+	gateway.SetProfileResolver(func(context.Context, config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return config.JDBCDriverProfile{ID: "kingbase", DriverClass: "com.kingbase8.Driver"}, nil
+	})
+	if err := gateway.ConnectDatabase(context.Background(), "kingbase-session", config.DatabaseConfig{DBType: "kingbase"}); err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+
+	databases, err := gateway.ListDatabases(context.Background(), "kingbase-session")
+	if err != nil {
+		t.Fatalf("list databases failed: %v", err)
+	}
+	if len(databases) != 2 || databases[0] != "kingbase" || databases[1] != "application" {
+		t.Fatalf("unexpected databases: %v", databases)
+	}
+	if len(client.queryRequests) != 1 || client.queryRequests[0].GetSql() != "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname" {
+		t.Fatalf("unexpected database query: %+v", client.queryRequests)
+	}
+}
+
 type managedGatewaySupervisor struct {
 	current      *JDBCAgentConnection
 	restarted    *JDBCAgentConnection
