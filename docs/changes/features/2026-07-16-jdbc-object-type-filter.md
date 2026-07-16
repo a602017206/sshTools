@@ -15,12 +15,17 @@
 - `jdbc-agent/src/test/java/com/sshtools/jdbcagent/MetadataServiceImplTest.java`
 - `internal/service/jdbcproto/jdbc_agent.pb.go`
 - `internal/service/jdbcproto/jdbc_agent_grpc.pb.go`
+- `internal/service/jdbc_gateway.go`
+- `internal/service/jdbc_managed_gateway.go`
+- `internal/service/database_service.go`
+- `app.go`
+- `frontend/src/components/GenericJDBCObjectTree.svelte`
 - 本变更记录。
 
 ## 验证
 
-先执行 `./gradlew test --tests '*MetadataServiceImplTest'`，验证新增 `VIEW` 筛选测试失败；实现后执行 `./scripts/generate-jdbc-proto.sh` 重新生成 Go 代码，并再次执行同一 Gradle 测试，结果通过。
+先执行 `./gradlew test --tests '*MetadataServiceImplTest'`，验证新增 `VIEW` 筛选测试失败；实现后执行 `./scripts/generate-jdbc-proto.sh` 重新生成 Go 代码，并再次执行同一 Gradle 测试，结果通过。执行 `go test ./internal/service -run TestJdbcGatewayListObjectsPassesTypesToAgent -v` 验证 Go gateway 会传递对象类型；前端构建验证通用对象树。
 
 ## 剩余风险
 
-不同 JDBC 驱动支持的对象类型名称可能不同。当前使用 JDBC 标准类型并保留默认兼容行为，前端对象树接入该筛选能力仍需后续完成。
+不同 JDBC 驱动支持的对象类型名称可能不同。当前使用 JDBC 标准类型并保留默认兼容行为；通用对象树已展示表、视图和系统表，例程与函数需要后续使用 JDBC 的过程和函数元数据接口扩展。

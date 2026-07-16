@@ -49,6 +49,7 @@ type DatabaseGateway interface {
 type schemaDatabaseGateway interface {
 	ListSchemas(ctx context.Context, sessionID, database string) ([]string, error)
 	ListTablesInSchema(ctx context.Context, sessionID, database, schema string) ([]string, error)
+	ListObjects(ctx context.Context, sessionID, database, schema string, types []string) ([]string, error)
 }
 
 func NewDatabaseService(configManager *config.ConfigManager) *DatabaseService {
@@ -448,13 +449,18 @@ func (ds *DatabaseService) ListSchemas(sessionID, database string) ([]string, er
 
 // ListTablesInSchema returns tables scoped to the requested catalog and schema.
 func (ds *DatabaseService) ListTablesInSchema(sessionID, database, schema string) ([]string, error) {
+	return ds.ListObjects(sessionID, database, schema, nil)
+}
+
+// ListObjects returns JDBC objects filtered by standard metadata types.
+func (ds *DatabaseService) ListObjects(sessionID, database, schema string, types []string) ([]string, error) {
 	gateway, ok := ds.gateway.(schemaDatabaseGateway)
 	if !ok {
 		return nil, fmt.Errorf("当前数据库连接不支持 Schema 浏览")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return gateway.ListTablesInSchema(ctx, sessionID, database, schema)
+	return gateway.ListObjects(ctx, sessionID, database, schema, types)
 }
 
 func (ds *DatabaseService) GetTableSchema(sessionID, table string) (*config.TableSchema, error) {

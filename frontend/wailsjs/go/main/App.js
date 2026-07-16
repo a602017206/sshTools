@@ -238,6 +238,10 @@ export function InstallJDBCManagedRuntime() {
   return window['go']['main']['App']['InstallJDBCManagedRuntime']();
 }
 
+export function ListDatabaseObjects(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ListDatabaseObjects'](arg1, arg2, arg3, arg4);
+}
+
 export function ListDatabaseSchemas(arg1, arg2) {
   return window['go']['main']['App']['ListDatabaseSchemas'](arg1, arg2);
 }

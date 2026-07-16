@@ -88,6 +88,7 @@ type fakeJdbcAgentClient struct {
 	openRequest    *jdbcproto.OpenSessionRequest
 	columnsRequest *jdbcproto.ListColumnsRequest
 	schemasRequest *jdbcproto.ListSchemasRequest
+	tablesRequest  *jdbcproto.ListTablesRequest
 	querySQL       string
 	queryResult    *jdbcproto.QueryResult
 	openErr        error
@@ -115,6 +116,7 @@ func (f *fakeJdbcAgentClient) ListSchemas(ctx context.Context, request *jdbcprot
 }
 
 func (f *fakeJdbcAgentClient) ListTables(ctx context.Context, request *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
+	f.tablesRequest = request
 	return &jdbcproto.ListTablesResponse{}, nil
 }
 
@@ -152,6 +154,19 @@ func TestJdbcGatewayListSchemasPassesCatalogToAgent(t *testing.T) {
 	}
 	if client.schemasRequest.GetCatalog() != "app" {
 		t.Fatalf("catalog = %q, want app", client.schemasRequest.GetCatalog())
+	}
+}
+
+func TestJdbcGatewayListObjectsPassesTypesToAgent(t *testing.T) {
+	client := &fakeJdbcAgentClient{}
+	gateway := NewJdbcGatewayService(client, "test-token")
+
+	_, err := gateway.ListObjects(context.Background(), "session-1", "app", "PUBLIC", []string{"VIEW"})
+	if err != nil {
+		t.Fatalf("list objects failed: %v", err)
+	}
+	if got := client.tablesRequest.GetTypes(); len(got) != 1 || got[0] != "VIEW" {
+		t.Fatalf("types = %v, want [VIEW]", got)
 	}
 }
 

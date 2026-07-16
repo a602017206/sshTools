@@ -99,6 +99,11 @@ func (s *JdbcGatewayService) ListTables(ctx context.Context, sessionID, database
 
 // ListTablesInSchema returns tables visible under a catalog and schema.
 func (s *JdbcGatewayService) ListTablesInSchema(ctx context.Context, sessionID, database, schema string) ([]string, error) {
+	return s.ListObjects(ctx, sessionID, database, schema, nil)
+}
+
+// ListObjects returns JDBC metadata objects restricted to the requested types.
+func (s *JdbcGatewayService) ListObjects(ctx context.Context, sessionID, database, schema string, types []string) ([]string, error) {
 	if s.client == nil {
 		return nil, MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
 	}
@@ -107,6 +112,7 @@ func (s *JdbcGatewayService) ListTablesInSchema(ctx context.Context, sessionID, 
 		SessionId: sessionID,
 		Catalog:   database,
 		Schema:    schema,
+		Types:     types,
 	})
 	if err != nil {
 		return nil, mapJdbcGatewayError(err)

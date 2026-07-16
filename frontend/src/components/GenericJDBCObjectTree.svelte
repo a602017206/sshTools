@@ -6,11 +6,16 @@
 
   let schemas = [];
   let expanded = new Set();
-  let tables = {};
+  let objects = {};
   let loading = false;
   let errorMessage = '';
   $: databaseName = dbConfig?.metadata?.database || '';
   $: databaseType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || 'jdbc').toUpperCase();
+  const categories = [
+    { id: 'tables', label: '表', icon: '▦', types: ['TABLE'] },
+    { id: 'views', label: '视图', icon: '◉', types: ['VIEW'] },
+    { id: 'system-tables', label: '系统表', icon: '▦', types: ['SYSTEM TABLE'] }
+  ];
 
   async function loadSchemas() {
     if (!window.wailsBindings || !sessionId) return;
@@ -20,7 +25,7 @@
       const names = await window.wailsBindings.ListDatabaseSchemas(sessionId, databaseName) || [];
       schemas = names.length ? names : [''];
       expanded = new Set();
-      tables = {};
+      objects = {};
     } catch (error) {
       errorMessage = `加载 Schema 失败: ${error?.message || String(error || '未知错误')}`;
     } finally { loading = false; }
@@ -30,13 +35,25 @@
     const next = new Set(expanded);
     if (next.has(schema)) { next.delete(schema); expanded = next; return; }
     try {
-      if (!tables[schema]) {
-        tables = { ...tables, [schema]: await window.wailsBindings.ListDatabaseTablesInSchema(sessionId, databaseName, schema) || [] };
-      }
       next.add(schema);
       expanded = next;
     } catch (error) {
       errorMessage = `加载表失败: ${error?.message || String(error || '未知错误')}`;
+    }
+  }
+
+  function key(schema, category) { return `${schema}:${category}`; }
+
+  async function toggleCategory(schema, category) {
+    const nodeKey = key(schema, category.id);
+    if (objects[nodeKey]) {
+      objects = { ...objects, [nodeKey]: null };
+      return;
+    }
+    try {
+      objects = { ...objects, [nodeKey]: await window.wailsBindings.ListDatabaseObjects(sessionId, databaseName, schema, category.types) || [] };
+    } catch (error) {
+      errorMessage = `加载${category.label}失败: ${error?.message || String(error || '未知错误')}`;
     }
   }
 
@@ -54,7 +71,7 @@
     {:else}{#each schemas as schema}
       <div>
         <button class="w-full text-left px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700" on:click={() => toggleSchema(schema)}>{expanded.has(schema) ? '⌄' : '›'}  ▱ {schema || '默认 Schema'}</button>
-        {#if expanded.has(schema)}<div class="ml-5"><div class="px-2 py-1 text-gray-500">▦ 表 ({tables[schema]?.length || 0})</div>{#each tables[schema] || [] as table}<div class="px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/30">▦ {table}</div>{/each}</div>{/if}
+        {#if expanded.has(schema)}<div class="ml-5">{#each categories as category}{@const nodeKey = key(schema, category.id)}<button class="w-full text-left px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700" on:click={() => toggleCategory(schema, category)}>{objects[nodeKey] ? '⌄' : '›'} {category.icon} {category.label}{objects[nodeKey] ? ` (${objects[nodeKey].length})` : ''}</button>{#if objects[nodeKey]}<div class="ml-5">{#each objects[nodeKey] as object}<div class="px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/30">{category.icon} {object}</div>{/each}</div>{/if}{/each}</div>{/if}
       </div>
     {/each}{/if}
   </div>
