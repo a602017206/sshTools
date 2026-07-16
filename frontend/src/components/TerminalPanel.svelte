@@ -1147,7 +1147,11 @@
           <!-- 终端窗口 -->
           <div class="flex-1 overflow-hidden ops-terminal-surface border-t">
             {#if session.type === 'database' && session.panelType === 'database-list'}
-              <SelectedDatabaseObjects sessionId={session.sessionId} dbConfig={session.connection} />
+      <SelectedDatabaseObjects
+        sessionId={session.sessionId}
+        dbConfig={session.connection}
+        on:open-table-structure={(event) => showTableStructure({ ...event.detail, dbConfig: session.connection })}
+      />
             {:else if session.type === 'database' && session.panelType === 'database-table'}
               <DatabaseTablePanel
                 sessionId={session.dbSessionId}

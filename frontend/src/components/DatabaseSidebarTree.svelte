@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { databaseObjectCategories, isPostgreSQLCompatible } from '../lib/databaseObjectTree.js';
+  import { databaseSidebarCategories, isPostgreSQLCompatible } from '../lib/databaseObjectTree.js';
   import { selectDatabaseNavigation } from '../stores.js';
 
   export let asset;
@@ -16,7 +16,7 @@
   $: sessionId = asset?.dbSessionId;
   $: databaseType = String(asset?.metadata?.db_type || asset?.dbType || '').toLowerCase();
   $: currentDatabase = asset?.metadata?.database || '';
-  $: categories = databaseObjectCategories(databaseType);
+  $: categories = databaseSidebarCategories(databaseType);
 
   const key = (...parts) => parts.join(':');
 
@@ -28,8 +28,9 @@
       const names = await window.wailsBindings.ListDatabases(sessionId) || [];
       databases = names.length ? names.slice().sort() : (currentDatabase ? [currentDatabase] : []);
     } catch (error) {
-      errorMessage = error?.message || '加载数据库失败';
       databases = currentDatabase ? [currentDatabase] : [];
+      // JDBC 元数据没有统一的“列出数据库”接口；已有连接库足以继续构建左侧导航。
+      errorMessage = currentDatabase ? '' : (error?.message || '加载数据库失败');
     } finally { loading = false; }
   }
 
@@ -51,6 +52,7 @@
     const next = new Set(expandedSchemas);
     next.has(nodeKey) ? next.delete(nodeKey) : next.add(nodeKey);
     expandedSchemas = next;
+    selectDatabaseNavigation(sessionId, database, schema);
   }
 
   async function toggleCategory(database, schema, category) {

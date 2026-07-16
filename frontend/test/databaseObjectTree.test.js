@@ -5,7 +5,8 @@ import {
   buildMySQLObjectQuery,
   buildPostgreSQLObjectQuery,
   buildPostgreSQLSchemaQuery,
-  databaseObjectCategories
+  databaseObjectCategories,
+  databaseSidebarCategories
 } from '../src/lib/databaseObjectTree.js';
 
 test('PostgreSQL 兼容数据库通过系统目录读取 schema', () => {
@@ -35,5 +36,14 @@ test('MySQL 对象树使用 information_schema 并安全限定数据库', () => 
   assert.match(query, /TABLE_SCHEMA = 'app''s'/);
   assert.deepEqual(databaseObjectCategories('mysql').map(item => item.id), [
     'tables', 'views', 'procedures', 'functions', 'events'
+  ]);
+});
+
+test('左侧对象树分类携带标准 JDBC 元数据类型或例程类型', () => {
+  assert.deepEqual(databaseSidebarCategories('kingbase'), [
+    { id: 'tables', label: '表', icon: '▦', types: ['TABLE'] },
+    { id: 'views', label: '视图', icon: '◉', types: ['VIEW'] },
+    { id: 'procedures', label: '存储过程', icon: '▤', functions: false },
+    { id: 'functions', label: '函数', icon: 'ƒ', functions: true }
   ]);
 });
