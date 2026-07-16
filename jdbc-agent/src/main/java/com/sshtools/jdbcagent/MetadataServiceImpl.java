@@ -68,7 +68,9 @@ public class MetadataServiceImpl extends QueryServiceImpl {
                     emptyToNull(request.getCatalog()),
                     emptyToNull(request.getSchema()),
                     null,
-                    new String[]{"TABLE", "SYSTEM TABLE"})) {
+                    request.getTypesCount() == 0
+                            ? new String[]{"TABLE", "SYSTEM TABLE"}
+                            : request.getTypesList().toArray(new String[0]))) {
                 while (tables.next()) {
                     response.addTables(tables.getString("TABLE_NAME"));
                 }

@@ -51,6 +51,22 @@ class MetadataServiceImplTest {
                 .build(), tablesObserver);
         assertTrue(tablesObserver.value.getTablesList().contains("USERS"));
 
+        RecordingObserver<QueryResult> viewObserver = new RecordingObserver<>();
+        service.executeQuery(ExecuteQueryRequest.newBuilder()
+                .setToken("secret")
+                .setSessionId("h2-meta")
+                .setSql("create view user_names as select name from users")
+                .build(), viewObserver);
+
+        RecordingObserver<ListTablesResponse> viewsObserver = new RecordingObserver<>();
+        service.listTables(ListTablesRequest.newBuilder()
+                .setToken("secret")
+                .setSessionId("h2-meta")
+                .setSchema("PUBLIC")
+                .addTypes("VIEW")
+                .build(), viewsObserver);
+        assertTrue(viewsObserver.value.getTablesList().contains("USER_NAMES"));
+
         RecordingObserver<ListSchemasResponse> schemasObserver = new RecordingObserver<>();
         service.listSchemas(ListSchemasRequest.newBuilder()
                 .setToken("secret")

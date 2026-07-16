@@ -82,6 +82,7 @@ message ListTablesRequest {
   string session_id = 2;
   string catalog = 3;
   string schema = 4;
+  repeated string types = 5;
 }
 
 message ListTablesResponse {
