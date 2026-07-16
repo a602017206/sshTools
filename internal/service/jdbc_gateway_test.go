@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/service/jdbcproto"
 )
@@ -93,6 +96,7 @@ type fakeJdbcAgentClient struct {
 	querySQL        string
 	queryResult     *jdbcproto.QueryResult
 	openErr         error
+	routinesErr     error
 }
 
 func (f *fakeJdbcAgentClient) OpenSession(ctx context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error) {
@@ -118,6 +122,9 @@ func (f *fakeJdbcAgentClient) ListSchemas(ctx context.Context, request *jdbcprot
 
 func (f *fakeJdbcAgentClient) ListRoutines(ctx context.Context, request *jdbcproto.ListRoutinesRequest) (*jdbcproto.ListRoutinesResponse, error) {
 	f.routinesRequest = request
+	if f.routinesErr != nil {
+		return nil, f.routinesErr
+	}
 	return &jdbcproto.ListRoutinesResponse{}, nil
 }
 
@@ -185,6 +192,19 @@ func TestJdbcGatewayListRoutinesPassesFunctionKindToAgent(t *testing.T) {
 	}
 	if !client.routinesRequest.GetFunctions() {
 		t.Fatal("expected function request")
+	}
+}
+
+func TestJdbcGatewayListRoutinesTreatsOldAgentAsEmpty(t *testing.T) {
+	client := &fakeJdbcAgentClient{routinesErr: status.Error(codes.Unimplemented, "Method not found")}
+	gateway := NewJdbcGatewayService(client, "test-token")
+
+	routines, err := gateway.ListRoutines(context.Background(), "session-1", "app", "", false)
+	if err != nil {
+		t.Fatalf("list routines failed: %v", err)
+	}
+	if len(routines) != 0 {
+		t.Fatalf("routines = %v, want empty", routines)
 	}
 }
 

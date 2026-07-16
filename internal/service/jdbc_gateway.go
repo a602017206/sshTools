@@ -8,6 +8,8 @@ import (
 
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/service/jdbcproto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type JdbcAgentClient interface {
@@ -139,6 +141,9 @@ func (s *JdbcGatewayService) ListRoutines(ctx context.Context, sessionID, databa
 	}
 	result, err := s.client.ListRoutines(ctx, &jdbcproto.ListRoutinesRequest{Token: s.token, SessionId: sessionID, Catalog: database, Schema: schema, Functions: functions})
 	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return []string{}, nil
+		}
 		return nil, mapJdbcGatewayError(err)
 	}
 	return result.GetRoutines(), nil
