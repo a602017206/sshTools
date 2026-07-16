@@ -763,7 +763,7 @@
        </div>
      {/if}
 
-      {#if (authType === 'password' || assetType === 'docker' || (assetType === 'database' && requiresDatabaseUsername)) && !isSQLiteDatabase}
+      {#if ((assetType === 'ssh' && authType === 'password') || assetType === 'docker' || (assetType === 'database' && requiresDatabaseUsername)) && !isSQLiteDatabase}
         <div>
           <label class={labelClass} for="connection-username">
             用户名 {#if requiresDatabaseUsername}<span class="ops-required">*</span>{/if}

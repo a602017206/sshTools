@@ -1172,6 +1172,11 @@ func (a *App) nativeDatabaseRequest(host string, port int, user, password, datab
 	if databaseType == "" {
 		return nil, service.NativeDatabaseConfig{}, nil, nil, fmt.Errorf("原生数据库类型不能为空")
 	}
+	user = strings.TrimSpace(user)
+	if service.NativeDatabaseType(databaseType) == service.NativeDatabaseTypeRedis {
+		// Redis 的默认认证仅使用 requirepass；忽略旧连接中遗留的用户名。
+		user = ""
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	return a.nativeDatabaseService, service.NativeDatabaseConfig{
 		Type:     service.NativeDatabaseType(databaseType),

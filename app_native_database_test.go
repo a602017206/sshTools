@@ -37,6 +37,21 @@ func TestNativeDatabaseAPIsConnectBrowseAndCloseWithoutJDBC(t *testing.T) {
 	}
 }
 
+func TestNativeDatabaseRequestClearsLegacyRedisUsername(t *testing.T) {
+	app := &App{nativeDatabaseService: service.NewNativeDatabaseService(nil)}
+
+	_, cfg, _, cancel, err := app.nativeDatabaseRequest(
+		"192.168.195.185", 6379, "Root", "secret", "redis", "0",
+	)
+	if err != nil {
+		t.Fatalf("create Redis request: %v", err)
+	}
+	defer cancel()
+	if cfg.User != "" {
+		t.Fatalf("Redis username = %q, want empty for password-only authentication", cfg.User)
+	}
+}
+
 type appNativeDatabaseProvider struct {
 	client service.NativeDatabaseClient
 }
