@@ -42,7 +42,7 @@ test('MySQL 对象树使用 information_schema 并安全限定数据库', () => 
 
 test('左侧对象树分类携带标准 JDBC 元数据类型或例程类型', () => {
   assert.deepEqual(databaseSidebarCategories('kingbase'), [
-    { id: 'tables', label: '表', icon: '▦', types: ['TABLE'] },
+    { id: 'tables', label: '表', icon: '▦', types: ['TABLE', 'SYSTEM TABLE'] },
     { id: 'views', label: '视图', icon: '◉', types: ['VIEW'] },
     { id: 'procedures', label: '存储过程', icon: '▤', functions: false },
     { id: 'functions', label: '函数', icon: 'ƒ', functions: true }

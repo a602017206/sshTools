@@ -61,8 +61,8 @@
     loadCategory(activeCategoryId, true);
   }
 
-  function openTableStructure(tableName) {
-    dispatch('open-table-structure', {
+  function openTableData(tableName) {
+    dispatch('open-table-data', {
       sessionId,
       databaseName: selected.databaseName,
       schemaName: selected.schemaName,
@@ -119,7 +119,7 @@
         {:else}
           {#each filteredObjects as name}
             {#if activeCategoryId === 'tables'}
-              <button type="button" class="object-browser__row object-browser__row--button" role="row" on:click={() => openTableStructure(name)}>
+              <button type="button" class="object-browser__row object-browser__row--button" role="row" on:click={() => openTableData(name)}>
                 <span role="cell"><span class="object-browser__item-icon" aria-hidden="true">▦</span>{name}</span>
                 <span role="cell">表</span>
               </button>

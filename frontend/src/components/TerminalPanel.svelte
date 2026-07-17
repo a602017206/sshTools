@@ -50,9 +50,10 @@
     };
   }
 
-  function buildDbTablePanelId(dbSessionId, databaseName, tableName) {
+  function buildDbTablePanelId(dbSessionId, databaseName, schemaName, tableName) {
     const dbPart = databaseName || '__default__';
-    return `dbtable_${dbSessionId}_${dbPart}_${tableName}`;
+    const schemaPart = schemaName || '__default__';
+    return `dbtable_${dbSessionId}_${dbPart}_${schemaPart}_${tableName}`;
   }
 
   function updateAssetDbStateBySession(sessionId, connected) {
@@ -86,13 +87,13 @@
     activeSessionIdStore.set(sessionId);
   }
 
-  function openDatabaseTablePanel({ sessionId, databaseName, tableName }) {
+  function openDatabaseTablePanel({ sessionId, databaseName, schemaName = '', tableName }) {
     if (!sessionId || !tableName) return;
 
     const parentSession = $connectionsStore.get(sessionId);
     if (!parentSession) return;
 
-    const panelId = buildDbTablePanelId(sessionId, databaseName, tableName);
+    const panelId = buildDbTablePanelId(sessionId, databaseName, schemaName, tableName);
     const existing = $connectionsStore.get(panelId);
     if (existing) {
       activeSessionIdStore.set(panelId);
@@ -110,6 +111,7 @@
       panelType: 'database-table',
       dbSessionId: sessionId,
       databaseName,
+      schemaName,
       tableName,
       tabName: `${dbLabel}${tableName}`
     };
@@ -1150,13 +1152,14 @@
       <SelectedDatabaseObjects
         sessionId={session.sessionId}
         dbConfig={session.connection}
-        on:open-table-structure={(event) => showTableStructure({ ...event.detail, dbConfig: session.connection })}
+        on:open-table-data={(event) => openDatabaseTablePanel(event.detail)}
       />
             {:else if session.type === 'database' && session.panelType === 'database-table'}
               <DatabaseTablePanel
                 sessionId={session.dbSessionId}
                 dbConfig={session.connection}
                 databaseName={session.databaseName}
+                schemaName={session.schemaName}
                 tableName={session.tableName}
               />
             {:else if session.type === 'database' && session.panelType === 'native-database'}

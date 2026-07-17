@@ -4,6 +4,7 @@
   export let sessionId = null;
   export let dbConfig = null;
   export let databaseName = '';
+  export let schemaName = '';
   export let tableName = '';
 
   let query = '';
@@ -16,9 +17,17 @@
 
   const historyLimit = 50;
 
+  function quoteIdentifier(name, quote) {
+    return `${quote}${String(name).replaceAll(quote, `${quote}${quote}`)}${quote}`;
+  }
+
   function buildQualifiedTableName() {
     if (!tableName) return '';
-    return databaseName ? `${databaseName}.${tableName}` : tableName;
+    const dbType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase();
+    const schemaScoped = ['postgresql', 'kingbase', 'opengauss'].includes(dbType);
+    const quote = dbType === 'mysql' ? '`' : '"';
+    const parts = schemaScoped ? [schemaName, tableName] : [databaseName, tableName];
+    return parts.filter(Boolean).map(part => quoteIdentifier(part, quote)).join('.');
   }
 
   function buildDefaultQuery() {
