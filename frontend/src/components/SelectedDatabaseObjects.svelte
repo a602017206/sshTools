@@ -178,8 +178,8 @@
   .object-browser__tab { min-width: 72px; height: 56px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
   .object-browser__tab:hover { color: var(--text-primary); background: var(--bg-secondary); }
   .object-browser__tab--active { color: #1687d4; border-bottom-color: #1687d4; font-weight: 600; }
-  .object-browser__body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 232px; }
-  .object-browser__main { min-width: 0; display: flex; flex-direction: column; }
+  .object-browser__body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 232px; overflow: hidden; }
+  .object-browser__main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
   .object-browser__toolbar { min-height: 54px; padding: 0 18px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-primary); }
   .object-browser__icon-button { width: 28px; height: 28px; border: 0; background: transparent; color: var(--text-secondary); font-size: 21px; line-height: 1; cursor: pointer; }
   .object-browser__icon-button:hover:not(:disabled) { color: #1687d4; background: var(--bg-secondary); }
@@ -188,7 +188,11 @@
   .object-browser__search { margin-left: auto; width: min(300px, 46%); height: 32px; padding: 0 9px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--border-primary); color: var(--text-secondary); }
   .object-browser__search:focus-within { border-color: #1687d4; }
   .object-browser__search input { width: 100%; border: 0; outline: 0; background: transparent; color: inherit; font-size: 13px; }
-  .object-browser__table { overflow: auto; flex: 1; }
+  .object-browser__table { min-height: 0; overflow-y: auto; overflow-x: auto; flex: 1; scrollbar-gutter: stable; }
+  .object-browser__table::-webkit-scrollbar { width: 12px; height: 12px; }
+  .object-browser__table::-webkit-scrollbar-track { background: var(--bg-secondary); border-left: 1px solid var(--border-primary); }
+  .object-browser__table::-webkit-scrollbar-thumb { min-height: 40px; background: #a7b4c7; border: 3px solid var(--bg-secondary); border-radius: 8px; }
+  .object-browser__table::-webkit-scrollbar-thumb:hover { background: #7f8da3; }
   .object-browser__table-head, .object-browser__row { display: grid; grid-template-columns: minmax(240px, 1fr) 140px; align-items: center; min-height: 38px; }
   .object-browser__table-head { position: sticky; top: 0; z-index: 1; color: var(--text-secondary); background: var(--bg-secondary); border-bottom: 1px solid var(--border-primary); font-size: 12px; }
   .object-browser__table-head span, .object-browser__row span { padding: 0 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
