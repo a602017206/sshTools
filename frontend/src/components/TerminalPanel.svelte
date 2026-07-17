@@ -1152,6 +1152,7 @@
       <SelectedDatabaseObjects
         sessionId={session.sessionId}
         dbConfig={session.connection}
+        on:open-table-structure={(event) => showTableStructure({ ...event.detail, dbConfig: session.connection })}
         on:open-table-data={(event) => openDatabaseTablePanel(event.detail)}
       />
             {:else if session.type === 'database' && session.panelType === 'database-table'}

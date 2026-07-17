@@ -1,7 +1,8 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onDestroy } from 'svelte';
   import { databaseNavigationStore } from '../stores.js';
   import { databaseSidebarCategories, defaultDatabaseObjectCategory } from '../lib/databaseObjectTree.js';
+  import { tableOpenEvents } from '../lib/databaseObjectActions.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -12,6 +13,7 @@
   let activeCategoryId = defaultDatabaseObjectCategory();
   let searchText = '';
   let selectionSeen = '';
+  let tableOpenTimer = null;
   const dispatch = createEventDispatcher();
 
   const categories = databaseSidebarCategories();
@@ -61,14 +63,30 @@
     loadCategory(activeCategoryId, true);
   }
 
-  function openTableData(tableName) {
-    dispatch('open-table-data', {
+  function tableDetail(tableName) {
+    return {
       sessionId,
       databaseName: selected.databaseName,
       schemaName: selected.schemaName,
       tableName
-    });
+    };
   }
+
+  function queueTableStructure(tableName) {
+    clearTimeout(tableOpenTimer);
+    tableOpenTimer = setTimeout(() => {
+      dispatch(tableOpenEvents.click, tableDetail(tableName));
+      tableOpenTimer = null;
+    }, 220);
+  }
+
+  function openTableData(tableName) {
+    clearTimeout(tableOpenTimer);
+    tableOpenTimer = null;
+    dispatch(tableOpenEvents.doubleClick, tableDetail(tableName));
+  }
+
+  onDestroy(() => clearTimeout(tableOpenTimer));
 </script>
 
 <div class="object-browser">
@@ -119,7 +137,7 @@
         {:else}
           {#each filteredObjects as name}
             {#if activeCategoryId === 'tables'}
-              <button type="button" class="object-browser__row object-browser__row--button" role="row" on:click={() => openTableData(name)}>
+              <button type="button" class="object-browser__row object-browser__row--button" role="row" on:click={() => queueTableStructure(name)} on:dblclick|preventDefault={() => openTableData(name)}>
                 <span role="cell"><span class="object-browser__item-icon" aria-hidden="true">▦</span>{name}</span>
                 <span role="cell">表</span>
               </button>
