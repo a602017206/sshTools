@@ -1,5 +1,11 @@
 <script>
   import { onMount } from 'svelte';
+  import {
+    buildTableBrowseSQL,
+    operationNeedsValue,
+    operationUsesList,
+    tableFilterOperations
+  } from '../lib/tableQueryBuilder.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -17,6 +23,9 @@
   let activeMode = 'data';
   let filterText = '';
   let selectedCell = { row: -1, column: -1 };
+  let queryBuilderOpen = false;
+  let filterRules = [];
+  let sortRules = [];
 
   const historyLimit = 50;
 
@@ -36,6 +45,71 @@
   function buildDefaultQuery() {
     const qualifiedName = buildQualifiedTableName();
     return qualifiedName ? `SELECT * FROM ${qualifiedName} LIMIT 100;` : '';
+  }
+
+  function createFilterRule() {
+    return {
+      connector: 'AND',
+      field: availableColumns[0] || '',
+      operation: 'contains',
+      value: ''
+    };
+  }
+
+  function createSortRule() {
+    return {
+      field: availableColumns[0] || '',
+      direction: 'ASC'
+    };
+  }
+
+  function addFilterRule() {
+    filterRules = [...filterRules, createFilterRule()];
+  }
+
+  function updateFilterRule(index, changes) {
+    filterRules = filterRules.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...changes } : rule);
+  }
+
+  function removeFilterRule(index) {
+    filterRules = filterRules.filter((_, ruleIndex) => ruleIndex !== index);
+  }
+
+  function updateFilterOperation(index, operation) {
+    updateFilterRule(index, { operation, value: operationNeedsValue(operation) ? filterRules[index]?.value || '' : '' });
+  }
+
+  function addSortRule() {
+    sortRules = [...sortRules, createSortRule()];
+  }
+
+  function updateSortRule(index, changes) {
+    sortRules = sortRules.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...changes } : rule);
+  }
+
+  function removeSortRule(index) {
+    sortRules = sortRules.filter((_, ruleIndex) => ruleIndex !== index);
+  }
+
+  async function applyQueryBuilder() {
+    const qualifiedName = buildQualifiedTableName();
+    if (!qualifiedName) return;
+    query = buildTableBrowseSQL({
+      fromSQL: qualifiedName,
+      databaseType,
+      filters: filterRules,
+      sorters: sortRules,
+      limit: 100
+    });
+    sortState = { key: '', direction: 'desc' };
+    await executeQuery();
+  }
+
+  async function resetQueryBuilder() {
+    filterRules = [];
+    sortRules = [];
+    sortState = { key: '', direction: 'desc' };
+    await runDefaultQuery();
   }
 
   function hasOrderBy(sql) {
@@ -115,7 +189,15 @@
   onMount(runDefaultQuery);
 
   $: titleName = buildQualifiedTableName();
+  $: databaseType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase();
   $: dbTypeLabel = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toUpperCase();
+  $: availableColumns = resultData?.columns || [];
+  $: if (availableColumns.length && filterRules.some(rule => !rule.field)) {
+    filterRules = filterRules.map(rule => rule.field ? rule : { ...rule, field: availableColumns[0] });
+  }
+  $: if (availableColumns.length && sortRules.some(rule => !rule.field)) {
+    sortRules = sortRules.map(rule => rule.field ? rule : { ...rule, field: availableColumns[0] });
+  }
   $: sortColumnIndex = resultData?.columns?.findIndex(column => column === sortState.key) ?? -1;
   $: sortedRows = !resultData?.rows ? [] : sortColumnIndex < 0
     ? resultData.rows
@@ -146,15 +228,98 @@
   <div class="table-workspace__toolbar">
     <button type="button" class="table-workspace__tool table-workspace__tool--primary" title="执行 SQL" on:click={executeQuery} disabled={isLoading}>▶</button>
     <button type="button" class="table-workspace__tool" title="重新加载前 100 条" on:click={runDefaultQuery} disabled={isLoading}>↻</button>
+    <button type="button" class:table-workspace__tool--active={queryBuilderOpen} class="table-workspace__tool" title="筛选与排序" on:click={() => queryBuilderOpen = !queryBuilderOpen}>⏷</button>
     <button type="button" class="table-workspace__tool" title="清空结果" on:click={clearResult}>⌫</button>
     <span class="table-workspace__divider"></span>
     <button type="button" class="table-workspace__tool" title="打开 SQL 编辑器" on:click={() => activeMode = 'sql'}>{'</>'}</button>
     <span class="table-workspace__toolbar-title">{isLoading ? '正在执行...' : titleName || '未选择表'}</span>
     <label class="table-workspace__filter">
       <span aria-hidden="true">⌕</span>
-      <input bind:value={filterText} placeholder="筛选结果" aria-label="筛选结果" />
+      <input bind:value={filterText} placeholder="在当前结果中查找" aria-label="在当前结果中查找" />
     </label>
   </div>
+
+  {#if queryBuilderOpen}
+    <section class="table-workspace__query-builder" aria-label="筛选与排序">
+      <div class="table-workspace__query-builder-head">
+        <div>
+          <strong>筛选与排序</strong>
+          <span>应用后重新读取前 100 条数据</span>
+        </div>
+        <div class="table-workspace__query-builder-actions">
+          <button type="button" on:click={resetQueryBuilder} disabled={isLoading}>重置</button>
+          <button type="button" class="table-workspace__query-builder-apply" on:click={applyQueryBuilder} disabled={isLoading || !titleName}>应用</button>
+        </div>
+      </div>
+
+      <div class="table-workspace__query-builder-section">
+        <div class="table-workspace__query-builder-section-head">
+          <strong>筛选条件</strong>
+          <button type="button" on:click={addFilterRule} disabled={!availableColumns.length}>添加条件</button>
+        </div>
+        {#if !filterRules.length}
+          <p class="table-workspace__query-builder-empty">暂无筛选条件</p>
+        {:else}
+          <div class="table-workspace__query-builder-rules">
+            {#each filterRules as rule, index}
+              <div class="table-workspace__filter-rule">
+                {#if index === 0}
+                  <span class="table-workspace__rule-connector">WHERE</span>
+                {:else}
+                  <select aria-label="条件连接符" value={rule.connector} on:change={(event) => updateFilterRule(index, { connector: event.currentTarget.value })}>
+                    <option value="AND">AND</option>
+                    <option value="OR">OR</option>
+                  </select>
+                {/if}
+                <select aria-label="筛选字段" value={rule.field} on:change={(event) => updateFilterRule(index, { field: event.currentTarget.value })} disabled={!availableColumns.length}>
+                  {#each availableColumns as column}<option value={column}>{column}</option>{/each}
+                </select>
+                <select aria-label="比较方式" value={rule.operation} on:change={(event) => updateFilterOperation(index, event.currentTarget.value)}>
+                  {#each tableFilterOperations as operation}<option value={operation.value}>{operation.label}</option>{/each}
+                </select>
+                {#if operationNeedsValue(rule.operation)}
+                  {#if operationUsesList(rule.operation)}
+                    <textarea aria-label="筛选值" value={rule.value} placeholder="用逗号或换行分隔" on:input={(event) => updateFilterRule(index, { value: event.currentTarget.value })}></textarea>
+                  {:else}
+                    <input aria-label="筛选值" value={rule.value} placeholder="输入值" on:input={(event) => updateFilterRule(index, { value: event.currentTarget.value })} />
+                  {/if}
+                {:else}
+                  <span class="table-workspace__rule-null-value">无需输入值</span>
+                {/if}
+                <button type="button" class="table-workspace__rule-remove" title="移除条件" on:click={() => removeFilterRule(index)}>×</button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <div class="table-workspace__query-builder-section">
+        <div class="table-workspace__query-builder-section-head">
+          <strong>排序规则</strong>
+          <button type="button" on:click={addSortRule} disabled={!availableColumns.length}>添加排序</button>
+        </div>
+        {#if !sortRules.length}
+          <p class="table-workspace__query-builder-empty">暂无排序规则</p>
+        {:else}
+          <div class="table-workspace__query-builder-rules">
+            {#each sortRules as rule, index}
+              <div class="table-workspace__sort-rule">
+                <span>ORDER BY</span>
+                <select aria-label="排序字段" value={rule.field} on:change={(event) => updateSortRule(index, { field: event.currentTarget.value })} disabled={!availableColumns.length}>
+                  {#each availableColumns as column}<option value={column}>{column}</option>{/each}
+                </select>
+                <select aria-label="排序方向" value={rule.direction} on:change={(event) => updateSortRule(index, { direction: event.currentTarget.value })}>
+                  <option value="ASC">升序</option>
+                  <option value="DESC">降序</option>
+                </select>
+                <button type="button" class="table-workspace__rule-remove" title="移除排序" on:click={() => removeSortRule(index)}>×</button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </section>
+  {/if}
 
   {#if activeMode === 'sql'}
     <section class="table-workspace__sql-panel" aria-label="SQL 编辑器">
@@ -236,12 +401,34 @@
   .table-workspace__tool { width: 28px; height: 28px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 15px; }
   .table-workspace__tool:hover:not(:disabled) { color: #1586d1; border-color: var(--border-primary); background: var(--bg-primary); }
   .table-workspace__tool--primary { color: #fff; background: #1687d4; border-color: #1687d4; }
+  .table-workspace__tool--active { color: #1586d1; border-color: #1586d1; background: color-mix(in srgb, #1586d1 8%, transparent); }
   .table-workspace__tool:disabled { opacity: .5; cursor: wait; }
   .table-workspace__divider { width: 1px; height: 20px; margin: 0 5px; background: var(--border-primary); }
   .table-workspace__toolbar-title { margin-left: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12px; }
   .table-workspace__filter { margin-left: auto; width: min(260px, 35%); height: 28px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-secondary); }
   .table-workspace__filter:focus-within { border-color: #1586d1; }
   .table-workspace__filter input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: inherit; font-size: 12px; }
+  .table-workspace__query-builder { padding: 12px; display: grid; gap: 14px; border-bottom: 1px solid var(--border-primary); background: var(--bg-secondary); }
+  .table-workspace__query-builder-head, .table-workspace__query-builder-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .table-workspace__query-builder-head > div:first-child { display: grid; gap: 3px; }
+  .table-workspace__query-builder-head strong, .table-workspace__query-builder-section-head strong { font-size: 13px; }
+  .table-workspace__query-builder-head span { color: var(--text-secondary); font-size: 11px; }
+  .table-workspace__query-builder-actions, .table-workspace__query-builder-section-head { display: flex; align-items: center; gap: 8px; }
+  .table-workspace__query-builder button { min-height: 26px; padding: 0 9px; border: 1px solid var(--border-primary); border-radius: 3px; background: var(--bg-primary); color: var(--text-primary); cursor: pointer; font-size: 12px; }
+  .table-workspace__query-builder button:hover:not(:disabled) { border-color: #1586d1; color: #1586d1; }
+  .table-workspace__query-builder button:disabled { opacity: .5; cursor: not-allowed; }
+  .table-workspace__query-builder .table-workspace__query-builder-apply { border-color: #1687d4; background: #1687d4; color: #fff; }
+  .table-workspace__query-builder-section { display: grid; gap: 8px; }
+  .table-workspace__query-builder-rules { display: grid; gap: 6px; }
+  .table-workspace__filter-rule, .table-workspace__sort-rule { display: grid; align-items: center; gap: 7px; }
+  .table-workspace__filter-rule { grid-template-columns: 72px minmax(120px, 1fr) 128px minmax(160px, 2fr) 28px; }
+  .table-workspace__sort-rule { grid-template-columns: 72px minmax(120px, 1fr) 100px 28px; max-width: 500px; }
+  .table-workspace__filter-rule select, .table-workspace__filter-rule input, .table-workspace__filter-rule textarea, .table-workspace__sort-rule select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 28px; padding: 4px 7px; border: 1px solid var(--border-primary); border-radius: 3px; outline: 0; background: var(--bg-primary); color: var(--text-primary); font-size: 12px; }
+  .table-workspace__filter-rule textarea { height: 46px; resize: vertical; }
+  .table-workspace__filter-rule select:focus, .table-workspace__filter-rule input:focus, .table-workspace__filter-rule textarea:focus, .table-workspace__sort-rule select:focus { border-color: #1586d1; }
+  .table-workspace__rule-connector, .table-workspace__sort-rule > span, .table-workspace__rule-null-value { color: var(--text-secondary); font-size: 11px; }
+  .table-workspace__rule-remove { width: 28px; padding: 0 !important; font-size: 17px !important; line-height: 1; }
+  .table-workspace__query-builder-empty { margin: 0; padding: 8px 9px; border: 1px dashed var(--border-primary); color: var(--text-secondary); font-size: 12px; }
   .table-workspace__sql-panel { padding: 10px 12px; border-bottom: 1px solid var(--border-primary); background: var(--bg-secondary); }
   .table-workspace__sql-panel textarea { box-sizing: border-box; width: 100%; height: 94px; resize: vertical; padding: 8px 10px; border: 1px solid var(--border-primary); outline: 0; background: var(--bg-primary); color: var(--text-primary); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
   .table-workspace__sql-panel textarea:focus { border-color: #1586d1; }
@@ -279,5 +466,6 @@
   .table-workspace__history:hover { border-color: var(--border-primary); background: var(--bg-primary); color: var(--text-primary); }
   .table-workspace__muted { color: var(--text-secondary); font-size: 12px; }
   .table-workspace__status { min-height: 28px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--border-primary); color: var(--text-secondary); background: var(--bg-secondary); font-size: 11px; }
-  @media (max-width: 900px) { .table-workspace__content { grid-template-columns: 1fr; } .table-workspace__details { display: none; } .table-workspace__header { padding: 0 12px; gap: 8px; } .table-workspace__identity { min-width: 0; } .table-workspace__header-meta { display: none; } }
+  @media (max-width: 900px) { .table-workspace__content { grid-template-columns: 1fr; } .table-workspace__details { display: none; } .table-workspace__header { padding: 0 12px; gap: 8px; } .table-workspace__identity { min-width: 0; } .table-workspace__header-meta { display: none; } .table-workspace__filter-rule { grid-template-columns: 64px minmax(100px, 1fr) 110px minmax(130px, 2fr) 28px; } }
+  @media (max-width: 640px) { .table-workspace__toolbar-title { display: none; } .table-workspace__filter { width: 190px; } .table-workspace__filter-rule { grid-template-columns: 1fr 1fr 28px; } .table-workspace__filter-rule > :first-child { grid-column: 1; } .table-workspace__filter-rule > :nth-child(2) { grid-column: 2; } .table-workspace__filter-rule > :nth-child(3) { grid-column: 1; } .table-workspace__filter-rule > :nth-child(4) { grid-column: 2; } .table-workspace__filter-rule > :last-child { grid-column: 3; grid-row: 1 / span 2; } .table-workspace__sort-rule { grid-template-columns: 1fr 1fr 28px; } }
 </style>
