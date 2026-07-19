@@ -6,6 +6,7 @@
     operationUsesList,
     tableFilterOperations
   } from '../lib/tableQueryBuilder.js';
+  import { formatColumnDescription, formatColumnLength, formatColumnType } from '../lib/tableStructureMetadata.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -26,6 +27,7 @@
   let queryBuilderOpen = false;
   let filterRules = [];
   let sortRules = [];
+  let columnMetadata = {};
 
   const historyLimit = 50;
 
@@ -174,6 +176,17 @@
     await executeQuery();
   }
 
+  async function loadColumnMetadata() {
+    if (!window.wailsBindings || !sessionId || !tableName) return;
+    try {
+      const schema = await window.wailsBindings.GetTableSchemaInSchema(sessionId, databaseName, schemaName, tableName);
+      columnMetadata = Object.fromEntries((schema?.columns || []).map(column => [column.name, column]));
+    } catch (error) {
+      console.warn('Failed to load table column metadata:', error);
+      columnMetadata = {};
+    }
+  }
+
   function clearResult() {
     resultData = null;
     errorMessage = '';
@@ -186,7 +199,10 @@
     activeMode = 'sql';
   }
 
-  onMount(runDefaultQuery);
+  onMount(() => {
+    loadColumnMetadata();
+    runDefaultQuery();
+  });
 
   $: titleName = buildQualifiedTableName();
   $: databaseType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase();
@@ -338,8 +354,16 @@
           <div class="table-workspace__grid-head" role="row">
             <span class="table-workspace__row-number" role="columnheader">#</span>
             {#each resultData.columns as column}
+              {@const metadata = columnMetadata[column]}
               <button type="button" class:table-workspace__column--sorted={sortState.key === column} class="table-workspace__column" role="columnheader" on:click={() => handleSort(column)}>
-                {column}<span aria-hidden="true">{sortState.key === column ? (sortState.direction === 'asc' ? ' ↑' : ' ↓') : ''}</span>
+                <span class="table-workspace__column-name">{column}<span aria-hidden="true">{sortState.key === column ? (sortState.direction === 'asc' ? ' ↑' : ' ↓') : ''}</span></span>
+                {#if metadata}
+                  <span class="table-workspace__column-metadata" title={`${formatColumnType(metadata)} · 长度 ${formatColumnLength(metadata)} · ${formatColumnDescription(metadata)}`}>
+                    <span>{formatColumnType(metadata)}</span>
+                    <span>长度 {formatColumnLength(metadata)}</span>
+                    <span>{formatColumnDescription(metadata)}</span>
+                  </span>
+                {/if}
               </button>
             {/each}
           </div>
@@ -450,7 +474,10 @@
   .table-workspace__grid-row--selected { background: color-mix(in srgb, #1586d1 8%, transparent); }
   .table-workspace__row-number { position: sticky; left: 0; z-index: 1; padding: 8px 9px; text-align: right; color: var(--text-secondary); background: var(--bg-secondary); border-right: 1px solid var(--border-primary); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
   .table-workspace__grid-head .table-workspace__row-number { z-index: 3; }
-  .table-workspace__column { min-width: 150px; padding: 0 10px; border: 0; border-right: 1px solid var(--border-primary); background: transparent; color: var(--text-secondary); text-align: left; cursor: pointer; font-size: 12px; font-weight: 650; }
+  .table-workspace__column { min-width: 150px; min-height: 54px; padding: 6px 10px; display: grid; align-content: center; gap: 3px; border: 0; border-right: 1px solid var(--border-primary); background: transparent; color: var(--text-secondary); text-align: left; cursor: pointer; font-size: 12px; font-weight: 650; }
+  .table-workspace__column-name { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
+  .table-workspace__column-metadata { display: flex; gap: 6px; overflow: hidden; color: var(--text-secondary); font-size: 10px; font-weight: 500; line-height: 1.25; white-space: nowrap; }
+  .table-workspace__column-metadata span { overflow: hidden; text-overflow: ellipsis; }
   .table-workspace__column:hover, .table-workspace__column--sorted { color: #1586d1; background: color-mix(in srgb, #1586d1 6%, transparent); }
   .table-workspace__cell { min-width: 150px; overflow: hidden; padding: 8px 10px; border: 0; border-right: 1px solid var(--border-primary); background: transparent; color: var(--text-primary); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: cell; font-size: 12px; }
   .table-workspace__cell--active { outline: 2px solid #1586d1; outline-offset: -2px; background: color-mix(in srgb, #1586d1 12%, transparent); }

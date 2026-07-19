@@ -92,6 +92,34 @@ export namespace config {
 		    return a;
 		}
 	}
+	export class ColumnSchema {
+	    name: string;
+	    type: string;
+	    nullable: boolean;
+	    is_primary_key: boolean;
+	    column_size: number;
+	    decimal_digits: number;
+	    default_value: string;
+	    has_default: boolean;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ColumnSchema(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.nullable = source["nullable"];
+	        this.is_primary_key = source["is_primary_key"];
+	        this.column_size = source["column_size"];
+	        this.decimal_digits = source["decimal_digits"];
+	        this.default_value = source["default_value"];
+	        this.has_default = source["has_default"];
+	        this.description = source["description"];
+	    }
+	}
 	export class ConnectionConfig {
 	    id: string;
 	    name: string;
@@ -206,6 +234,39 @@ export namespace config {
 		}
 	}
 	
+	
+	export class TableSchema {
+	    table_name: string;
+	    columns: ColumnSchema[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TableSchema(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.table_name = source["table_name"];
+	        this.columns = this.convertValues(source["columns"], ColumnSchema);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

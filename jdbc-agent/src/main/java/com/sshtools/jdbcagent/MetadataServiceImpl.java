@@ -133,6 +133,7 @@ public class MetadataServiceImpl extends QueryServiceImpl {
                             .setDecimalDigits(columns.getInt("DECIMAL_DIGITS"))
                             .setHasDefault(columns.getObject("COLUMN_DEF") != null)
                             .setDefaultValue(columns.getObject("COLUMN_DEF") == null ? "" : columns.getString("COLUMN_DEF"))
+                            .setDescription(columns.getString("REMARKS") == null ? "" : columns.getString("REMARKS"))
                             .build());
                 }
             }

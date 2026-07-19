@@ -119,13 +119,18 @@ func (s *ManagedJDBCGateway) ListDatabases(ctx context.Context, sessionID string
 }
 
 func (s *ManagedJDBCGateway) GetTableSchema(ctx context.Context, sessionID, table string) (*config.TableSchema, error) {
-	return s.GetTableSchemaInSchema(ctx, sessionID, "", table)
+	return s.GetTableSchemaInDatabaseAndSchema(ctx, sessionID, "", "", table)
 }
 
 // GetTableSchemaInSchema delegates schema-scoped metadata loading to the active JDBC agent.
 func (s *ManagedJDBCGateway) GetTableSchemaInSchema(ctx context.Context, sessionID, schema, table string) (*config.TableSchema, error) {
+	return s.GetTableSchemaInDatabaseAndSchema(ctx, sessionID, "", schema, table)
+}
+
+// GetTableSchemaInDatabaseAndSchema delegates catalog and schema scoped metadata loading to the active JDBC agent.
+func (s *ManagedJDBCGateway) GetTableSchemaInDatabaseAndSchema(ctx context.Context, sessionID, database, schema, table string) (*config.TableSchema, error) {
 	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) (*config.TableSchema, error) {
-		return gateway.GetTableSchemaInSchema(ctx, sessionID, schema, table)
+		return gateway.GetTableSchemaInDatabaseAndSchema(ctx, sessionID, database, schema, table)
 	})
 }
 

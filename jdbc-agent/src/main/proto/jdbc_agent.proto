@@ -119,6 +119,7 @@ message Column {
   int32 decimal_digits = 6;
   string default_value = 7;
   bool has_default = 8;
+  string description = 9;
 }
 
 message ListColumnsResponse {

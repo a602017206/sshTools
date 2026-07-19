@@ -90,6 +90,7 @@ func TestJdbcGatewayMapsDriverMissingError(t *testing.T) {
 type fakeJdbcAgentClient struct {
 	openRequest     *jdbcproto.OpenSessionRequest
 	columnsRequest  *jdbcproto.ListColumnsRequest
+	columnsResult   *jdbcproto.ListColumnsResponse
 	schemasRequest  *jdbcproto.ListSchemasRequest
 	tablesRequest   *jdbcproto.ListTablesRequest
 	routinesRequest *jdbcproto.ListRoutinesRequest
@@ -135,6 +136,9 @@ func (f *fakeJdbcAgentClient) ListTables(ctx context.Context, request *jdbcproto
 
 func (f *fakeJdbcAgentClient) ListColumns(ctx context.Context, request *jdbcproto.ListColumnsRequest) (*jdbcproto.ListColumnsResponse, error) {
 	f.columnsRequest = request
+	if f.columnsResult != nil {
+		return f.columnsResult, nil
+	}
 	return &jdbcproto.ListColumnsResponse{}, nil
 }
 
@@ -151,6 +155,42 @@ func TestJdbcGatewayGetTableSchemaInSchemaPassesSchemaToAgent(t *testing.T) {
 	}
 	if client.columnsRequest.GetSchema() != "pems" {
 		t.Fatalf("schema = %q, want pems", client.columnsRequest.GetSchema())
+	}
+}
+
+func TestJdbcGatewayGetTableSchemaInSchemaMapsColumnDescription(t *testing.T) {
+	client := &fakeJdbcAgentClient{columnsResult: &jdbcproto.ListColumnsResponse{
+		Columns: []*jdbcproto.Column{{
+			Name:        "amount",
+			Type:        "DECIMAL",
+			ColumnSize:  12,
+			Description: "订单金额",
+		}},
+	}}
+	gateway := NewJdbcGatewayService(client, "test-token")
+
+	schema, err := gateway.GetTableSchemaInSchema(context.Background(), "session-1", "public", "orders")
+	if err != nil {
+		t.Fatalf("get table schema failed: %v", err)
+	}
+	if len(schema.Columns) != 1 {
+		t.Fatalf("columns = %d, want 1", len(schema.Columns))
+	}
+	if got := schema.Columns[0].Description; got != "订单金额" {
+		t.Fatalf("description = %q, want 订单金额", got)
+	}
+}
+
+func TestJdbcGatewayGetTableSchemaInDatabaseAndSchemaPassesCatalogToAgent(t *testing.T) {
+	client := &fakeJdbcAgentClient{}
+	gateway := NewJdbcGatewayService(client, "test-token")
+
+	_, err := gateway.GetTableSchemaInDatabaseAndSchema(context.Background(), "session-1", "information_schema", "", "tables")
+	if err != nil {
+		t.Fatalf("get table schema failed: %v", err)
+	}
+	if client.columnsRequest.GetCatalog() != "information_schema" {
+		t.Fatalf("catalog = %q, want information_schema", client.columnsRequest.GetCatalog())
 	}
 }
 

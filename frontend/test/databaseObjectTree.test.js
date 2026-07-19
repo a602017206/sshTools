@@ -49,6 +49,18 @@ test('左侧对象树分类携带标准 JDBC 元数据类型或例程类型', ()
   ]);
 });
 
+test('MySQL 系统视图包含在视图分类中', () => {
+  const views = databaseSidebarCategories('mysql').find(item => item.id === 'views');
+
+  assert.deepEqual(views.types, ['VIEW', 'SYSTEM VIEW']);
+});
+
+test('MySQL 系统视图包含在默认表分类中', () => {
+  const tables = databaseSidebarCategories('mysql').find(item => item.id === 'tables');
+
+  assert.deepEqual(tables.types, ['TABLE', 'SYSTEM TABLE', 'SYSTEM VIEW']);
+});
+
 test('对象浏览器默认打开表分类', () => {
   assert.equal(defaultDatabaseObjectCategory(), 'tables');
 });

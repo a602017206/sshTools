@@ -20,14 +20,15 @@ type TableSchema struct {
 }
 
 type ColumnSchema struct {
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	Nullable     bool   `json:"nullable"`
-	IsPrimaryKey bool   `json:"is_primary_key"`
-	ColumnSize   int    `json:"column_size"`
-	DecimalDigits int   `json:"decimal_digits"`
-	DefaultValue string `json:"default_value"`
-	HasDefault   bool   `json:"has_default"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	Nullable      bool   `json:"nullable"`
+	IsPrimaryKey  bool   `json:"is_primary_key"`
+	ColumnSize    int    `json:"column_size"`
+	DecimalDigits int    `json:"decimal_digits"`
+	DefaultValue  string `json:"default_value"`
+	HasDefault    bool   `json:"has_default"`
+	Description   string `json:"description"`
 }
 
 func GetDefaultPort(dbType string) int {

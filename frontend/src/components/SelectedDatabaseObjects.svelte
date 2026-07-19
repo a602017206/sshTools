@@ -16,9 +16,9 @@
   let tableOpenTimer = null;
   const dispatch = createEventDispatcher();
 
-  const categories = databaseSidebarCategories();
   $: selected = $databaseNavigationStore[sessionId] || { databaseName: dbConfig?.metadata?.database || '', schemaName: '' };
   $: databaseType = dbConfig?.metadata?.db_type || dbConfig?.dbType || '';
+  $: categories = databaseSidebarCategories(databaseType);
   $: selectionKey = `${sessionId || ''}:${selected.databaseName}:${selected.schemaName}`;
   $: activeCategory = categories.find(category => category.id === activeCategoryId) || categories[0];
   $: activeObjects = objects[activeCategoryId] || [];

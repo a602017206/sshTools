@@ -1443,6 +1443,11 @@ func (a *App) GetTableColumns(sessionID, table string) ([]string, error) {
 	return columns, nil
 }
 
+// GetTableSchemaInSchema returns structured column metadata for the table structure panel.
+func (a *App) GetTableSchemaInSchema(sessionID, database, schema, table string) (*config.TableSchema, error) {
+	return a.databaseService.GetTableSchemaInSchema(sessionID, database, schema, table)
+}
+
 func (a *App) CloseDatabase(sessionID string) error {
 	return a.databaseService.CloseDatabase(sessionID)
 }

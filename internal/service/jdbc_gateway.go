@@ -154,17 +154,23 @@ func (s *JdbcGatewayService) ListDatabases(context.Context, string) ([]string, e
 }
 
 func (s *JdbcGatewayService) GetTableSchema(ctx context.Context, sessionID, table string) (*config.TableSchema, error) {
-	return s.GetTableSchemaInSchema(ctx, sessionID, "", table)
+	return s.GetTableSchemaInDatabaseAndSchema(ctx, sessionID, "", "", table)
 }
 
 // GetTableSchemaInSchema loads table metadata scoped to a database schema.
 func (s *JdbcGatewayService) GetTableSchemaInSchema(ctx context.Context, sessionID, schema, table string) (*config.TableSchema, error) {
+	return s.GetTableSchemaInDatabaseAndSchema(ctx, sessionID, "", schema, table)
+}
+
+// GetTableSchemaInDatabaseAndSchema loads table metadata scoped to a JDBC catalog and schema.
+func (s *JdbcGatewayService) GetTableSchemaInDatabaseAndSchema(ctx context.Context, sessionID, database, schema, table string) (*config.TableSchema, error) {
 	if s.client == nil {
 		return nil, MapJDBCAgentError("AGENT_UNAVAILABLE: JDBC agent client not configured")
 	}
 	result, err := s.client.ListColumns(ctx, &jdbcproto.ListColumnsRequest{
 		Token:     s.token,
 		SessionId: sessionID,
+		Catalog:   database,
 		Schema:    schema,
 		Table:     table,
 	})
@@ -182,6 +188,7 @@ func (s *JdbcGatewayService) GetTableSchemaInSchema(ctx context.Context, session
 			DecimalDigits: int(column.GetDecimalDigits()),
 			DefaultValue:  column.GetDefaultValue(),
 			HasDefault:    column.GetHasDefault(),
+			Description:   column.GetDescription(),
 		})
 	}
 	return &config.TableSchema{TableName: table, Columns: columns}, nil

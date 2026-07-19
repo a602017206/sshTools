@@ -27,10 +27,16 @@ export function databaseObjectCategories(databaseType) {
 }
 
 // JDBC 的 getTables 与 getProcedures 是两组独立元数据接口，导航节点必须明确调用目标。
-export function databaseSidebarCategories() {
+export function databaseSidebarCategories(databaseType) {
+  const normalizedType = String(databaseType || '').toLowerCase();
+  const tableTypes = normalizedType === 'mysql'
+    ? ['TABLE', 'SYSTEM TABLE', 'SYSTEM VIEW']
+    : ['TABLE', 'SYSTEM TABLE'];
+  const viewTypes = normalizedType === 'mysql' ? ['VIEW', 'SYSTEM VIEW'] : ['VIEW'];
+
   return [
-    { id: 'tables', label: '表', icon: '▦', types: ['TABLE', 'SYSTEM TABLE'] },
-    { id: 'views', label: '视图', icon: '◉', types: ['VIEW'] },
+    { id: 'tables', label: '表', icon: '▦', types: tableTypes },
+    { id: 'views', label: '视图', icon: '◉', types: viewTypes },
     { id: 'procedures', label: '存储过程', icon: '▤', functions: false },
     { id: 'functions', label: '函数', icon: 'ƒ', functions: true }
   ];

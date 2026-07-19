@@ -15,4 +15,9 @@ test('表数据页面包含数据工作区的核心区域', async () => {
   assert.match(source, /table-workspace__filter-rule/);
   assert.match(source, /table-workspace__sort-rule/);
   assert.match(source, /buildTableBrowseSQL/);
+  assert.match(source, /GetTableSchemaInSchema/);
+  assert.match(source, /table-workspace__column-metadata/);
+  assert.match(source, /formatColumnType/);
+  assert.match(source, /formatColumnLength/);
+  assert.match(source, /formatColumnDescription/);
 });

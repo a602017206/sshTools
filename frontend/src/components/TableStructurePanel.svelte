@@ -1,4 +1,6 @@
 <script>
+  import { formatColumnDescription, formatColumnLength, formatColumnType } from '../lib/tableStructureMetadata.js';
+
   export let sessionId = null;
   export let dbConfig = null;
   export let databaseName = '';
@@ -6,6 +8,7 @@
   export let tableName = '';
 
   let ddlData = null;
+  let schemaData = null;
   let isLoading = false;
   let errorMessage = '';
   let copied = false;
@@ -25,12 +28,17 @@
 
     isLoading = true;
     errorMessage = '';
+    schemaData = null;
 
     try {
-      const result = schemaName
-        ? await window.wailsBindings.GetTableDDLInSchema(sessionId, databaseName, schemaName, tableName)
-        : await window.wailsBindings.GetTableDDL(sessionId, databaseName, tableName);
-      ddlData = result;
+      const [ddl, schema] = await Promise.all([
+        schemaName
+          ? window.wailsBindings.GetTableDDLInSchema(sessionId, databaseName, schemaName, tableName)
+          : window.wailsBindings.GetTableDDL(sessionId, databaseName, tableName),
+        window.wailsBindings.GetTableSchemaInSchema(sessionId, databaseName, schemaName, tableName)
+      ]);
+      ddlData = ddl;
+      schemaData = schema;
     } catch (error) {
       console.error('Failed to load table DDL:', error);
       const detail = error?.message || String(error || '未知错误');
@@ -90,8 +98,44 @@
       <div class="flex items-center justify-center h-full">
         <div class="text-sm text-gray-500 dark:text-gray-400">加载中...</div>
       </div>
-    {:else if ddlData?.ddl}
-      <pre class="text-xs font-mono whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 overflow-auto">{ddlData.ddl}</pre>
+    {:else if schemaData?.columns?.length || ddlData?.ddl}
+      {#if schemaData?.columns?.length}
+        <section class="mb-5">
+          <h2 class="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">字段</h2>
+          <div class="overflow-x-auto border border-gray-200 dark:border-gray-700">
+            <table class="min-w-full text-left text-xs text-gray-700 dark:text-gray-200">
+              <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th class="px-3 py-2 font-medium">字段</th>
+                  <th class="px-3 py-2 font-medium">数据类型</th>
+                  <th class="px-3 py-2 font-medium">长度</th>
+                  <th class="px-3 py-2 font-medium">描述</th>
+                  <th class="px-3 py-2 font-medium">可空</th>
+                  <th class="px-3 py-2 font-medium">默认值</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                {#each schemaData.columns as column}
+                  <tr>
+                    <td class="px-3 py-2 font-mono whitespace-nowrap">{column.name}</td>
+                    <td class="px-3 py-2 whitespace-nowrap">{formatColumnType(column)}</td>
+                    <td class="px-3 py-2 whitespace-nowrap">{formatColumnLength(column)}</td>
+                    <td class="px-3 py-2 min-w-[120px]">{formatColumnDescription(column)}</td>
+                    <td class="px-3 py-2 whitespace-nowrap">{column.nullable ? '是' : '否'}</td>
+                    <td class="px-3 py-2 font-mono whitespace-nowrap">{column.has_default ? column.default_value : '-'}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {/if}
+      {#if ddlData?.ddl}
+        <section>
+          <h2 class="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">DDL</h2>
+          <pre class="text-xs font-mono whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 overflow-auto">{ddlData.ddl}</pre>
+        </section>
+      {/if}
     {:else}
       <div class="flex items-center justify-center h-full">
         <div class="text-sm text-gray-500 dark:text-gray-400">暂无表结构数据</div>

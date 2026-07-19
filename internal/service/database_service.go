@@ -53,6 +53,10 @@ type schemaDatabaseGateway interface {
 	ListRoutines(ctx context.Context, sessionID, database, schema string, functions bool) ([]string, error)
 }
 
+type databaseSchemaGateway interface {
+	GetTableSchemaInDatabaseAndSchema(ctx context.Context, sessionID, database, schema, table string) (*config.TableSchema, error)
+}
+
 func NewDatabaseService(configManager *config.ConfigManager) *DatabaseService {
 	return NewDatabaseServiceWithGateway(configManager, nil)
 }
@@ -559,6 +563,19 @@ func (ds *DatabaseService) GetTableSchema(sessionID, table string) (*config.Tabl
 	}, nil
 }
 
+// GetTableSchemaInSchema returns structured column metadata scoped to a schema when supported by the active gateway.
+func (ds *DatabaseService) GetTableSchemaInSchema(sessionID, database, schema, table string) (*config.TableSchema, error) {
+	if ds.gateway != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if gateway, ok := ds.gateway.(databaseSchemaGateway); ok {
+			return gateway.GetTableSchemaInDatabaseAndSchema(ctx, sessionID, database, schema, table)
+		}
+		return ds.gateway.GetTableSchemaInSchema(ctx, sessionID, schema, table)
+	}
+	return ds.GetTableSchema(sessionID, table)
+}
+
 func (ds *DatabaseService) CloseDatabase(sessionID string) error {
 	if ds.gateway != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -762,13 +779,13 @@ func (ds *DatabaseService) GetTableDDLInSchema(sessionID, database, schemaName, 
 				DBType:    "mysql",
 			}, nil
 		case "postgresql", "kingbase", "opengauss":
-			schema, err := ds.gateway.GetTableSchemaInSchema(context.Background(), sessionID, schemaName, table)
+			schema, err := ds.GetTableSchemaInSchema(sessionID, database, schemaName, table)
 			if err != nil {
 				return nil, fmt.Errorf("获取表结构失败: %w", err)
 			}
 			return postgreSQLCompatibleTableDDL(table, session.Config.DBType, schema)
 		default:
-			schema, err := ds.gateway.GetTableSchemaInSchema(context.Background(), sessionID, schemaName, table)
+			schema, err := ds.GetTableSchemaInSchema(sessionID, database, schemaName, table)
 			if err != nil {
 				return nil, fmt.Errorf("获取表结构失败: %w", err)
 			}

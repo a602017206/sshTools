@@ -98,6 +98,8 @@ export function GetTableDDL(arg1:string,arg2:string,arg3:string):Promise<service
 
 export function GetTableDDLInSchema(arg1:string,arg2:string,arg3:string,arg4:string):Promise<service.TableDDL>;
 
+export function GetTableSchemaInSchema(arg1:string,arg2:string,arg3:string,arg4:string):Promise<config.TableSchema>;
+
 export function GetTransferStatus(arg1:string):Promise<ssh.TransferProgress>;
 
 export function GetVersion():Promise<string>;

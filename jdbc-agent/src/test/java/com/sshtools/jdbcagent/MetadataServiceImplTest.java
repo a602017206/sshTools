@@ -45,6 +45,14 @@ class MetadataServiceImplTest {
                 .build(), createObserver);
         assertNotNull(createObserver.value);
 
+        RecordingObserver<QueryResult> commentObserver = new RecordingObserver<>();
+        service.executeQuery(ExecuteQueryRequest.newBuilder()
+                .setToken("secret")
+                .setSessionId("h2-meta")
+                .setSql("comment on column users.name is '显示名称'")
+                .build(), commentObserver);
+        assertNotNull(commentObserver.value);
+
         RecordingObserver<ListTablesResponse> tablesObserver = new RecordingObserver<>();
         service.listTables(ListTablesRequest.newBuilder()
                 .setToken("secret")
@@ -97,6 +105,7 @@ class MetadataServiceImplTest {
         assertTrue(columns.get("ID").getPrimaryKey());
         assertEquals("CHARACTER VARYING", columns.get("NAME").getType());
         assertEquals(32, columns.get("NAME").getColumnSize());
+        assertEquals("显示名称", columns.get("NAME").getDescription());
 
         RecordingObserver<CloseSessionResponse> closeObserver = new RecordingObserver<>();
         service.closeSession(CloseSessionRequest.newBuilder()
