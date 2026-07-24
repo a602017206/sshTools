@@ -20,4 +20,18 @@ test('表数据页面包含数据工作区的核心区域', async () => {
   assert.match(source, /formatColumnType/);
   assert.match(source, /formatColumnLength/);
   assert.match(source, /formatColumnDescription/);
+  assert.match(source, /table-workspace__context/);
+  assert.match(source, /table-workspace__query-strip/);
+  assert.match(source, /table-workspace__column-accent/);
+  assert.match(source, /table-workspace__inspector/);
+  assert.doesNotMatch(source, /title="新增查询"/);
+  assert.doesNotMatch(source, /title="设计表"/);
+  assert.doesNotMatch(source, /title="新建表"/);
+  assert.doesNotMatch(source, /\.table-workspace__tool:disabled \{ opacity: \.5; cursor: wait; \}/);
+  assert.match(source, /column\.is_primary_key \|\| column\.primary_key \|\| column\.isPrimaryKey/);
+  assert.doesNotMatch(source, /disabled=!hasEdits \|\| !hasPrimaryKey \|\| isMutating/);
+  assert.doesNotMatch(source, /disabled=!hasPrimaryKey \|\| isMutating/);
+  assert.match(source, /ConfirmDialog/);
+  assert.match(source, /删除结果：未匹配到记录/);
+  assert.doesNotMatch(source, /confirm\(message\)/);
 });

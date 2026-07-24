@@ -1,145 +1,163 @@
 <script>
-  import { formatColumnDescription, formatColumnLength, formatColumnType } from '../lib/tableStructureMetadata.js';
+  import { buildCreateTableSQL } from '../lib/tableDefinitionSQL.js';
+  import { buildAlterTableStatements } from '../lib/tableAlterSQL.js';
 
   export let sessionId = null;
   export let dbConfig = null;
   export let databaseName = '';
   export let schemaName = '';
   export let tableName = '';
+  export let mode = 'design';
 
   let ddlData = null;
   let schemaData = null;
   let isLoading = false;
+  let isSaving = false;
   let errorMessage = '';
+  let successMessage = '';
   let copied = false;
   let loadedRequest = '';
+  let draftTableName = tableName || 'new_table';
+  let fieldDrafts = [];
+  let originalFields = [];
 
-  $: titleName = schemaName && tableName ? `${schemaName}.${tableName}` : (tableName || '表结构');
-  $: dbTypeLabel = dbConfig?.metadata?.db_type ? dbConfig.metadata.db_type.toUpperCase() : '';
-  $: requestKey = `${sessionId || ''}:${databaseName || ''}:${schemaName || ''}:${tableName || ''}`;
-  $: if (sessionId && tableName && requestKey !== loadedRequest) {
+  const newField = (name = '') => ({ _originalName: '', name, type: 'VARCHAR', length: name === 'id' ? '20' : '255', nullable: name !== 'id', primary: name === 'id', defaultValue: '', comment: '' });
+  $: isCreateMode = mode === 'create';
+  $: databaseType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase();
+  $: supportsCreate = ['mysql', 'postgresql', 'kingbase'].includes(databaseType);
+  $: titleName = isCreateMode ? '新建表' : (schemaName && tableName ? `${schemaName}.${tableName}` : (tableName || '设计表'));
+  $: dbTypeLabel = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toUpperCase();
+  $: requestKey = `${sessionId || ''}:${databaseName || ''}:${schemaName || ''}:${tableName || ''}:${mode}`;
+  $: alterStatements = buildAlterTableStatements({ databaseType, databaseName, schemaName, tableName, originalFields, fields: fieldDrafts });
+  $: ddlPreview = isCreateMode
+    ? buildCreateTableSQL({ databaseType, databaseName, schemaName, tableName: draftTableName, fields: fieldDrafts })
+    : alterStatements.join('\n');
+  $: displayedDDL = isCreateMode ? ddlPreview : (alterStatements.length ? ddlPreview : (ddlData?.ddl || ''));
+  $: fieldsReadOnly = !supportsCreate || isSaving;
+  $: if (isCreateMode && requestKey !== loadedRequest) {
+    loadedRequest = requestKey;
+    draftTableName = tableName || 'new_table';
+    fieldDrafts = [newField('id'), newField('name'), { ...newField('created_at'), type: 'TIMESTAMP', length: '', nullable: false, primary: false }];
+    ddlData = null;
+    schemaData = null;
+    originalFields = [];
+  } else if (!isCreateMode && sessionId && tableName && requestKey !== loadedRequest) {
     loadedRequest = requestKey;
     loadDDL();
   }
 
-  async function loadDDL() {
-    if (!sessionId || !tableName) return;
-    if (!window.wailsBindings) return;
+  function populateFields(columns = []) {
+    const hydratedFields = columns.map(column => ({
+      _originalName: column.name,
+      name: column.name,
+      type: String(column.type || 'VARCHAR').toUpperCase(),
+      length: String(column.column_size || ''),
+      nullable: Boolean(column.nullable),
+      primary: Boolean(column.is_primary_key || column.primary_key || column.isPrimaryKey),
+      defaultValue: column.has_default ? String(column.default_value || '') : '',
+      comment: String(column.description || '')
+    }));
+    fieldDrafts = hydratedFields;
+    originalFields = hydratedFields.map(field => ({ ...field }));
+  }
 
+  async function loadDDL() {
+    if (!sessionId || !tableName || !window.wailsBindings) return;
     isLoading = true;
     errorMessage = '';
-    schemaData = null;
-
     try {
       const [ddl, schema] = await Promise.all([
-        schemaName
-          ? window.wailsBindings.GetTableDDLInSchema(sessionId, databaseName, schemaName, tableName)
-          : window.wailsBindings.GetTableDDL(sessionId, databaseName, tableName),
+        schemaName ? window.wailsBindings.GetTableDDLInSchema(sessionId, databaseName, schemaName, tableName) : window.wailsBindings.GetTableDDL(sessionId, databaseName, tableName),
         window.wailsBindings.GetTableSchemaInSchema(sessionId, databaseName, schemaName, tableName)
       ]);
       ddlData = ddl;
       schemaData = schema;
+      draftTableName = tableName;
+      populateFields(schema?.columns || []);
     } catch (error) {
-      console.error('Failed to load table DDL:', error);
-      const detail = error?.message || String(error || '未知错误');
-      errorMessage = `加载表结构失败: ${detail}`;
-    } finally {
-      isLoading = false;
-    }
+      errorMessage = `加载表结构失败: ${error?.message || String(error || '未知错误')}`;
+    } finally { isLoading = false; }
+  }
+
+  function updateField(index, patch) {
+    fieldDrafts = fieldDrafts.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...patch } : field);
+  }
+
+  async function saveNewTable() {
+    if (!ddlPreview || !window.wailsBindings || !sessionId) return;
+    isSaving = true;
+    errorMessage = '';
+    successMessage = '';
+    try {
+      await window.wailsBindings.ExecuteDatabaseQuery(sessionId, ddlPreview);
+      successMessage = `已创建表 ${draftTableName}`;
+    } catch (error) {
+      errorMessage = `创建表失败: ${error?.message || String(error || '未知错误')}`;
+    } finally { isSaving = false; }
+  }
+
+  async function saveStructure() {
+    if (!alterStatements.length || !window.wailsBindings || !sessionId) return;
+    isSaving = true;
+    errorMessage = '';
+    successMessage = '';
+    try {
+      for (const statement of alterStatements) await window.wailsBindings.ExecuteDatabaseQuery(sessionId, statement);
+      successMessage = `已保存表 ${tableName} 的结构`;
+      await loadDDL();
+    } catch (error) {
+      errorMessage = `保存表结构失败：${error?.message || String(error || '未知错误')}`;
+    } finally { isSaving = false; }
   }
 
   async function copyDDL() {
-    if (!ddlData?.ddl) return;
-
-    try {
-      await navigator.clipboard.writeText(ddlData.ddl);
-      copied = true;
-      setTimeout(() => {
-        copied = false;
-      }, 2000);
-    } catch (error) {
-      console.error('Failed to copy:', error);
-    }
+    if (!displayedDDL) return;
+    await navigator.clipboard?.writeText(displayedDDL);
+    copied = true;
+    setTimeout(() => copied = false, 1600);
   }
 </script>
 
-<div class="h-full flex flex-col bg-white dark:bg-gray-800">
-  <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
-    <div class="min-w-0">
-      <div class="text-sm font-semibold text-gray-900 dark:text-white truncate">{titleName}</div>
-      <div class="text-xs text-gray-500 dark:text-gray-400">{dbTypeLabel ? `${dbTypeLabel} · ` : ''}表结构定义</div>
+<section class="table-designer" aria-label={isCreateMode ? '新建表' : '设计表'}>
+  <header class="table-designer__header">
+    <div><span>{dbTypeLabel || 'JDBC'} · {isCreateMode ? 'TABLE DESIGNER' : 'TABLE STRUCTURE'}</span><h2>{titleName}</h2></div>
+    <div class="table-designer__actions">
+      {#if !isCreateMode}<button type="button" on:click={loadDDL} disabled={isLoading}>刷新</button>{/if}
+      <button type="button" on:click={copyDDL} disabled={!displayedDDL}>{copied ? '已复制' : '复制 DDL'}</button>
+      {#if isCreateMode}<button type="button" class="table-designer__save" on:click={saveNewTable} disabled={!ddlPreview || isSaving}>{isSaving ? '创建中...' : '保存新表'}</button>{/if}
+      {#if !isCreateMode}<button type="button" class="table-designer__save" on:click={saveStructure} disabled={!alterStatements.length || fieldsReadOnly}>{isSaving ? '保存中...' : '保存结构'}</button>{/if}
     </div>
-    <div class="flex items-center gap-2">
-      <button
-        class="px-3 py-1.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
-        on:click={loadDDL}
-        disabled={isLoading}
-      >
-        刷新
-      </button>
-      <button
-        class="px-3 py-1.5 text-xs rounded {copied ? 'bg-green-500 text-white' : 'bg-blue-600 text-white'} hover:brightness-95 disabled:opacity-50"
-        on:click={copyDDL}
-        disabled={!ddlData?.ddl || isLoading}
-      >
-        {copied ? '已复制' : '复制 DDL'}
-      </button>
-    </div>
-  </div>
+  </header>
 
-  {#if errorMessage}
-    <div class="px-4 py-2 text-xs text-red-600 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-800">
-      {errorMessage}
-    </div>
-  {/if}
+  {#if errorMessage}<div class="table-designer__notice table-designer__notice--error">{errorMessage}</div>{/if}
+  {#if successMessage}<div class="table-designer__notice table-designer__notice--success">{successMessage}</div>{/if}
+  {#if !supportsCreate}<div class="table-designer__notice table-designer__notice--error">当前仅支持 MySQL、PostgreSQL 和人大金仓的表结构修改。</div>{/if}
 
-  <div class="flex-1 overflow-auto p-4">
-    {#if isLoading}
-      <div class="flex items-center justify-center h-full">
-        <div class="text-sm text-gray-500 dark:text-gray-400">加载中...</div>
-      </div>
-    {:else if schemaData?.columns?.length || ddlData?.ddl}
-      {#if schemaData?.columns?.length}
-        <section class="mb-5">
-          <h2 class="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">字段</h2>
-          <div class="overflow-x-auto border border-gray-200 dark:border-gray-700">
-            <table class="min-w-full text-left text-xs text-gray-700 dark:text-gray-200">
-              <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400">
-                <tr>
-                  <th class="px-3 py-2 font-medium">字段</th>
-                  <th class="px-3 py-2 font-medium">数据类型</th>
-                  <th class="px-3 py-2 font-medium">长度</th>
-                  <th class="px-3 py-2 font-medium">描述</th>
-                  <th class="px-3 py-2 font-medium">可空</th>
-                  <th class="px-3 py-2 font-medium">默认值</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                {#each schemaData.columns as column}
-                  <tr>
-                    <td class="px-3 py-2 font-mono whitespace-nowrap">{column.name}</td>
-                    <td class="px-3 py-2 whitespace-nowrap">{formatColumnType(column)}</td>
-                    <td class="px-3 py-2 whitespace-nowrap">{formatColumnLength(column)}</td>
-                    <td class="px-3 py-2 min-w-[120px]">{formatColumnDescription(column)}</td>
-                    <td class="px-3 py-2 whitespace-nowrap">{column.nullable ? '是' : '否'}</td>
-                    <td class="px-3 py-2 font-mono whitespace-nowrap">{column.has_default ? column.default_value : '-'}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      {/if}
-      {#if ddlData?.ddl}
-        <section>
-          <h2 class="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">DDL</h2>
-          <pre class="text-xs font-mono whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 overflow-auto">{ddlData.ddl}</pre>
-        </section>
-      {/if}
-    {:else}
-      <div class="flex items-center justify-center h-full">
-        <div class="text-sm text-gray-500 dark:text-gray-400">暂无表结构数据</div>
-      </div>
-    {/if}
+  <div class="table-designer__body">
+    <label class="table-designer__name">表名<input bind:value={draftTableName} disabled={!isCreateMode} /></label>
+    <div class="table-designer__section-head"><strong>字段</strong>{#if !fieldsReadOnly}<button type="button" on:click={() => fieldDrafts = [...fieldDrafts, newField()]}>添加字段</button>{/if}</div>
+    <div class="table-designer__grid-wrap">
+      <table class="table-designer__grid"><thead><tr><th>字段名</th><th>类型</th><th>长度</th><th>非空</th><th>主键</th><th>默认值</th><th>注释</th>{#if !fieldsReadOnly}<th></th>{/if}</tr></thead>
+        <tbody>{#each fieldDrafts as field, index}<tr>
+          <td><input value={field.name} on:input={(event) => updateField(index, { name: event.currentTarget.value })} disabled={fieldsReadOnly} /></td>
+          <td><select value={field.type} on:change={(event) => updateField(index, { type: event.currentTarget.value })} disabled={fieldsReadOnly}>{#each ['BIGINT', 'INT', 'VARCHAR', 'TEXT', 'DECIMAL', 'TIMESTAMP', 'DATE', 'BOOLEAN'] as type}<option value={type}>{type}</option>{/each}</select></td>
+          <td><input value={field.length} on:input={(event) => updateField(index, { length: event.currentTarget.value })} disabled={fieldsReadOnly} /></td>
+          <td><input type="checkbox" checked={!field.nullable} on:change={(event) => updateField(index, { nullable: !event.currentTarget.checked })} disabled={fieldsReadOnly} /></td>
+          <td><input type="checkbox" checked={field.primary} on:change={(event) => updateField(index, { primary: event.currentTarget.checked })} disabled={fieldsReadOnly} /></td>
+          <td><input value={field.defaultValue} on:input={(event) => updateField(index, { defaultValue: event.currentTarget.value })} disabled={fieldsReadOnly} /></td>
+          <td><input value={field.comment} on:input={(event) => updateField(index, { comment: event.currentTarget.value })} disabled={fieldsReadOnly} /></td>
+          {#if !fieldsReadOnly}<td><button type="button" class="table-designer__remove" title="删除字段" on:click={() => fieldDrafts = fieldDrafts.filter((_, rowIndex) => rowIndex !== index)}>×</button></td>{/if}
+        </tr>{/each}</tbody>
+      </table>
+    </div>
+    {#if !isCreateMode && schemaData?.columns?.length === 0 && !isLoading}<p class="table-designer__empty">暂无字段信息</p>{/if}
+    <section class="table-designer__ddl"><div><strong>DDL 预览</strong><span>{isCreateMode ? '保存时将执行以下语句' : (alterStatements.length ? '保存时将执行以下语句' : '当前表定义')}</span></div><pre>{displayedDDL}</pre></section>
   </div>
-</div>
+</section>
+
+<style>
+  .table-designer { height: 100%; display: flex; flex-direction: column; overflow: hidden; background: #f7f8f5; color: #1d2935; font: 12px "PingFang SC", "Hiragino Sans GB", sans-serif; }
+  .table-designer__header { min-height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; background: #fff; border-bottom: 1px solid #d9e0e4; }
+  .table-designer__header span { color: #0e6674; font-size: 10px; font-weight: 700; letter-spacing: .08em; }.table-designer__header h2 { margin: 3px 0 0; font-size: 14px; }.table-designer__actions { display: flex; gap: 5px; }.table-designer button { min-height: 28px; padding: 0 8px; border: 1px solid #cfd8dc; border-radius: 3px; background: #fff; color: #31414d; cursor: pointer; font: inherit; }.table-designer button:disabled { cursor: not-allowed; opacity: .5; }.table-designer__actions .table-designer__save { border-color: #0e6674; background: #0e6674; color: #fff; }
+  .table-designer__notice { padding: 8px 14px; border-bottom: 1px solid #d9e0e4; }.table-designer__notice--error { background: #fff1f1; color: #b42318; }.table-designer__notice--success { background: #eff8f5; color: #067647; }.table-designer__body { overflow: auto; padding: 14px; }.table-designer__name { display: grid; gap: 5px; max-width: 320px; color: #52606d; font-weight: 650; }.table-designer input, .table-designer select { box-sizing: border-box; width: 100%; min-height: 28px; border: 1px solid #cfd8dc; border-radius: 3px; background: #fff; color: #1d2935; font: inherit; }.table-designer input:disabled, .table-designer select:disabled { border-color: transparent; background: transparent; color: #52606d; }.table-designer__section-head { display: flex; align-items: center; justify-content: space-between; margin: 20px 0 7px; }.table-designer__grid-wrap { overflow: auto; border: 1px solid #d9e0e4; background: #fff; }.table-designer__grid { width: 100%; min-width: 660px; border-collapse: collapse; }.table-designer__grid th { padding: 7px; background: #f1f4f3; color: #52606d; font-size: 11px; font-weight: 650; text-align: left; white-space: nowrap; }.table-designer__grid td { min-width: 58px; padding: 3px; border-top: 1px solid #e1e6e8; }.table-designer__grid td:nth-child(1) { min-width: 110px; }.table-designer__grid td:nth-child(2) { min-width: 90px; }.table-designer__grid input[type="checkbox"] { width: 16px; min-height: auto; }.table-designer__remove { color: #b42318 !important; border: 0 !important; font-size: 18px !important; }.table-designer__ddl { margin-top: 18px; }.table-designer__ddl > div { display: flex; justify-content: space-between; color: #52606d; }.table-designer__ddl span { color: #7b8791; font-size: 11px; }.table-designer__ddl pre { margin: 7px 0 0; padding: 12px; overflow: auto; border: 1px solid #d9e0e4; background: #fff; color: #31414d; font: 11px "SFMono-Regular", Menlo, monospace; line-height: 1.6; white-space: pre-wrap; }.table-designer__empty { color: #7b8791; }
+</style>

@@ -33,6 +33,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MetadataServiceImplTest {
     @Test
+    void primaryKeyIdentifierComparisonIgnoresCase() {
+        assertTrue(MetadataServiceImpl.sameIdentifier("id", "ID"));
+    }
+
+    @Test
     void listMetadataAndCloseSession() {
         MetadataServiceImpl service = new MetadataServiceImpl("secret", new ConnectionRegistry(), new DriverLoader());
         openH2Session(service);

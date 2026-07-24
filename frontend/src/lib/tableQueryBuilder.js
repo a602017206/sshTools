@@ -63,7 +63,7 @@ function buildPredicate(rule, databaseType) {
   return operatorMap[rule.operation] || '';
 }
 
-export function buildTableBrowseSQL({ fromSQL, databaseType, filters = [], sorters = [], limit = 100 }) {
+export function buildTableBrowseSQL({ fromSQL, databaseType, filters = [], sorters = [], limit = 100, offset = 0 }) {
   if (!fromSQL) return '';
   const predicates = filters.map(rule => ({ rule, predicate: buildPredicate(rule, databaseType) })).filter(item => item.predicate);
   const whereClause = predicates.length
@@ -72,5 +72,6 @@ export function buildTableBrowseSQL({ fromSQL, databaseType, filters = [], sorte
   const orderItems = sorters.filter(item => item?.field).map(item => `${quoteIdentifier(item.field, databaseType)} ${item.direction === 'DESC' ? 'DESC' : 'ASC'}`);
   const orderClause = orderItems.length ? ` ORDER BY ${orderItems.join(', ')}` : '';
   const normalizedLimit = Number.isInteger(limit) && limit > 0 ? limit : 100;
-  return `SELECT * FROM ${fromSQL}${whereClause}${orderClause} LIMIT ${normalizedLimit};`;
+  const normalizedOffset = Number.isInteger(offset) && offset > 0 ? offset : 0;
+  return `SELECT * FROM ${fromSQL}${whereClause}${orderClause} LIMIT ${normalizedLimit}${normalizedOffset ? ` OFFSET ${normalizedOffset}` : ''};`;
 }

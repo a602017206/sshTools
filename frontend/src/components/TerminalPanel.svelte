@@ -1,8 +1,9 @@
 <script>
-  import { assetsStore, connectionsStore, activeSessionIdStore, showTableStructure } from '../stores.js';
+  import { assetsStore, connectionsStore, activeSessionIdStore } from '../stores.js';
   import Terminal from './Terminal.svelte';
   import SelectedDatabaseObjects from './SelectedDatabaseObjects.svelte';
   import DatabaseTablePanel from './DatabaseTablePanel.svelte';
+  import TableStructurePanel from './TableStructurePanel.svelte';
   import NativeDatabasePanel from './NativeDatabasePanel.svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
@@ -17,6 +18,8 @@
   let osc7PendingBuffers = new Map();
   let handleDatabaseTableSelectEvent = null;
   let handleDatabaseTableStructureEvent = null;
+  let databaseQuerySequence = 0;
+  let databaseDesignerSequence = 0;
 
   // Close confirmation dialog state
   let showCloseConfirm = false;
@@ -118,6 +121,75 @@
 
     connectionsStore.update(conns => {
       conns.set(panelId, tableSession);
+      return conns;
+    });
+    activeSessionIdStore.set(panelId);
+  }
+
+  function openDatabaseQueryPanel({ sessionId, databaseName = '', schemaName = '', initialQuery = '' }) {
+    if (!sessionId) return;
+    const parentSession = $connectionsStore.get(sessionId);
+    if (!parentSession) return;
+
+    const panelId = `dbquery_${sessionId}_${Date.now()}_${++databaseQuerySequence}`;
+    const querySession = {
+      sessionId: panelId,
+      connection: parentSession.connection,
+      connected: true,
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      type: 'database',
+      panelType: 'database-query',
+      dbSessionId: sessionId,
+      databaseName,
+      schemaName,
+      initialQuery,
+      tabName: '查询'
+    };
+
+    connectionsStore.update(conns => {
+      conns.set(panelId, querySession);
+      return conns;
+    });
+    activeSessionIdStore.set(panelId);
+  }
+
+  function openDatabaseTableDesignerPanel({ sessionId, databaseName = '', schemaName = '', tableName = 'new_table', mode = 'design' }) {
+    if (!sessionId) return;
+
+    const parentSession = $connectionsStore.get(sessionId);
+    if (!parentSession) return;
+
+    const dbPart = databaseName || '__default__';
+    const schemaPart = schemaName || '__default__';
+    const panelId = mode === 'create'
+      ? `dbdesigner_${sessionId}_${Date.now()}_${++databaseDesignerSequence}`
+      : `dbdesigner_${sessionId}_${dbPart}_${schemaPart}_${tableName}`;
+    const existing = $connectionsStore.get(panelId);
+    if (existing) {
+      activeSessionIdStore.set(panelId);
+      return;
+    }
+
+    const dbLabel = databaseName ? `${databaseName}.` : '';
+    const designerSession = {
+      sessionId: panelId,
+      connection: parentSession.connection,
+      connected: true,
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      type: 'database',
+      panelType: 'database-table-designer',
+      dbSessionId: sessionId,
+      databaseName,
+      schemaName,
+      tableName,
+      designerMode: mode,
+      tabName: mode === 'create' ? '新建表' : `设计 · ${dbLabel}${tableName}`
+    };
+
+    connectionsStore.update(conns => {
+      conns.set(panelId, designerSession);
       return conns;
     });
     activeSessionIdStore.set(panelId);
@@ -379,6 +451,8 @@
     const isDatabaseListPanel = session?.type === 'database' && session?.panelType === 'database-list';
     const isNativeDatabasePanel = session?.type === 'database' && session?.panelType === 'native-database';
     const isDatabaseTablePanel = session?.type === 'database' && session?.panelType === 'database-table';
+    const isDatabaseQueryPanel = session?.type === 'database' && session?.panelType === 'database-query';
+    const isDatabaseDesignerPanel = session?.type === 'database' && session?.panelType === 'database-table-designer';
 
     // 取消订阅
     const unsubscribe = sessionUnsubscribers.get(sessionId);
@@ -406,7 +480,7 @@
         }
       }
       updateAssetDbStateBySession(sessionId, false);
-    } else if (closeBackend && !isDatabaseTablePanel) {
+    } else if (closeBackend && !isDatabaseTablePanel && !isDatabaseQueryPanel && !isDatabaseDesignerPanel) {
       const { CloseSSH } = window.wailsBindings || {};
       if (typeof CloseSSH === 'function') {
         try {
@@ -1003,16 +1077,7 @@
     handleDatabaseTableStructureEvent = (event) => {
       const detail = event?.detail;
       if (!detail) return;
-      
-      // Get the parent session to get dbConfig
-      const parentSession = $connectionsStore.get(detail.sessionId);
-      showTableStructure({
-        sessionId: detail.sessionId,
-        databaseName: detail.databaseName,
-        schemaName: detail.schemaName,
-        tableName: detail.tableName,
-        dbConfig: parentSession?.connection
-      });
+      openDatabaseTableDesignerPanel({ ...detail, mode: 'design' });
     };
     window.addEventListener('database:table-structure', handleDatabaseTableStructureEvent);
 
@@ -1109,6 +1174,10 @@
                 数据库列表 · {session.connection.name}
               {:else if session.type === 'database' && session.panelType === 'database-table'}
                 表数据 · {session.databaseName ? `${session.databaseName}.` : ''}{session.tableName}
+              {:else if session.type === 'database' && session.panelType === 'database-query'}
+                SQL 查询 · {session.databaseName || session.connection.name}
+              {:else if session.type === 'database' && session.panelType === 'database-table-designer'}
+                {session.designerMode === 'create' ? '新建表' : `设计表 · ${session.databaseName ? `${session.databaseName}.` : ''}${session.tableName}`}
               {:else if session.type === 'database' && session.panelType === 'native-database'}
                 原生数据库 · {session.connection.name}
               {:else}
@@ -1152,8 +1221,10 @@
       <SelectedDatabaseObjects
         sessionId={session.sessionId}
         dbConfig={session.connection}
-        on:open-table-structure={(event) => showTableStructure({ ...event.detail, dbConfig: session.connection })}
+        on:open-table-structure={(event) => openDatabaseTableDesignerPanel({ ...event.detail, mode: 'design' })}
+        on:open-table-designer={(event) => openDatabaseTableDesignerPanel(event.detail)}
         on:open-table-data={(event) => openDatabaseTablePanel(event.detail)}
+        on:database:new-query={(event) => openDatabaseQueryPanel(event.detail)}
       />
             {:else if session.type === 'database' && session.panelType === 'database-table'}
               <DatabaseTablePanel
@@ -1162,6 +1233,23 @@
                 databaseName={session.databaseName}
                 schemaName={session.schemaName}
                 tableName={session.tableName}
+              />
+            {:else if session.type === 'database' && session.panelType === 'database-query'}
+              <DatabaseTablePanel
+                sessionId={session.dbSessionId}
+                dbConfig={session.connection}
+                databaseName={session.databaseName}
+                schemaName={session.schemaName}
+                initialQuery={session.initialQuery}
+              />
+            {:else if session.type === 'database' && session.panelType === 'database-table-designer'}
+              <TableStructurePanel
+                sessionId={session.dbSessionId}
+                dbConfig={session.connection}
+                databaseName={session.databaseName}
+                schemaName={session.schemaName}
+                tableName={session.tableName}
+                mode={session.designerMode}
               />
             {:else if session.type === 'database' && session.panelType === 'native-database'}
               <NativeDatabasePanel sessionId={session.sessionId} dbConfig={session.connection} />

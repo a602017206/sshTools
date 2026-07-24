@@ -5,13 +5,12 @@
   import FileManager from './components/FileManager.svelte';
   import ServerMonitor from './components/ServerMonitor.svelte';
   import DevToolsPanel from './components/DevToolsPanel.svelte';
-import TableStructurePanel from './components/TableStructurePanel.svelte';
   import AddAssetDialog from './components/AddAssetDialog.svelte';
   import AboutDialog from './components/AboutDialog.svelte';
   import GlobalSettingsDialog from './components/GlobalSettingsDialog.svelte';
   import InputDialog from './components/ui/InputDialog.svelte';
   import ConfirmDialog from './components/ui/ConfirmDialog.svelte';
-  import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme, tableStructureStore } from './stores.js';
+  import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme } from './stores.js';
   import { uploadStore, activeTransfers, completedTransfers } from './stores/uploadStore.js';
   import { formatFileSize, formatSpeed, getTransferPercentage } from './stores/uploadStore.js';
   import { CancelTransfer } from '../wailsjs/go/main/App.js';
@@ -53,11 +52,6 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
 
   $: if (!hasActiveServerSession) {
     isRightPanelCollapsed = true;
-  }
-
-  // Expand right panel when table structure is shown
-  $: if ($tableStructureStore.isOpen) {
-    isRightPanelCollapsed = false;
   }
 
   // 从 store 获取面板尺寸
@@ -817,19 +811,7 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
       class:collapsed={isRightPanelCollapsed}
       style="width: {isRightPanelCollapsed ? '0' : rightPanelWidth}px; min-width: {isRightPanelCollapsed ? '0' : '300px'}; max-width: 600px;"
     >
-      {#if $tableStructureStore.isOpen}
-        <!-- 表结构面板 -->
-        <div class="h-full overflow-hidden">
-          <TableStructurePanel
-            sessionId={$tableStructureStore.sessionId}
-            dbConfig={$tableStructureStore.dbConfig}
-            databaseName={$tableStructureStore.databaseName}
-            schemaName={$tableStructureStore.schemaName}
-            tableName={$tableStructureStore.tableName}
-          />
-        </div>
-      {:else}
-        <!-- 文件管理 -->
+      <!-- 文件管理 -->
         <div class="overflow-hidden" style="height: {fileManagerHeight}%; min-height: 0;">
           <FileManager />
         </div>
@@ -847,7 +829,6 @@ import TableStructurePanel from './components/TableStructurePanel.svelte';
         <div class="overflow-hidden" style="height: {100 - fileManagerHeight}%; min-height: 0;">
           <ServerMonitor />
         </div>
-      {/if}
     </div>
 
     <!-- 右侧工具轨（折叠时显示） -->

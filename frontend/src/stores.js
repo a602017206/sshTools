@@ -166,17 +166,19 @@ export const tableStructureStore = writable({
   databaseName: '',
   schemaName: '',
   tableName: '',
-  dbConfig: null
+  dbConfig: null,
+  mode: 'design'
 });
 
-export function showTableStructure({ sessionId, databaseName, schemaName = '', tableName, dbConfig }) {
+export function showTableStructure({ sessionId, databaseName, schemaName = '', tableName, dbConfig, mode = 'design' }) {
   tableStructureStore.set({
     isOpen: true,
     sessionId,
     databaseName,
     schemaName,
     tableName,
-    dbConfig
+    dbConfig,
+    mode
   });
 }
 

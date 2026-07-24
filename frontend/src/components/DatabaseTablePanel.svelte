@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import {
     buildTableBrowseSQL,
     operationNeedsValue,
@@ -7,12 +7,16 @@
     tableFilterOperations
   } from '../lib/tableQueryBuilder.js';
   import { formatColumnDescription, formatColumnLength, formatColumnType } from '../lib/tableStructureMetadata.js';
+  import { buildGridTemplateColumns, clampColumnWidth, getInitialColumnWidth } from '../lib/tableGridColumns.js';
+  import { buildDeleteSQL, buildInsertSQL, buildUpdateSQL } from '../lib/tableDataMutations.js';
+  import ConfirmDialog from './ui/ConfirmDialog.svelte';
 
   export let sessionId = null;
   export let dbConfig = null;
   export let databaseName = '';
   export let schemaName = '';
   export let tableName = '';
+  export let initialQuery = '';
 
   let query = '';
   let resultData = null;
@@ -28,6 +32,16 @@
   let filterRules = [];
   let sortRules = [];
   let columnMetadata = {};
+  let columnWidths = {};
+  let resizingColumn = '';
+  let resizeStartX = 0;
+  let resizeStartWidth = 0;
+  let pageSize = 100;
+  let currentPage = 1;
+  let editedCells = {};
+  let contextMenu = null;
+  let isMutating = false;
+  let pendingDelete = null;
 
   const historyLimit = 50;
 
@@ -101,7 +115,8 @@
       databaseType,
       filters: filterRules,
       sorters: sortRules,
-      limit: 100
+      limit: pageSize,
+      offset: (currentPage - 1) * pageSize
     });
     sortState = { key: '', direction: 'desc' };
     await executeQuery();
@@ -150,6 +165,31 @@
       : { key: nextKey, direction: 'desc' };
   }
 
+  function getColumnWidth(column) {
+    return columnWidths[column] ?? getInitialColumnWidth(column, columnMetadata[column]);
+  }
+
+  function resizeColumn(event) {
+    if (!resizingColumn) return;
+    const nextWidth = clampColumnWidth(resizeStartWidth + event.clientX - resizeStartX);
+    columnWidths = { ...columnWidths, [resizingColumn]: nextWidth };
+  }
+
+  function stopColumnResize() {
+    window.removeEventListener('pointermove', resizeColumn);
+    window.removeEventListener('pointerup', stopColumnResize);
+    resizingColumn = '';
+  }
+
+  function startColumnResize(event, column) {
+    event.preventDefault();
+    resizingColumn = column;
+    resizeStartX = event.clientX;
+    resizeStartWidth = getColumnWidth(column);
+    window.addEventListener('pointermove', resizeColumn);
+    window.addEventListener('pointerup', stopColumnResize);
+  }
+
   async function executeQuery() {
     if (!query.trim() || !window.wailsBindings || !sessionId) return;
     isLoading = true;
@@ -171,8 +211,9 @@
     }
   }
 
-  async function runDefaultQuery() {
-    query = buildDefaultQuery();
+  async function runDefaultQuery(page = 1) {
+    currentPage = page;
+    query = buildDefaultQuery().replace('LIMIT 100', `LIMIT ${pageSize}${page > 1 ? ` OFFSET ${(page - 1) * pageSize}` : ''}`);
     await executeQuery();
   }
 
@@ -194,15 +235,94 @@
     selectedCell = { row: -1, column: -1 };
   }
 
+  function editedValue(rowIndex, columnIndex, value) {
+    return editedCells[`${rowIndex}:${columnIndex}`] ?? value;
+  }
+
+  function editCell(rowIndex, columnIndex, value) {
+    editedCells = { ...editedCells, [`${rowIndex}:${columnIndex}`]: value };
+  }
+
+  function rowChanges(rowIndex, row) {
+    return Object.fromEntries(resultData.columns.map((column, columnIndex) => [column, editedValue(rowIndex, columnIndex, row[columnIndex])]).filter(([, value], columnIndex) => value !== row[columnIndex]));
+  }
+
+  function primaryKeys() {
+    return Object.values(columnMetadata)
+      .filter(column => column.is_primary_key || column.primary_key || column.isPrimaryKey)
+      .map(column => column.name);
+  }
+
+  async function copyText(value) {
+    await navigator.clipboard?.writeText(String(value ?? ''));
+    contextMenu = null;
+  }
+
+  function openContextMenu(event, rowIndex, row) {
+    event.preventDefault();
+    contextMenu = { x: event.clientX, y: event.clientY, rowIndex, row };
+  }
+
+  function mutationInput(row, changes = {}) {
+    return { databaseType, table: titleName, columns: resultData.columns, row, primaryKeys: primaryKeys(), changes };
+  }
+
+  function requestDelete(row) {
+    const sql = buildDeleteSQL(mutationInput(row));
+    const message = hasPrimaryKey
+      ? '删除当前记录？此操作无法撤销。'
+      : '当前表未识别到主键，将按整行原始值删除；重复行可能会同时受影响。是否继续？';
+    if (!sql) {
+      errorMessage = '无法为当前记录生成删除条件。';
+      return;
+    }
+    pendingDelete = { sql, message };
+    contextMenu = null;
+  }
+
+  async function deleteRow() {
+    const sql = pendingDelete?.sql;
+    if (!sql) return;
+    isMutating = true;
+    try {
+      const result = JSON.parse(await window.wailsBindings.ExecuteDatabaseQuery(sessionId, sql));
+      await runDefaultQuery(currentPage);
+      warningMessage = Number(result?.affected || 0) > 0
+        ? `删除结果：已删除 ${result.affected} 条记录。`
+        : '删除结果：未匹配到记录，数据未发生变化。';
+    } catch (error) {
+      errorMessage = `删除记录失败: ${error.message || '未知错误'}`;
+    } finally {
+      isMutating = false;
+      pendingDelete = null;
+    }
+  }
+
+  async function saveChanges() {
+    const groups = Object.entries(editedCells).reduce((acc, [key, value]) => { const [rowIndex, columnIndex] = key.split(':').map(Number); (acc[rowIndex] ||= {})[resultData.columns[columnIndex]] = value; return acc; }, {});
+    const statements = Object.entries(groups).map(([rowIndex, changes]) => buildUpdateSQL(mutationInput(filteredRows[Number(rowIndex)], changes))).filter(Boolean);
+    if (!statements.length) return;
+    isMutating = true;
+    try { for (const statement of statements) await window.wailsBindings.ExecuteDatabaseQuery(sessionId, statement); editedCells = {}; await runDefaultQuery(currentPage); } catch (error) { errorMessage = `保存修改失败: ${error.message || '未知错误'}`; } finally { isMutating = false; }
+  }
+
+  function discardChanges() { editedCells = {}; }
+
   function useHistory(statement) {
     query = statement;
     activeMode = 'sql';
   }
 
-  onMount(() => {
+  onMount(async () => {
     loadColumnMetadata();
-    runDefaultQuery();
+    if (tableName) await runDefaultQuery();
+    else {
+      query = initialQuery;
+      activeMode = 'sql';
+    }
   });
+
+  onDestroy(stopColumnResize);
 
   $: titleName = buildQualifiedTableName();
   $: databaseType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase();
@@ -223,14 +343,17 @@
     });
   $: filteredRows = !filterText.trim() ? sortedRows : sortedRows.filter(row => row.some(cell => String(cell ?? '').toLowerCase().includes(filterText.trim().toLowerCase())));
   $: selectedValue = selectedCell.row >= 0 ? filteredRows[selectedCell.row]?.[selectedCell.column] : null;
+  $: gridTemplateColumns = buildGridTemplateColumns(resultData?.columns || [], columnWidths, columnMetadata);
+  $: hasPrimaryKey = primaryKeys().length > 0;
+  $: hasEdits = Object.keys(editedCells).length > 0;
 </script>
 
 <div class="table-workspace">
-  <header class="table-workspace__header">
+  <header class="table-workspace__header table-workspace__context">
     <div class="table-workspace__identity">
       <span class="table-workspace__table-icon" aria-hidden="true">▦</span>
       <div>
-        <strong>{tableName || '表数据'}</strong>
+        <strong>{tableName || 'SQL 查询'}</strong>
         <span>{databaseName || '当前数据库'}{schemaName ? ` / ${schemaName}` : ''}</span>
       </div>
     </div>
@@ -238,14 +361,16 @@
       <button type="button" class:table-workspace__mode--active={activeMode === 'data'} class="table-workspace__mode" on:click={() => activeMode = 'data'}>数据</button>
       <button type="button" class:table-workspace__mode--active={activeMode === 'sql'} class="table-workspace__mode" on:click={() => activeMode = 'sql'}>SQL</button>
     </nav>
-    <div class="table-workspace__header-meta">{dbTypeLabel || 'JDBC'} · LIMIT 100</div>
+    <div class="table-workspace__header-meta">{dbTypeLabel || 'JDBC'}{tableName ? ' · LIMIT 100' : ''}</div>
   </header>
 
-  <div class="table-workspace__toolbar">
+  <div class="table-workspace__toolbar table-workspace__query-strip">
     <button type="button" class="table-workspace__tool table-workspace__tool--primary" title="执行 SQL" on:click={executeQuery} disabled={isLoading}>▶</button>
-    <button type="button" class="table-workspace__tool" title="重新加载前 100 条" on:click={runDefaultQuery} disabled={isLoading}>↻</button>
-    <button type="button" class:table-workspace__tool--active={queryBuilderOpen} class="table-workspace__tool" title="筛选与排序" on:click={() => queryBuilderOpen = !queryBuilderOpen}>⏷</button>
+    <button type="button" class="table-workspace__tool" title="重新加载当前页" on:click={() => runDefaultQuery(currentPage)} disabled={isLoading || !tableName}>↻</button>
+    <button type="button" class:table-workspace__tool--active={queryBuilderOpen} class="table-workspace__tool" title="筛选与排序" on:click={() => queryBuilderOpen = !queryBuilderOpen} disabled={!tableName}>⏷</button>
     <button type="button" class="table-workspace__tool" title="清空结果" on:click={clearResult}>⌫</button>
+    <button type="button" class="table-workspace__tool" title={hasEdits ? '保存修改' : '修改单元格后可保存'} disabled={!hasEdits || isMutating} on:click={saveChanges}>✓</button>
+    <button type="button" class="table-workspace__tool" title={hasEdits ? '放弃修改' : '当前没有待放弃的修改'} disabled={!hasEdits || isMutating} on:click={discardChanges}>↶</button>
     <span class="table-workspace__divider"></span>
     <button type="button" class="table-workspace__tool" title="打开 SQL 编辑器" on:click={() => activeMode = 'sql'}>{'</>'}</button>
     <span class="table-workspace__toolbar-title">{isLoading ? '正在执行...' : titleName || '未选择表'}</span>
@@ -351,27 +476,31 @@
     <main class="table-workspace__grid-wrap">
       <div class="table-workspace__grid" role="table" aria-label="表数据结果">
         {#if resultData?.columns?.length}
-          <div class="table-workspace__grid-head" role="row">
+          <div class="table-workspace__grid-head" role="row" style={`grid-template-columns: ${gridTemplateColumns};`}>
             <span class="table-workspace__row-number" role="columnheader">#</span>
             {#each resultData.columns as column}
               {@const metadata = columnMetadata[column]}
-              <button type="button" class:table-workspace__column--sorted={sortState.key === column} class="table-workspace__column" role="columnheader" on:click={() => handleSort(column)}>
-                <span class="table-workspace__column-name">{column}<span aria-hidden="true">{sortState.key === column ? (sortState.direction === 'asc' ? ' ↑' : ' ↓') : ''}</span></span>
-                {#if metadata}
-                  <span class="table-workspace__column-metadata" title={`${formatColumnType(metadata)} · 长度 ${formatColumnLength(metadata)} · ${formatColumnDescription(metadata)}`}>
-                    <span>{formatColumnType(metadata)}</span>
-                    <span>长度 {formatColumnLength(metadata)}</span>
+              <div class:table-workspace__column--sorted={sortState.key === column} class="table-workspace__column" role="columnheader">
+                <button type="button" class="table-workspace__column-sort" on:click={() => handleSort(column)}>
+                  <span class="table-workspace__column-name">{column}<span aria-hidden="true">{sortState.key === column ? (sortState.direction === 'asc' ? ' ↑' : ' ↓') : ''}</span></span>
+                  {#if metadata}
+                    <span class="table-workspace__column-metadata" title={`${formatColumnType(metadata)} · 长度 ${formatColumnLength(metadata)} · ${formatColumnDescription(metadata)}`}>
+                      <span>{formatColumnType(metadata)}</span>
+                      <span>长度 {formatColumnLength(metadata)}</span>
                     <span>{formatColumnDescription(metadata)}</span>
                   </span>
                 {/if}
-              </button>
+                  <span class="table-workspace__column-accent" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="table-workspace__column-resizer" aria-label={`调整 ${column} 列宽`} title={`调整 ${column} 列宽`} on:pointerdown={(event) => startColumnResize(event, column)}></button>
+              </div>
             {/each}
           </div>
           {#each filteredRows as row, rowIndex}
-            <div class="table-workspace__grid-row" class:table-workspace__grid-row--selected={selectedCell.row === rowIndex} role="row">
+            <div class="table-workspace__grid-row" class:table-workspace__grid-row--selected={selectedCell.row === rowIndex} role="row" style={`grid-template-columns: ${gridTemplateColumns};`}>
               <span class="table-workspace__row-number" role="cell">{rowIndex + 1}</span>
               {#each row as cell, columnIndex}
-                <button type="button" class:table-workspace__cell--active={selectedCell.row === rowIndex && selectedCell.column === columnIndex} class="table-workspace__cell" role="cell" title={String(cell ?? '')} on:click={() => selectedCell = { row: rowIndex, column: columnIndex }}>{cell ?? 'NULL'}</button>
+                <input class:table-workspace__cell--active={selectedCell.row === rowIndex && selectedCell.column === columnIndex} class:table-workspace__cell--edited={editedValue(rowIndex, columnIndex, cell) !== cell} class="table-workspace__cell" role="cell" value={editedValue(rowIndex, columnIndex, cell) ?? ''} title={String(cell ?? '')} on:focus={() => selectedCell = { row: rowIndex, column: columnIndex }} on:input={(event) => editCell(rowIndex, columnIndex, event.currentTarget.value)} on:contextmenu={(event) => openContextMenu(event, rowIndex, row)} />
               {/each}
             </div>
           {/each}
@@ -381,7 +510,7 @@
       </div>
     </main>
 
-    <aside class="table-workspace__details">
+    <aside class="table-workspace__details table-workspace__inspector">
       <section>
         <h2>对象信息</h2>
         <dl>
@@ -404,8 +533,23 @@
 
   <footer class="table-workspace__status">
     <span>{filteredRows.length} / {resultData?.rows?.length || 0} 行</span>
+    <div class="table-workspace__pagination"><button type="button" title="上一页" disabled={currentPage <= 1 || isLoading} on:click={() => runDefaultQuery(currentPage - 1)}>‹</button><span>{currentPage}</span><button type="button" title="下一页" disabled={filteredRows.length < pageSize || isLoading} on:click={() => runDefaultQuery(currentPage + 1)}>›</button><select aria-label="每页显示条数" bind:value={pageSize} on:change={() => runDefaultQuery(1)}><option value={25}>25 / 页</option><option value={50}>50 / 页</option><option value={100}>100 / 页</option><option value={200}>200 / 页</option></select></div>
     <span>{selectedValue === null || selectedValue === undefined ? '未选择单元格' : `当前值：${String(selectedValue)}`}</span>
   </footer>
+
+  {#if contextMenu}
+    <div class="table-workspace__context-menu" style={`left:${contextMenu.x}px; top:${contextMenu.y}px;`} role="menu"><button type="button" on:click={() => copyText(contextMenu.row.join('\t'))}>复制行</button><button type="button" on:click={() => copyText(buildInsertSQL(mutationInput(contextMenu.row)))}>复制为 INSERT</button><button type="button" disabled={isMutating} on:click={() => requestDelete(contextMenu.row)}>删除记录</button></div>
+  {/if}
+
+  <ConfirmDialog
+    isOpen={Boolean(pendingDelete)}
+    title="删除记录"
+    message={pendingDelete?.message || ''}
+    confirmText="删除"
+    type="danger"
+    onConfirm={deleteRow}
+    onCancel={() => pendingDelete = null}
+  />
 </div>
 
 <style>
@@ -426,7 +570,7 @@
   .table-workspace__tool:hover:not(:disabled) { color: #1586d1; border-color: var(--border-primary); background: var(--bg-primary); }
   .table-workspace__tool--primary { color: #fff; background: #1687d4; border-color: #1687d4; }
   .table-workspace__tool--active { color: #1586d1; border-color: #1586d1; background: color-mix(in srgb, #1586d1 8%, transparent); }
-  .table-workspace__tool:disabled { opacity: .5; cursor: wait; }
+  .table-workspace__tool:disabled { opacity: .5; cursor: not-allowed; }
   .table-workspace__divider { width: 1px; height: 20px; margin: 0 5px; background: var(--border-primary); }
   .table-workspace__toolbar-title { margin-left: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12px; }
   .table-workspace__filter { margin-left: auto; width: min(260px, 35%); height: 28px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-secondary); }
@@ -467,19 +611,22 @@
   .table-workspace__grid-wrap::-webkit-scrollbar-track { background: var(--bg-secondary); }
   .table-workspace__grid-wrap::-webkit-scrollbar-thumb { background: #a7b4c7; border: 3px solid var(--bg-secondary); border-radius: 8px; }
   .table-workspace__grid { min-width: max-content; }
-  .table-workspace__grid-head, .table-workspace__grid-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); grid-template-columns: 48px; min-height: 32px; }
+  .table-workspace__grid-head, .table-workspace__grid-row { display: grid; min-height: 32px; }
   .table-workspace__grid-head { position: sticky; top: 0; z-index: 2; background: var(--bg-secondary); border-bottom: 1px solid var(--border-primary); }
   .table-workspace__grid-row { border-bottom: 1px solid var(--border-primary); }
   .table-workspace__grid-row:hover { background: color-mix(in srgb, #1586d1 5%, transparent); }
   .table-workspace__grid-row--selected { background: color-mix(in srgb, #1586d1 8%, transparent); }
   .table-workspace__row-number { position: sticky; left: 0; z-index: 1; padding: 8px 9px; text-align: right; color: var(--text-secondary); background: var(--bg-secondary); border-right: 1px solid var(--border-primary); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
   .table-workspace__grid-head .table-workspace__row-number { z-index: 3; }
-  .table-workspace__column { min-width: 150px; min-height: 54px; padding: 6px 10px; display: grid; align-content: center; gap: 3px; border: 0; border-right: 1px solid var(--border-primary); background: transparent; color: var(--text-secondary); text-align: left; cursor: pointer; font-size: 12px; font-weight: 650; }
+  .table-workspace__column { position: relative; min-width: 0; min-height: 54px; border-right: 1px solid var(--border-primary); }
+  .table-workspace__column-sort { width: 100%; min-height: 54px; padding: 6px 10px; display: grid; align-content: center; gap: 3px; overflow: hidden; border: 0; background: transparent; color: var(--text-secondary); text-align: left; cursor: pointer; font-size: 12px; font-weight: 650; }
   .table-workspace__column-name { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
   .table-workspace__column-metadata { display: flex; gap: 6px; overflow: hidden; color: var(--text-secondary); font-size: 10px; font-weight: 500; line-height: 1.25; white-space: nowrap; }
   .table-workspace__column-metadata span { overflow: hidden; text-overflow: ellipsis; }
-  .table-workspace__column:hover, .table-workspace__column--sorted { color: #1586d1; background: color-mix(in srgb, #1586d1 6%, transparent); }
-  .table-workspace__cell { min-width: 150px; overflow: hidden; padding: 8px 10px; border: 0; border-right: 1px solid var(--border-primary); background: transparent; color: var(--text-primary); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: cell; font-size: 12px; }
+  .table-workspace__column:hover .table-workspace__column-sort, .table-workspace__column--sorted .table-workspace__column-sort { color: #1586d1; background: color-mix(in srgb, #1586d1 6%, transparent); }
+  .table-workspace__column-resizer { position: absolute; top: 0; right: -5px; z-index: 4; width: 9px; height: 100%; padding: 0; border: 0; background: transparent; cursor: col-resize; }
+  .table-workspace__column-resizer:hover, .table-workspace__column-resizer:focus-visible { background: color-mix(in srgb, #1586d1 42%, transparent); outline: 0; }
+  .table-workspace__cell { min-width: 0; overflow: hidden; padding: 8px 10px; border: 0; border-right: 1px solid var(--border-primary); background: transparent; color: var(--text-primary); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: cell; font-size: 12px; }
   .table-workspace__cell--active { outline: 2px solid #1586d1; outline-offset: -2px; background: color-mix(in srgb, #1586d1 12%, transparent); }
   .table-workspace__empty { min-height: 180px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); font-size: 13px; }
   .table-workspace__details { padding: 15px; border-left: 1px solid var(--border-primary); background: var(--bg-secondary); overflow-y: auto; }
@@ -495,4 +642,50 @@
   .table-workspace__status { min-height: 28px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--border-primary); color: var(--text-secondary); background: var(--bg-secondary); font-size: 11px; }
   @media (max-width: 900px) { .table-workspace__content { grid-template-columns: 1fr; } .table-workspace__details { display: none; } .table-workspace__header { padding: 0 12px; gap: 8px; } .table-workspace__identity { min-width: 0; } .table-workspace__header-meta { display: none; } .table-workspace__filter-rule { grid-template-columns: 64px minmax(100px, 1fr) 110px minmax(130px, 2fr) 28px; } }
   @media (max-width: 640px) { .table-workspace__toolbar-title { display: none; } .table-workspace__filter { width: 190px; } .table-workspace__filter-rule { grid-template-columns: 1fr 1fr 28px; } .table-workspace__filter-rule > :first-child { grid-column: 1; } .table-workspace__filter-rule > :nth-child(2) { grid-column: 2; } .table-workspace__filter-rule > :nth-child(3) { grid-column: 1; } .table-workspace__filter-rule > :nth-child(4) { grid-column: 2; } .table-workspace__filter-rule > :last-child { grid-column: 3; grid-row: 1 / span 2; } .table-workspace__sort-rule { grid-template-columns: 1fr 1fr 28px; } }
+
+  /* 查询台账：让上下文、操作与数据承担明确的层级。 */
+  .table-workspace { background: #f7f8f5; color: #1d2935; font-family: "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, sans-serif; }
+  .table-workspace__context { min-height: 58px; padding: 0 20px; gap: 18px; background: #fff; border-bottom-color: #d9e0e4; }
+  .table-workspace__identity { min-width: 260px; }
+  .table-workspace__table-icon { color: #0e6674; font-size: 20px; }
+  .table-workspace__identity strong { font-size: 14px; letter-spacing: 0; }
+  .table-workspace__identity span, .table-workspace__header-meta { color: #6d7783; font-size: 11px; }
+  .table-workspace__modes { gap: 2px; }
+  .table-workspace__mode { min-width: 54px; font-size: 12px; }
+  .table-workspace__mode--active { color: #0e6674; border-bottom-color: #0e6674; }
+  .table-workspace__query-strip { min-height: 48px; padding: 0 16px; gap: 6px; background: #fff; border-bottom-color: #d9e0e4; }
+  .table-workspace__tool { width: 30px; height: 30px; border-radius: 4px; color: #52606d; }
+  .table-workspace__tool:hover:not(:disabled) { color: #0e6674; border-color: #bdd1d4; background: #eff6f5; }
+  .table-workspace__tool--primary { background: #0e6674; border-color: #0e6674; }
+  .table-workspace__tool--active { color: #0e6674; border-color: #9fc5c8; background: #eff6f5; }
+  .table-workspace__filter { height: 30px; border-radius: 4px; border-color: #d9e0e4; background: #f7f8f5; }
+  .table-workspace__content { grid-template-columns: minmax(0, 1fr) 250px; background: #fff; }
+  .table-workspace__grid-head { background: #f4f6f5; border-bottom-color: #cfd8dc; }
+  .table-workspace__row-number { background: #f7f8f5; border-right-color: #d9e0e4; color: #84909b; }
+  .table-workspace__column { min-height: 64px; border-right-color: #d9e0e4; }
+  .table-workspace__column-sort { min-height: 64px; padding: 8px 12px 7px; gap: 4px; }
+  .table-workspace__column-name { font-size: 12px; }
+  .table-workspace__column-metadata { color: #6d7783; font-size: 10px; }
+  .table-workspace__column-accent { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; background: #2f8994; }
+  .table-workspace__column:nth-child(3n) .table-workspace__column-accent { background: #b58024; }
+  .table-workspace__column:nth-child(4n) .table-workspace__column-accent { background: #8168a8; }
+  .table-workspace__grid-row { border-bottom-color: #e1e6e8; }
+  .table-workspace__grid-row:hover { background: #f1f7f6; }
+  .table-workspace__cell { padding: 9px 12px; border-right-color: #e1e6e8; font: 12px "SFMono-Regular", Menlo, Consolas, monospace; }
+  .table-workspace__cell--active { outline-color: #0e6674; background: #e9f4f3; }
+  .table-workspace__cell { width: 100%; outline: 0; }
+  .table-workspace__cell--edited { background: #fff8e8; color: #8b5e12; }
+  .table-workspace__pagination { display: flex; align-items: center; gap: 5px; }
+  .table-workspace__pagination button, .table-workspace__pagination select { min-width: 26px; height: 24px; border: 1px solid #d9e0e4; border-radius: 3px; background: #fff; color: #31414d; font: inherit; }
+  .table-workspace__pagination select { padding: 0 5px; }
+  .table-workspace__context-menu { position: fixed; z-index: 20; min-width: 146px; padding: 4px; border: 1px solid #cfd8dc; border-radius: 4px; background: #fff; box-shadow: 0 8px 20px rgb(29 41 53 / .16); }
+  .table-workspace__context-menu button { display: block; width: 100%; padding: 7px 9px; border: 0; background: transparent; color: #31414d; text-align: left; cursor: pointer; font-size: 12px; }
+  .table-workspace__context-menu button:hover:not(:disabled) { background: #eff6f5; color: #0e6674; }
+  .table-workspace__inspector { padding: 18px 16px; border-left-color: #d9e0e4; background: #f7f8f5; }
+  .table-workspace__details h2 { margin-bottom: 10px; color: #31414d; font-size: 11px; letter-spacing: .04em; }
+  .table-workspace__details section + section { margin-top: 28px; }
+  .table-workspace__details dl { gap: 10px; }
+  .table-workspace__details dt { color: #7b8791; }
+  .table-workspace__details dd { color: #31414d; }
+  .table-workspace__status { min-height: 30px; padding: 7px 14px; background: #fff; border-top-color: #d9e0e4; color: #6d7783; font: 11px "SFMono-Regular", Menlo, Consolas, monospace; }
 </style>

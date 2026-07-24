@@ -128,7 +128,7 @@ public class MetadataServiceImpl extends QueryServiceImpl {
                             .setName(name)
                             .setType(columns.getString("TYPE_NAME"))
                             .setNullable(columns.getInt("NULLABLE") == DatabaseMetaData.columnNullable)
-                            .setPrimaryKey(primaryKeys.contains(name))
+                            .setPrimaryKey(primaryKeys.stream().anyMatch(key -> sameIdentifier(key, name)))
                             .setColumnSize(columns.getInt("COLUMN_SIZE"))
                             .setDecimalDigits(columns.getInt("DECIMAL_DIGITS"))
                             .setHasDefault(columns.getObject("COLUMN_DEF") != null)
@@ -182,6 +182,10 @@ public class MetadataServiceImpl extends QueryServiceImpl {
             }
         }
         return keys;
+    }
+
+    static boolean sameIdentifier(String left, String right) {
+        return left != null && right != null && left.equalsIgnoreCase(right);
     }
 
     private static String emptyToNull(String value) {
