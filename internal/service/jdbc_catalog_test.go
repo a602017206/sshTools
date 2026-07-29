@@ -101,8 +101,9 @@ func TestDriverCatalogProvidesVerifiedOnlineProfiles(t *testing.T) {
 		driverID string
 		version  string
 		class    string
+		jars     []string
 	}{
-		{driverID: "oracle", version: "23.26.2.0.0", class: "oracle.jdbc.OracleDriver"},
+		{driverID: "oracle", version: "23.26.2.0.0", class: "oracle.jdbc.OracleDriver", jars: []string{"ojdbc11-23.26.2.0.0.jar", "orai18n-23.26.2.0.0.jar"}},
 		{driverID: "dm", version: "8.1.5.45", class: "dm.jdbc.driver.DmDriver"},
 		{driverID: "kingbase", version: "8.6.1", class: "com.kingbase8.Driver"},
 		{driverID: "kingbase", version: "9.0.1", class: "com.kingbase8.Driver"},
@@ -114,6 +115,9 @@ func TestDriverCatalogProvidesVerifiedOnlineProfiles(t *testing.T) {
 		if profile.DriverClass != wanted.class {
 			t.Fatalf("profile %s driver class = %q, want %q", profile.ID, profile.DriverClass, wanted.class)
 		}
+		if len(wanted.jars) > 0 && len(profile.Jars) != len(wanted.jars) {
+			t.Fatalf("profile %s jar count = %d, want %d", profile.ID, len(profile.Jars), len(wanted.jars))
+		}
 		for _, jar := range profile.Jars {
 			if !strings.HasPrefix(jar.URL, "https://repo.maven.apache.org/") {
 				t.Fatalf("profile %s jar URL = %q", profile.ID, jar.URL)
@@ -122,6 +126,37 @@ func TestDriverCatalogProvidesVerifiedOnlineProfiles(t *testing.T) {
 				t.Fatalf("profile %s jar SHA-256 = %q", profile.ID, jar.SHA256)
 			}
 		}
+		for index, name := range wanted.jars {
+			if profile.Jars[index].Name != name {
+				t.Fatalf("profile %s jar %d = %q, want %q", profile.ID, index, profile.Jars[index].Name, name)
+			}
+		}
+	}
+}
+
+func TestDriverCatalogMarksIncompleteOracleProfileAsUninstalled(t *testing.T) {
+	root := t.TempDir()
+	driversPath := filepath.Join(root, "drivers")
+	catalog := NewDriverCatalogService(filepath.Join(root, "manifest.json"), driversPath)
+	if _, err := catalog.ListDriversWithInstallStatus(); err != nil {
+		t.Fatalf("bootstrap manifest failed: %v", err)
+	}
+	incompletePath := filepath.Join(driversPath, "oracle", "23.26.2.0.0", "jars")
+	if err := os.MkdirAll(incompletePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(incompletePath, "ojdbc11-23.26.2.0.0.jar"), []byte("driver"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	drivers, err := catalog.ListDriversWithInstallStatus()
+	if err != nil {
+		t.Fatalf("list drivers failed: %v", err)
+	}
+	for _, driver := range drivers {
+		if driver.ID == "oracle" && driver.Installed {
+			t.Fatal("Oracle profile missing orai18n.jar must not be reported as installed")
+		}
 	}
 }
 
@@ -129,7 +164,7 @@ func TestDriverCatalogMigratesOutdatedBuiltinProfiles(t *testing.T) {
 	root := t.TempDir()
 	manifestPath := filepath.Join(root, "manifest.json")
 	historicalManifest := `{
-	  "version": 2,
+	  "version": 3,
 	  "drivers": [
 	    {"id":"oracle","name":"Oracle","recommendedVersion":"23","profiles":[{"id":"oracle-23","version":"23","driverClass":"oracle.jdbc.OracleDriver","urlTemplate":"jdbc:oracle:thin:@//{host}:{port}/{database}","defaultPort":1521,"jre":">=17","jars":[{"name":"ojdbc11.jar","sha256":""}]}]},
 	    {"id":"dm","name":"达梦数据库","recommendedVersion":"8","profiles":[{"id":"dm-8","version":"8","driverClass":"dm.jdbc.driver.DmDriver","urlTemplate":"jdbc:dm://{host}:{port}/{database}","defaultPort":5236,"jre":">=17","jars":[{"name":"DmJdbcDriver18.jar","sha256":""}]}]},
@@ -213,7 +248,11 @@ func TestDriverManagerListsDriversWithInstallStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	installedRoot := filepath.Join(root, "drivers")
-	if err := os.MkdirAll(filepath.Join(installedRoot, "h2", "2.2.224", "jars"), 0o700); err != nil {
+	h2JarsPath := filepath.Join(installedRoot, "h2", "2.2.224", "jars")
+	if err := os.MkdirAll(h2JarsPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h2JarsPath, "h2.jar"), []byte("driver"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

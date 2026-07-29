@@ -180,7 +180,7 @@ func (s *DriverCatalogService) ListDriversWithInstallStatus() ([]DriverView, err
 		copy(profiles, driver.Profiles)
 		installed := false
 		for i := range profiles {
-			if s.profileInstalled(driver.ID, profiles[i].Version) {
+			if s.profileInstalled(driver.ID, profiles[i]) {
 				profiles[i].Installed = true
 				profiles[i].InstallPath = filepath.Join(s.installedPath, driver.ID, profiles[i].Version)
 				installed = true
@@ -197,10 +197,23 @@ func (s *DriverCatalogService) ListDriversWithInstallStatus() ([]DriverView, err
 	return drivers, nil
 }
 
-func (s *DriverCatalogService) profileInstalled(driverID, version string) bool {
-	if s.installedPath == "" || driverID == "" || version == "" {
+func (s *DriverCatalogService) profileInstalled(driverID string, profile config.JDBCDriverProfile) bool {
+	if s.installedPath == "" || driverID == "" || profile.Version == "" {
 		return false
 	}
-	info, err := os.Stat(filepath.Join(s.installedPath, driverID, version))
-	return err == nil && info.IsDir()
+	installPath := filepath.Join(s.installedPath, driverID, profile.Version)
+	info, err := os.Stat(installPath)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	for _, jar := range profile.Jars {
+		if jar.Name == "" {
+			return false
+		}
+		file, err := os.Stat(filepath.Join(installPath, "jars", jar.Name))
+		if err != nil || file.IsDir() {
+			return false
+		}
+	}
+	return true
 }
