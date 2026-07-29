@@ -45,6 +45,40 @@ func TestJdbcGatewayConnectDatabaseOpensAgentSession(t *testing.T) {
 	}
 }
 
+func TestJdbcGatewayUsesOracleSIDTemplateAndHidesInternalConnectionMode(t *testing.T) {
+	client := &fakeJdbcAgentClient{}
+	gateway := NewJdbcGatewayService(client, "secret")
+	profile := config.JDBCDriverProfile{
+		ID:          "oracle-23",
+		DriverClass: "oracle.jdbc.OracleDriver",
+		URLTemplate: "jdbc:oracle:thin:@//{host}:{port}/{database}",
+		InstallPath: "/tmp/oracle",
+		Jars:        []config.JDBCJar{{Name: "ojdbc11.jar"}},
+	}
+	gateway.SetProfileResolver(func(context.Context, config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return profile, nil
+	})
+
+	err := gateway.ConnectDatabase(context.Background(), "oracle-sid", config.DatabaseConfig{
+		DBType:   "oracle",
+		Host:     "db.example",
+		Port:     1521,
+		Database: "ORCL",
+		Properties: map[string]string{
+			"oracleConnectionMode": "sid",
+		},
+	})
+	if err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+	if got, want := client.openRequest.GetProfile().GetUrlTemplate(), "jdbc:oracle:thin:@{host}:{port}:{database}"; got != want {
+		t.Fatalf("Oracle SID URL template = %q, want %q", got, want)
+	}
+	if _, exists := client.openRequest.GetProperties()["oracleConnectionMode"]; exists {
+		t.Fatal("internal Oracle connection mode must not be passed to the JDBC driver")
+	}
+}
+
 func TestJdbcGatewayExecuteQueryConvertsRows(t *testing.T) {
 	client := &fakeJdbcAgentClient{
 		queryResult: &jdbcproto.QueryResult{

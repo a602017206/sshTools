@@ -1,6 +1,7 @@
 <script>
   import Dialog from './ui/Dialog.svelte';
   import { assetsStore } from '../stores.js';
+  import { buildJDBCConnectionOptions } from '../lib/jdbcConnectionOptions.js';
   import { databaseTypeRequiresUsername, isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
 
   export let isOpen = false;
@@ -64,6 +65,8 @@
     dbType: 'mysql',
     driverProfileID: '',
     database: '',
+    oracleConnectionMode: 'service',
+    sqlServerInstanceName: '',
   };
 
   // Extract all unique groups from existing assets
@@ -94,6 +97,17 @@
     jdbcProfiles[0] ||
     null;
   $: selectedJDBCProfileMissing = assetType === 'database' && !isNativeDatabase && selectedJDBCProfile && !selectedJDBCProfile.installed;
+  $: isOracleDatabase = assetType === 'database' && formData.dbType === 'oracle';
+  $: isSQLServerDatabase = assetType === 'database' && formData.dbType === 'sqlserver';
+
+  function jdbcConnectionOptions() {
+    return buildJDBCConnectionOptions(
+      formData.dbType,
+      formData.database,
+      formData.oracleConnectionMode,
+      formData.sqlServerInstanceName
+    );
+  }
 
   async function handleTestConnection() {
     if (!window.wailsBindings) {
@@ -141,13 +155,16 @@
           formData.database
         );
       } else if (assetType === 'database') {
-        await window.wailsBindings.TestDatabaseConnection(
+        const options = jdbcConnectionOptions();
+        const testDatabaseConnection = window.wailsBindings.TestDatabaseConnectionWithOptions || window.wailsBindings.TestDatabaseConnection;
+        await testDatabaseConnection(
           isSQLiteDatabase ? '' : formData.host,
           parseInt(formData.port),
           isSQLiteDatabase ? '' : formData.username,
           isSQLiteDatabase ? '' : formData.password,
           formData.dbType,
-          formData.database
+          options.database,
+          options.properties
         );
       } else {
         const authValue = authType === 'key' ? formData.keyPath : formData.password;
@@ -240,7 +257,9 @@
         metadata: {
           database: formData.database || undefined,
           db_type: formData.dbType,
-          driver_profile_id: formData.driverProfileID || undefined
+          driver_profile_id: formData.driverProfileID || undefined,
+          oracle_connection_mode: formData.dbType === 'oracle' ? formData.oracleConnectionMode : undefined,
+          sqlserver_instance_name: formData.dbType === 'sqlserver' ? formData.sqlServerInstanceName || undefined : undefined
         }
       };
 
@@ -294,6 +313,8 @@
       dbType: 'mysql',
       driverProfileID: '',
       database: '',
+      oracleConnectionMode: 'service',
+      sqlServerInstanceName: '',
     };
     testResult = '';
     showPassword = false;
@@ -398,6 +419,8 @@
           dbType: conn.metadata?.db_type || 'mysql',
 		  driverProfileID: conn.metadata?.driver_profile_id || '',
           database: conn.metadata?.database || '',
+          oracleConnectionMode: conn.metadata?.oracle_connection_mode === 'sid' ? 'sid' : 'service',
+          sqlServerInstanceName: conn.metadata?.sqlserver_instance_name || '',
         };
         assetType = conn.type || 'ssh';
         authType = conn.auth_type || 'password';
@@ -830,17 +853,34 @@
       {#if assetType === 'database'}
        <div>
          <label class={labelClass} for="database-name">
-           {isSQLiteDatabase ? '数据库文件或 JDBC URL' : '数据库名'}
+           {isSQLiteDatabase ? '数据库文件或 JDBC URL' : isOracleDatabase ? '服务名 / SID' : '数据库名'}
          </label>
          <input
            type="text"
            id="database-name"
            bind:value={formData.database}
-           placeholder={isSQLiteDatabase ? '例如：/data/app.db 或 jdbc:sqlite:/data/app.db' : '例如：production_db'}
+           placeholder={isSQLiteDatabase ? '例如：/data/app.db 或 jdbc:sqlite:/data/app.db' : isOracleDatabase ? '例如：ORCL 或 pdb1' : '例如：production_db'}
            class={inputClass}
          />
        </div>
-      {/if}
+
+       {#if isOracleDatabase}
+         <div>
+           <span class={labelClass}>Oracle 连接方式</span>
+           <div class="grid grid-cols-2 overflow-hidden border rounded-md ops-input">
+             <button type="button" class:ops-choice-active={formData.oracleConnectionMode === 'service'} class="px-3 py-1.5 text-xs border-r transition-colors" on:click={() => formData.oracleConnectionMode = 'service'}>服务名</button>
+             <button type="button" class:ops-choice-active={formData.oracleConnectionMode === 'sid'} class="px-3 py-1.5 text-xs transition-colors" on:click={() => formData.oracleConnectionMode = 'sid'}>SID</button>
+           </div>
+           <p class="mt-0.5 text-[10px] ops-help">服务名使用 <code>host:port/service</code>；SID 使用 <code>host:port:SID</code>。</p>
+         </div>
+       {:else if isSQLServerDatabase}
+         <div>
+           <label class={labelClass} for="sqlserver-instance-name">实例名（可选）</label>
+           <input type="text" id="sqlserver-instance-name" bind:value={formData.sqlServerInstanceName} placeholder="例如：SQLEXPRESS" class={inputClass} />
+           <p class="mt-0.5 text-[10px] ops-help">命名实例通过 SQL Server JDBC 的 <code>instanceName</code> 参数连接。</p>
+         </div>
+       {/if}
+     {/if}
 
       <div>
          <label class={labelClass} for="connection-group">

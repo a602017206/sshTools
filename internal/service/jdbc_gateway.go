@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/service/jdbcproto"
@@ -47,6 +48,7 @@ func (s *JdbcGatewayService) ConnectDatabase(ctx context.Context, sessionID stri
 	if err != nil {
 		return mapJdbcGatewayError(err)
 	}
+	profile, properties := jdbcConnectionProfile(profile, cfg)
 	request := &jdbcproto.OpenSessionRequest{
 		Token:     s.token,
 		SessionId: sessionID,
@@ -61,12 +63,25 @@ func (s *JdbcGatewayService) ConnectDatabase(ctx context.Context, sessionID stri
 		Database:   cfg.Database,
 		User:       cfg.User,
 		Password:   cfg.Password,
-		Properties: cfg.Properties,
+		Properties: properties,
 	}
 	if _, err := s.client.OpenSession(ctx, request); err != nil {
 		return mapJdbcGatewayError(err)
 	}
 	return nil
+}
+
+func jdbcConnectionProfile(profile config.JDBCDriverProfile, cfg config.DatabaseConfig) (config.JDBCDriverProfile, map[string]string) {
+	properties := make(map[string]string, len(cfg.Properties))
+	for key, value := range cfg.Properties {
+		if key != "oracleConnectionMode" {
+			properties[key] = value
+		}
+	}
+	if strings.EqualFold(cfg.DBType, "oracle") && strings.EqualFold(cfg.Properties["oracleConnectionMode"], "sid") {
+		profile.URLTemplate = "jdbc:oracle:thin:@{host}:{port}:{database}"
+	}
+	return profile, properties
 }
 
 func (s *JdbcGatewayService) ExecuteQuery(ctx context.Context, sessionID string, query string) (*QueryResult, error) {

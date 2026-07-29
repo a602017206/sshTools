@@ -126,6 +126,10 @@ func (ds *DatabaseService) ConnectDatabase(sessionID, host string, port int, use
 }
 
 func (ds *DatabaseService) ConnectDatabaseWithProfile(sessionID, host string, port int, user, password, dbType, database, driverProfileID string) error {
+	return ds.ConnectDatabaseWithProfileAndProperties(sessionID, host, port, user, password, dbType, database, driverProfileID, nil)
+}
+
+func (ds *DatabaseService) ConnectDatabaseWithProfileAndProperties(sessionID, host string, port int, user, password, dbType, database, driverProfileID string, properties map[string]string) error {
 	if sessionID == "" {
 		return fmt.Errorf("session ID is required")
 	}
@@ -144,6 +148,7 @@ func (ds *DatabaseService) ConnectDatabaseWithProfile(sessionID, host string, po
 		Database:        databaseName,
 		Timeout:         10 * time.Second,
 		DriverProfileID: strings.TrimSpace(driverProfileID),
+		Properties:      properties,
 	}
 
 	if ds.gateway != nil {
@@ -606,6 +611,10 @@ func (ds *DatabaseService) CloseDatabase(sessionID string) error {
 }
 
 func (ds *DatabaseService) TestConnection(host string, port int, user, password, dbType, database string) error {
+	return ds.TestConnectionWithProperties(host, port, user, password, dbType, database, nil)
+}
+
+func (ds *DatabaseService) TestConnectionWithProperties(host string, port int, user, password, dbType, database string, properties map[string]string) error {
 	normalizedType := strings.ToLower(strings.TrimSpace(dbType))
 	databaseName := strings.TrimSpace(database)
 	if normalizedType == "postgresql" && databaseName == "" {
@@ -619,7 +628,7 @@ func (ds *DatabaseService) TestConnection(host string, port int, user, password,
 		DBType:     normalizedType,
 		Database:   databaseName,
 		Timeout:    10 * time.Second,
-		Properties: jdbcTestConnectionProperties(normalizedType),
+		Properties: mergeJDBCConnectionProperties(jdbcTestConnectionProperties(normalizedType), properties),
 	}
 	if ds.gateway != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
@@ -652,6 +661,20 @@ func (ds *DatabaseService) TestConnection(host string, port int, user, password,
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
 	return db.PingContext(ctx)
+}
+
+func mergeJDBCConnectionProperties(defaults, supplied map[string]string) map[string]string {
+	if len(defaults) == 0 && len(supplied) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(defaults)+len(supplied))
+	for key, value := range defaults {
+		merged[key] = value
+	}
+	for key, value := range supplied {
+		merged[key] = value
+	}
+	return merged
 }
 
 func (ds *DatabaseService) GetSession(sessionID string) (*DatabaseSession, error) {

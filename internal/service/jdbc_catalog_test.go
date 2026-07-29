@@ -90,7 +90,7 @@ func TestDriverCatalogLoadsManifestAndSelectsRecommendedProfile(t *testing.T) {
 	}
 }
 
-func TestDriverCatalogProvidesVerifiedDomesticOnlineProfiles(t *testing.T) {
+func TestDriverCatalogProvidesVerifiedOnlineProfiles(t *testing.T) {
 	root := t.TempDir()
 	catalog := NewDriverCatalogService(filepath.Join(root, "manifest.json"), filepath.Join(root, "drivers"))
 	if _, err := catalog.ListDriversWithInstallStatus(); err != nil {
@@ -102,6 +102,7 @@ func TestDriverCatalogProvidesVerifiedDomesticOnlineProfiles(t *testing.T) {
 		version  string
 		class    string
 	}{
+		{driverID: "oracle", version: "23.26.2.0.0", class: "oracle.jdbc.OracleDriver"},
 		{driverID: "dm", version: "8.1.5.45", class: "dm.jdbc.driver.DmDriver"},
 		{driverID: "kingbase", version: "8.6.1", class: "com.kingbase8.Driver"},
 		{driverID: "kingbase", version: "9.0.1", class: "com.kingbase8.Driver"},
@@ -128,8 +129,9 @@ func TestDriverCatalogMigratesOutdatedBuiltinProfiles(t *testing.T) {
 	root := t.TempDir()
 	manifestPath := filepath.Join(root, "manifest.json")
 	historicalManifest := `{
-	  "version": 1,
+	  "version": 2,
 	  "drivers": [
+	    {"id":"oracle","name":"Oracle","recommendedVersion":"23","profiles":[{"id":"oracle-23","version":"23","driverClass":"oracle.jdbc.OracleDriver","urlTemplate":"jdbc:oracle:thin:@//{host}:{port}/{database}","defaultPort":1521,"jre":">=17","jars":[{"name":"ojdbc11.jar","sha256":""}]}]},
 	    {"id":"dm","name":"达梦数据库","recommendedVersion":"8","profiles":[{"id":"dm-8","version":"8","driverClass":"dm.jdbc.driver.DmDriver","urlTemplate":"jdbc:dm://{host}:{port}/{database}","defaultPort":5236,"jre":">=17","jars":[{"name":"DmJdbcDriver18.jar","sha256":""}]}]},
 	    {"id":"kingbase","name":"人大金仓","recommendedVersion":"8","profiles":[{"id":"kingbase-8","version":"8","driverClass":"com.kingbase8.Driver","urlTemplate":"jdbc:kingbase8://{host}:{port}/{database}","defaultPort":54321,"jre":">=17","jars":[{"name":"kingbase8.jar","sha256":""}]}]},
 	    {"id":"private","name":"私有驱动","recommendedVersion":"1.0","profiles":[{"id":"private-1.0","version":"1.0","driverClass":"example.Driver","urlTemplate":"jdbc:private:{database}","jars":[{"name":"private.jar","sha256":"abc"}]}]}
@@ -159,7 +161,11 @@ func TestDriverCatalogMigratesOutdatedBuiltinProfiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dm.Jars[0].URL == "" || kingbaseV8.Jars[0].URL == "" || kingbaseV9.Jars[0].URL == "" {
+	_, oracle, err := catalog.GetProfile("oracle", "23.26.2.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dm.Jars[0].URL == "" || kingbaseV8.Jars[0].URL == "" || kingbaseV9.Jars[0].URL == "" || oracle.Jars[0].URL == "" {
 		t.Fatal("migration did not add online installation sources")
 	}
 	if custom.ID != "private-1.0" {

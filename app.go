@@ -1095,6 +1095,10 @@ func (a *App) ConnectDatabaseWithProfile(sessionID, host string, port int, user,
 	return a.databaseService.ConnectDatabaseWithProfile(sessionID, host, port, user, password, dbType, database, driverProfileID)
 }
 
+func (a *App) ConnectDatabaseWithOptions(sessionID, host string, port int, user, password, dbType, database, driverProfileID string, properties map[string]string) error {
+	return a.databaseService.ConnectDatabaseWithProfileAndProperties(sessionID, host, port, user, password, dbType, database, driverProfileID, properties)
+}
+
 func (a *App) ExecuteDatabaseQuery(sessionID, query string) (string, error) {
 	result, err := a.databaseService.ExecuteQuery(sessionID, query)
 	if err != nil {
@@ -1454,6 +1458,10 @@ func (a *App) CloseDatabase(sessionID string) error {
 
 func (a *App) TestDatabaseConnection(host string, port int, user, password, dbType, database string) error {
 	return a.databaseService.TestConnection(host, port, user, password, dbType, database)
+}
+
+func (a *App) TestDatabaseConnectionWithOptions(host string, port int, user, password, dbType, database string, properties map[string]string) error {
+	return a.databaseService.TestConnectionWithProperties(host, port, user, password, dbType, database, properties)
 }
 
 // isEncryptedPassword checks if a password is in AES-GCM encrypted format

@@ -16,6 +16,7 @@
   import { CancelTransfer } from '../wailsjs/go/main/App.js';
   import { applyAppearanceSettings, getDefaultAppSettings, resolveTheme } from './settings/appearance.js';
   import { isNativeDatabaseType } from './lib/nativeDatabaseTypes.js';
+  import { buildJDBCConnectionOptions } from './lib/jdbcConnectionOptions.js';
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
@@ -319,7 +320,7 @@
     }
 
     try {
-      const { ConnectDatabase, ConnectDatabaseWithProfile, TestDatabaseConnection, ConnectNativeDatabase, TestNativeDatabaseConnection, HasPassword, GetPassword, SavePassword } = window.wailsBindings;
+      const { ConnectDatabase, ConnectDatabaseWithProfile, ConnectDatabaseWithOptions, TestDatabaseConnection, TestDatabaseConnectionWithOptions, ConnectNativeDatabase, TestNativeDatabaseConnection, HasPassword, GetPassword, SavePassword } = window.wailsBindings;
       const sessionId = asset.dbSessionId || `db-${asset.id}`;
       const host = asset.host;
       const port = asset.port;
@@ -327,6 +328,12 @@
       const dbType = asset.metadata?.db_type || asset.dbType || 'mysql';
       const database = asset.metadata?.database || '';
 	  const driverProfileID = asset.metadata?.driver_profile_id || '';
+      const jdbcOptions = buildJDBCConnectionOptions(
+        dbType,
+        database,
+        asset.metadata?.oracle_connection_mode,
+        asset.metadata?.sqlserver_instance_name
+      );
 
       let password = '';
       try {
@@ -377,13 +384,17 @@
         await TestNativeDatabaseConnection(host, port, user, password, dbType, database);
         await ConnectNativeDatabase(sessionId, host, port, user, password, dbType, database);
       } else {
-        if (typeof TestDatabaseConnection === 'function') {
-          await TestDatabaseConnection(host, port, user, password, dbType, database);
+        if (typeof TestDatabaseConnectionWithOptions === 'function') {
+          await TestDatabaseConnectionWithOptions(host, port, user, password, dbType, jdbcOptions.database, jdbcOptions.properties);
+        } else if (typeof TestDatabaseConnection === 'function') {
+          await TestDatabaseConnection(host, port, user, password, dbType, jdbcOptions.database);
         }
-        if (typeof ConnectDatabaseWithProfile === 'function') {
-          await ConnectDatabaseWithProfile(sessionId, host, port, user, password, dbType, database, driverProfileID);
+        if (typeof ConnectDatabaseWithOptions === 'function') {
+          await ConnectDatabaseWithOptions(sessionId, host, port, user, password, dbType, jdbcOptions.database, driverProfileID, jdbcOptions.properties);
+        } else if (typeof ConnectDatabaseWithProfile === 'function') {
+          await ConnectDatabaseWithProfile(sessionId, host, port, user, password, dbType, jdbcOptions.database, driverProfileID);
         } else {
-          await ConnectDatabase(sessionId, host, port, user, password, dbType, database);
+          await ConnectDatabase(sessionId, host, port, user, password, dbType, jdbcOptions.database);
         }
       }
 

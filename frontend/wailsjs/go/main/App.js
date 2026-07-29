@@ -34,6 +34,10 @@ export function ConnectDatabase(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['main']['App']['ConnectDatabase'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
+export function ConnectDatabaseWithOptions(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
+  return window['go']['main']['App']['ConnectDatabaseWithOptions'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+}
+
 export function ConnectDatabaseWithProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['main']['App']['ConnectDatabaseWithProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
@@ -404,6 +408,10 @@ export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
 
 export function TestDatabaseConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['TestDatabaseConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function TestDatabaseConnectionWithOptions(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['TestDatabaseConnectionWithOptions'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function TestNativeDatabaseConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
