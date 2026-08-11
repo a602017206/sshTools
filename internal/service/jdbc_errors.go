@@ -12,6 +12,8 @@ const (
 	JDBCErrorDriverInvalid    = "DRIVER_INVALID"
 	JDBCErrorAgentUnavailable = "AGENT_UNAVAILABLE"
 	JDBCErrorDBConnectFailed  = "DB_CONNECT_FAILED"
+	JDBCErrorQueryTimeout     = "QUERY_TIMEOUT"
+	JDBCErrorQueryFailed      = "QUERY_FAILED"
 )
 
 type JDBCError struct {
@@ -56,6 +58,7 @@ func MapJDBCAgentError(message string) error {
 func newJDBCError(message string, cause error) *JDBCError {
 	normalized := strings.ToLower(message)
 	code := JDBCErrorDBConnectFailed
+	friendly := message
 
 	switch {
 	case containsAny(normalized,
@@ -74,9 +77,18 @@ func newJDBCError(message string, cause error) *JDBCError {
 		"agent_unavailable", "agent unavailable", "agent client not configured",
 		"connection refused", "code = unavailable", "transport is closing"):
 		code = JDBCErrorAgentUnavailable
+	case containsAny(normalized,
+		"deadlineexceeded", "context deadline exceeded", "client.timeout exceeded",
+		"i/o timeout", "query timeout"):
+		code = JDBCErrorQueryTimeout
+		friendly = "查询执行超时：数据库响应过慢，或同一连接上并发请求导致阻塞。请稍后重试；若持续超时，可先关闭其他表页再打开。"
+	case containsAny(normalized,
+		"ora-", "sql command not properly ended", "00933",
+		"syntax error", "sqlstate"):
+		code = JDBCErrorQueryFailed
 	}
 
-	return &JDBCError{Code: code, Message: message, Err: cause}
+	return &JDBCError{Code: code, Message: friendly, Err: cause}
 }
 
 func containsAny(message string, values ...string) bool {

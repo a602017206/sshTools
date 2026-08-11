@@ -103,10 +103,10 @@
     successMessage = '';
     try {
       for (const statement of alterStatements) await window.wailsBindings.ExecuteDatabaseQuery(sessionId, statement);
-      successMessage = `已保存表 ${tableName} 的结构`;
+      successMessage = `已保存表 ${tableName}`;
       await loadDDL();
     } catch (error) {
-      errorMessage = `保存表结构失败：${error?.message || String(error || '未知错误')}`;
+      errorMessage = `保存失败：${error?.message || String(error || '未知错误')}`;
     } finally { isSaving = false; }
   }
 
@@ -124,8 +124,8 @@
     <div class="table-designer__actions">
       {#if !isCreateMode}<button type="button" on:click={loadDDL} disabled={isLoading}>刷新</button>{/if}
       <button type="button" on:click={copyDDL} disabled={!displayedDDL}>{copied ? '已复制' : '复制 DDL'}</button>
-      {#if isCreateMode}<button type="button" class="table-designer__save" on:click={saveNewTable} disabled={!ddlPreview || isSaving}>{isSaving ? '创建中...' : '保存新表'}</button>{/if}
-      {#if !isCreateMode}<button type="button" class="table-designer__save" on:click={saveStructure} disabled={!alterStatements.length || fieldsReadOnly}>{isSaving ? '保存中...' : '保存结构'}</button>{/if}
+      {#if isCreateMode}<button type="button" class="table-designer__save" on:click={saveNewTable} disabled={!ddlPreview || isSaving}>{isSaving ? '保存中...' : '保存'}</button>{/if}
+      {#if !isCreateMode}<button type="button" class="table-designer__save" on:click={saveStructure} disabled={!alterStatements.length || fieldsReadOnly}>{isSaving ? '保存中...' : '保存'}</button>{/if}
     </div>
   </header>
 

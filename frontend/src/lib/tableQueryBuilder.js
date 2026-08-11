@@ -1,5 +1,6 @@
 const nullOperations = new Set(['is_null', 'is_not_null']);
 const listOperations = new Set(['in', 'not_in']);
+const schemaScopedTypes = new Set(['postgresql', 'kingbase', 'opengauss', 'oracle', 'sqlserver', 'dm']);
 
 export const tableFilterOperations = [
   { value: 'contains', label: '包含' },
@@ -24,9 +25,26 @@ export function operationUsesList(operation) {
   return listOperations.has(operation);
 }
 
+function normalizeDatabaseType(databaseType) {
+  return String(databaseType || '').toLowerCase();
+}
+
 function quoteIdentifier(identifier, databaseType) {
-  const quote = String(databaseType).toLowerCase() === 'mysql' ? '`' : '"';
-  return `${quote}${String(identifier).replaceAll(quote, `${quote}${quote}`)}${quote}`;
+  const dialect = normalizeDatabaseType(databaseType);
+  if (dialect === 'mysql') {
+    return `\`${String(identifier).replaceAll('`', '``')}\``;
+  }
+  if (dialect === 'sqlserver') {
+    return `[${String(identifier).replaceAll(']', ']]')}]`;
+  }
+  return `"${String(identifier).replaceAll('"', '""')}"`;
+}
+
+export function buildQualifiedTableName({ databaseType, databaseName = '', schemaName = '', tableName = '' } = {}) {
+  if (!tableName) return '';
+  const dialect = normalizeDatabaseType(databaseType);
+  const parts = schemaScopedTypes.has(dialect) ? [schemaName, tableName] : [databaseName, tableName];
+  return parts.filter(Boolean).map(part => quoteIdentifier(part, dialect)).join('.');
 }
 
 function quoteLiteral(value) {
@@ -63,6 +81,26 @@ function buildPredicate(rule, databaseType) {
   return operatorMap[rule.operation] || '';
 }
 
+function buildLimitClause(databaseType, limit, offset, hasOrderBy) {
+  const dialect = normalizeDatabaseType(databaseType);
+  const normalizedLimit = Number.isInteger(limit) && limit > 0 ? limit : 100;
+  const normalizedOffset = Number.isInteger(offset) && offset > 0 ? offset : 0;
+
+  if (dialect === 'oracle' || dialect === 'dm') {
+    if (normalizedOffset > 0) {
+      return ` OFFSET ${normalizedOffset} ROWS FETCH NEXT ${normalizedLimit} ROWS ONLY`;
+    }
+    return ` FETCH FIRST ${normalizedLimit} ROWS ONLY`;
+  }
+
+  if (dialect === 'sqlserver') {
+    const orderPrefix = hasOrderBy ? '' : ' ORDER BY (SELECT NULL)';
+    return `${orderPrefix} OFFSET ${normalizedOffset} ROWS FETCH NEXT ${normalizedLimit} ROWS ONLY`;
+  }
+
+  return ` LIMIT ${normalizedLimit}${normalizedOffset ? ` OFFSET ${normalizedOffset}` : ''}`;
+}
+
 export function buildTableBrowseSQL({ fromSQL, databaseType, filters = [], sorters = [], limit = 100, offset = 0 }) {
   if (!fromSQL) return '';
   const predicates = filters.map(rule => ({ rule, predicate: buildPredicate(rule, databaseType) })).filter(item => item.predicate);
@@ -71,7 +109,6 @@ export function buildTableBrowseSQL({ fromSQL, databaseType, filters = [], sorte
     : '';
   const orderItems = sorters.filter(item => item?.field).map(item => `${quoteIdentifier(item.field, databaseType)} ${item.direction === 'DESC' ? 'DESC' : 'ASC'}`);
   const orderClause = orderItems.length ? ` ORDER BY ${orderItems.join(', ')}` : '';
-  const normalizedLimit = Number.isInteger(limit) && limit > 0 ? limit : 100;
-  const normalizedOffset = Number.isInteger(offset) && offset > 0 ? offset : 0;
-  return `SELECT * FROM ${fromSQL}${whereClause}${orderClause} LIMIT ${normalizedLimit}${normalizedOffset ? ` OFFSET ${normalizedOffset}` : ''};`;
+  const limitClause = buildLimitClause(databaseType, limit, offset, orderItems.length > 0);
+  return `SELECT * FROM ${fromSQL}${whereClause}${orderClause}${limitClause};`;
 }

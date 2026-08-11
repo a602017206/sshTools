@@ -10,9 +10,13 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
   import { isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
+  import { resolveMode, sessionMatchesMode } from '../lib/workspaceTabs.js';
+
+  export let activeMode = 'ssh';
 
   let terminalRefs = {};
   let sessionsList = [];
+  let visibleSessions = [];
   let sessionUnsubscribers = new Map();
   let sessionCloseUnsubscribers = new Map();
   let osc7PendingBuffers = new Map();
@@ -36,8 +40,27 @@
   let showSavePasswordConfirm = false;
   let resolveSavePasswordConfirm = null;
 
+  $: mode = resolveMode(activeMode);
   $: sessionsList = $connectionsStore ? Array.from($connectionsStore.values()) : [];
-
+  $: visibleSessions = sessionsList.filter((session) => sessionMatchesMode(session, mode));
+  $: activeVisibleSession = visibleSessions.find((session) => session.sessionId === $activeSessionIdStore) || null;
+  $: viewportIsConsole = !activeVisibleSession || activeVisibleSession.type !== 'database';
+  $: {
+    const activeId = $activeSessionIdStore;
+    const activeSession = activeId
+      ? sessionsList.find((session) => session.sessionId === activeId)
+      : null;
+    if (visibleSessions.length === 0) {
+      // 当前模式无会话时不强制改写 activeId，避免影响另一模式的会话保活
+    } else if (!activeSession || !sessionMatchesMode(activeSession, mode)) {
+      const preferred =
+        visibleSessions.find((session) => session.connected) ||
+        visibleSessions[visibleSessions.length - 1];
+      if (preferred?.sessionId && preferred.sessionId !== activeId) {
+        activeSessionIdStore.set(preferred.sessionId);
+      }
+    }
+  }
   function buildDbListSession(asset, sessionId) {
     const isNativeDatabase = isNativeDatabaseType(asset?.metadata?.db_type);
     return {
@@ -1091,20 +1114,22 @@
   });
 </script>
 
-<div class="h-full flex flex-col ops-panel">
+<div class="h-full flex flex-col ops-workspace-chrome">
   <!-- 标签栏 -->
-  <div class="flex items-center border-b overflow-x-auto" style="background: var(--bg-secondary); border-color: var(--border-primary);">
-    {#if sessionsList.length === 0}
-      <div class="px-4 py-2 text-xs ops-muted">没有活动连接</div>
+  <div class="session-tabbar flex items-center border-b overflow-x-auto" style="border-color: var(--glass-border);">
+    {#if visibleSessions.length === 0}
+      <div class="px-4 py-2 text-xs ops-muted">
+        {mode === 'database' ? '没有数据库会话' : '没有活动连接'}
+      </div>
     {:else}
-      {#each sessionsList as session (session.sessionId)}
+      {#each visibleSessions as session (session.sessionId)}
         <div
-          class="group flex items-center gap-2 px-3 py-2 border-r cursor-pointer transition-all min-w-[168px] {
+          class="session-tab group flex items-center gap-2 px-3 py-2 border-r cursor-pointer transition-all min-w-[168px] {
             $activeSessionIdStore === session.sessionId
-              ? 'text-gray-900 dark:text-white border-b-2 accent-border'
+              ? 'session-tab--active text-gray-900 dark:text-white'
               : 'text-gray-600 dark:text-gray-300'
           }"
-          style="background: {$activeSessionIdStore === session.sessionId ? 'var(--bg-secondary)' : 'var(--bg-tertiary)'}; border-color: var(--border-primary);"
+          style="border-color: var(--glass-border);"
           role="button"
           tabindex="0"
           on:click={() => handleTabChange(session.sessionId)}
@@ -1130,7 +1155,18 @@
               focus
             />
           {:else}
-            <span class="text-xs font-medium truncate flex-1">{session.tabName || session.connection.name}</span>
+            <div class="flex-1 min-w-0 flex flex-col leading-tight">
+              <span class="text-xs font-medium truncate">{session.tabName || session.connection.name}</span>
+              <span class="text-[10px] ops-muted truncate">
+                {#if session.type === 'database'}
+                  数据库
+                {:else if session.connected}
+                  已连接
+                {:else}
+                  断开
+                {/if}
+              </span>
+            </div>
           {/if}
 
           <button
@@ -1145,6 +1181,7 @@
       {/each}
     {/if}
 
+    {#if mode === 'ssh'}
     <button
       on:click={handleNewLocalTerminal}
       class="ops-icon-button flex items-center gap-2 px-3 py-2 transition-colors min-w-[44px]"
@@ -1154,69 +1191,21 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
       </svg>
     </button>
+    {/if}
   </div>
 
-  <!-- 终端内容 -->
+  <!-- 终端内容：保留全部会话挂载，仅按当前活动标签显示 -->
   {#if sessionsList.length > 0}
-    <div class="terminal-content-area relative flex-1 flex flex-col">
+    <div class="terminal-stage flex-1 min-h-0">
+    <div class="terminal-content-area relative flex-1 flex flex-col ops-terminal-viewport" class:ops-terminal-viewport--console={viewportIsConsole} class:ops-terminal-viewport--panel={!viewportIsConsole}>
       {#each sessionsList as session (session.sessionId)}
         <div
           class="terminal-wrapper {
-            $activeSessionIdStore === session.sessionId ? 'active' : 'inactive'
+            $activeSessionIdStore === session.sessionId && sessionMatchesMode(session, mode) ? 'active' : 'inactive'
           }"
         >
-          <!-- 工具栏 -->
-          <div class="flex items-center justify-between px-4 py-2 border-b" style="background: var(--bg-secondary); border-color: var(--border-primary);">
-            <div class="text-xs ops-muted font-mono">
-              {#if session.type === 'local'}
-                本地终端{session.connection.name !== 'Local Shell' ? ` (${session.connection.name})` : ''}
-              {:else if session.type === 'database' && session.panelType === 'database-list'}
-                数据库列表 · {session.connection.name}
-              {:else if session.type === 'database' && session.panelType === 'database-table'}
-                表数据 · {session.databaseName ? `${session.databaseName}.` : ''}{session.tableName}
-              {:else if session.type === 'database' && session.panelType === 'database-query'}
-                SQL 查询 · {session.databaseName || session.connection.name}
-              {:else if session.type === 'database' && session.panelType === 'database-table-designer'}
-                {session.designerMode === 'create' ? '新建表' : `设计表 · ${session.databaseName ? `${session.databaseName}.` : ''}${session.tableName}`}
-              {:else if session.type === 'database' && session.panelType === 'native-database'}
-                原生数据库 · {session.connection.name}
-              {:else}
-                {session.connection.username}@{session.connection.host}:{session.connection.port}
-              {/if}
-            </div>
-            <div class="flex items-center gap-1">
-              <button class="ops-icon-button p-1.5 rounded-md transition-colors" title="复制">
-                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-              <button class="ops-icon-button p-1.5 rounded-md transition-colors" title="粘贴">
-                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-              <button class="ops-icon-button p-1.5 rounded-md transition-colors" title="最小化">
-                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <line x1="8" y1="12" x2="16" y2="12" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-              <button class="ops-icon-button p-1.5 rounded-md transition-colors" title="最大化">
-                <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M8 3v3a2 2 0 0 1-2 2H3" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M21 8h-3a2 2 0 0 1-2-2V3" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M3 16h3a2 2 0 0 1 2 2v3" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M16 21v-3a2 2 0 0 1 2-2h3" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <!-- 终端窗口 -->
-          <div class="flex-1 overflow-hidden ops-terminal-surface border-t">
+          <!-- 终端 / 数据库面板窗口：信息已在标签栏，不再重复工具条 -->
+          <div class="flex-1 overflow-hidden h-full">
             {#if session.type === 'database' && session.panelType === 'database-list'}
       <SelectedDatabaseObjects
         sessionId={session.sessionId}
@@ -1266,9 +1255,10 @@
         </div>
       {/each}
     </div>
+    </div>
   {:else}
-    <div class="flex-1 flex items-center justify-center ops-muted" style="background: var(--bg-secondary);">
-      <div class="text-center">
+    <div class="terminal-stage flex-1 min-h-0 flex items-center justify-center ops-muted">
+      <div class="text-center ops-glass rounded-2xl px-8 py-7">
         <div class="text-base font-medium mb-2" style="color: var(--text-primary);">未选择连接</div>
         <div class="text-xs">从左侧资产列表选择一个服务器开始连接</div>
       </div>
@@ -1314,12 +1304,41 @@
 />
 
 <style>
+  .session-tabbar {
+    background: color-mix(in srgb, var(--glass-bg) 75%, transparent);
+    backdrop-filter: blur(14px) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(14px) saturate(var(--glass-saturate));
+  }
+
+  .session-tab {
+    background: transparent;
+    border-bottom: 2px solid transparent;
+    transition: background-color var(--trans-fast), border-color var(--trans-fast), color var(--trans-fast);
+  }
+
+  .session-tab:hover {
+    background: color-mix(in srgb, var(--glass-highlight) 55%, transparent);
+  }
+
+  .session-tab--active {
+    background: color-mix(in srgb, var(--glass-bg-strong) 88%, var(--accent-subtle));
+    border-bottom-color: var(--ops-signal);
+  }
+
+  .terminal-stage {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 12px 12px;
+    min-height: 0;
+  }
+
   .terminal-content-area {
     position: relative;
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-height: 0;
   }
 
   .terminal-wrapper {
@@ -1345,5 +1364,12 @@
     opacity: 1;
     pointer-events: auto;
     z-index: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .session-tab,
+    .terminal-wrapper {
+      transition: none;
+    }
   }
 </style>

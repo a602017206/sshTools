@@ -73,6 +73,41 @@
     draft = getDefaultAppSettings();
     triggerPreview();
   }
+
+  async function handleSelectBackground() {
+    try {
+      const api = window.wailsBindings || {};
+      if (typeof api.SelectBackgroundImage !== 'function') {
+        return;
+      }
+      const result = await api.SelectBackgroundImage();
+      if (!result) {
+        return;
+      }
+      draft = {
+        ...draft,
+        background_image_enabled: true,
+        background_image_path: result.path || '',
+        background_image_data_url: result.data_url || '',
+        background_image_fit: result.fit || draft.background_image_fit || 'cover',
+        background_image_opacity: result.opacity ?? draft.background_image_opacity ?? 35
+      };
+      triggerPreview();
+    } catch (error) {
+      console.error('Failed to select background image:', error);
+    }
+  }
+
+  async function handleClearBackground() {
+    // Draft-only clear; file + persisted settings are removed when the user clicks Save.
+    draft = {
+      ...draft,
+      background_image_enabled: false,
+      background_image_path: '',
+      background_image_data_url: ''
+    };
+    triggerPreview();
+  }
 </script>
 
 <Dialog bind:isOpen={isOpen} onClose={onCancel} title="全局设置" size="xl">
@@ -187,6 +222,62 @@
     </div>
 
     <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-3">
+      <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">背景图片</div>
+      <p class="text-xs text-slate-500 dark:text-slate-400">自定义工作台背景；面板仍保持浅色可读，图片仅作为底层氛围。</p>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="px-3 py-2 text-xs rounded-lg text-white"
+          style="background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));"
+          on:click={handleSelectBackground}
+        >
+          选择图片
+        </button>
+        <button
+          type="button"
+          class="px-3 py-2 text-xs rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
+          disabled={!draft.background_image_enabled && !draft.background_image_data_url}
+          on:click={handleClearBackground}
+        >
+          清除背景
+        </button>
+        <label class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 ml-auto">
+          <input
+            type="checkbox"
+            bind:checked={draft.background_image_enabled}
+            disabled={!draft.background_image_path && !draft.background_image_data_url}
+            on:change={triggerPreview}
+            class="w-4 h-4"
+            style="accent-color: var(--accent-primary);"
+          />
+          启用背景图
+        </label>
+      </div>
+      {#if draft.background_image_data_url}
+        <div
+          class="h-24 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 overflow-hidden"
+          style={`background-image: url("${draft.background_image_data_url}"); background-size: ${draft.background_image_fit === 'contain' ? 'contain' : 'cover'}; background-position: center; background-repeat: no-repeat;`}
+        ></div>
+      {/if}
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="space-y-2">
+          <div class="text-xs font-medium text-slate-700 dark:text-slate-300">填充方式</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" class="px-2 py-2 rounded-lg text-xs {draft.background_image_fit !== 'contain' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.background_image_fit !== 'contain' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));' : ''} on:click={() => { draft.background_image_fit = 'cover'; triggerPreview(); }}>铺满</button>
+            <button type="button" class="px-2 py-2 rounded-lg text-xs {draft.background_image_fit === 'contain' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.background_image_fit === 'contain' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));' : ''} on:click={() => { draft.background_image_fit = 'contain'; triggerPreview(); }}>完整显示</button>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-xs font-medium text-slate-700 dark:text-slate-300">
+            <span>背景强度</span>
+            <span style="color: var(--accent-primary);">{draft.background_image_opacity}%</span>
+          </div>
+          <input type="range" min="5" max="80" step="1" bind:value={draft.background_image_opacity} on:input={triggerPreview} class="w-full" style="accent-color: var(--accent-primary);" />
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-3">
       <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">扩展设置</div>
       <label class="flex items-center justify-between text-sm text-slate-700 dark:text-slate-300">
         <span>紧凑模式（预留）</span>
@@ -218,13 +309,13 @@
     display: grid;
     grid-template-columns: 180px minmax(0, 1fr);
     gap: 16px;
-    min-height: 560px;
+    min-height: 420px;
   }
 
   .settings-nav {
-    border: 1px solid var(--border-primary);
-    border-radius: 8px;
-    background: var(--bg-secondary);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: var(--glass-bg);
     padding: 8px;
   }
 

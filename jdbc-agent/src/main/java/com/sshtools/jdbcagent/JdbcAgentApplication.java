@@ -4,6 +4,10 @@ import io.grpc.Server;
 import io.grpc.ServerBuilder;
 
 public final class JdbcAgentApplication {
+
+    /** 显式开关，只有宿主进程传入时才启用 stdin 守护，避免直接手工运行 jar 时立即退出。 */
+    private static final String WATCH_STDIN_FLAG = "--watch-stdin";
+
     private JdbcAgentApplication() {
     }
 
@@ -23,7 +27,21 @@ public final class JdbcAgentApplication {
                 .start();
 
         Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown));
+
+        if (hasFlag(args, WATCH_STDIN_FLAG)) {
+            new ParentProcessWatchdog(System.in, () -> System.exit(0)).start();
+        }
+
         server.awaitTermination();
+    }
+
+    private static boolean hasFlag(String[] args, String name) {
+        for (String arg : args) {
+            if (name.equals(arg)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int parseIntArg(String[] args, String name, int defaultValue) {

@@ -484,7 +484,18 @@
   .object-browser__empty, .object-browser__error { padding: 28px 18px; font-size: 13px; color: var(--text-secondary); }
   .object-browser__error { color: #dc2626; }
   .object-browser__status { min-height: 28px; padding: 6px 18px; border-top: 1px solid var(--border-primary); color: var(--text-secondary); font-size: 12px; }
-  .object-browser__context-menu { position: fixed; z-index: 30; width: 200px; padding: 5px; border: 1px solid var(--border-primary); border-radius: 6px; background: var(--bg-primary); box-shadow: 0 10px 24px rgba(15, 23, 42, .18); }
+  .object-browser__context-menu {
+    position: fixed;
+    z-index: 30;
+    width: 200px;
+    padding: 5px;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: var(--glass-bg-strong);
+    box-shadow: var(--shadow-lg), var(--shadow-glass);
+    backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(var(--glass-saturate));
+  }
   .object-browser__context-menu button { display: block; width: 100%; min-height: 30px; padding: 0 9px; border: 0; border-radius: 3px; background: transparent; color: var(--text-primary); cursor: pointer; font: inherit; text-align: left; }
   .object-browser__context-menu button:hover:not(:disabled) { background: color-mix(in srgb, #1687d4 14%, transparent); }
   .object-browser__context-menu button:disabled { color: var(--text-secondary); cursor: not-allowed; }

@@ -1,5 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { buildQualifiedTableName, buildTableBrowseSQL } from '../lib/tableQueryBuilder.js';
+  import { formatConnectionError } from '../lib/formatConnectionError.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -15,10 +17,14 @@
   let resourcePath = '';
   let queryHistory = [];
   let dbTypeLabel = '';
+  let editorRatio = 0.58;
+  let isResizingSplit = false;
+  let splitShell;
 
   const historyLimit = 50;
 
   $: dbTypeLabel = dbConfig?.metadata?.db_type ? dbConfig.metadata.db_type.toUpperCase() : '';
+  $: databaseType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase();
   $: errorActions = getErrorActions(errorCode);
 
   onMount(async () => {
@@ -27,10 +33,10 @@
 
     const handleTableSelect = (event) => {
       if (!event?.detail || event.detail.sessionId !== sessionId) return;
-      const { databaseName, tableName } = event.detail;
+      const { databaseName, schemaName = '', tableName } = event.detail;
       if (!tableName) return;
-      const qualifiedName = databaseName ? `${databaseName}.${tableName}` : tableName;
-      query = `SELECT * FROM ${qualifiedName} LIMIT 10;`;
+      const qualifiedName = buildQualifiedTableName({ databaseType, databaseName, schemaName, tableName });
+      query = buildTableBrowseSQL({ fromSQL: qualifiedName, databaseType, limit: 10 });
     };
 
     window.addEventListener('database:table-select', handleTableSelect);
@@ -52,7 +58,8 @@
     clearError();
 
     try {
-      const result = await window.wailsBindings.ExecuteDatabaseQuery(sessionId, query);
+      const sql = query.trim().replace(/;+\s*$/g, '');
+      const result = await window.wailsBindings.ExecuteDatabaseQuery(sessionId, sql);
       const data = JSON.parse(result);
       resultData = data;
       addToHistory(query.trim());
@@ -93,11 +100,11 @@
   }
 
   function handleTableClick(table) {
-    query = `SELECT * FROM ${table} LIMIT 10;`;
+    query = buildTableBrowseSQL({ fromSQL: table, databaseType, limit: 10 });
   }
 
   function handleTableDoubleClick(table) {
-    query = `SELECT * FROM ${table} LIMIT 10;`;
+    query = buildTableBrowseSQL({ fromSQL: table, databaseType, limit: 10 });
     executeQuery();
   }
 
@@ -134,7 +141,7 @@
   }
 
   function setJDBCError(prefix, error) {
-    rawError = error?.message || String(error || '未知错误');
+    rawError = formatConnectionError(error, '未知错误');
     errorCode = parseJDBCErrorCode(rawError);
     errorMessage = `${prefix}: ${jdbcErrorLabel(errorCode)}`;
     showRawError = false;
@@ -147,6 +154,8 @@
       'DRIVER_MISSING',
       'DRIVER_INVALID',
       'AGENT_UNAVAILABLE',
+      'QUERY_TIMEOUT',
+      'QUERY_FAILED',
       'DB_CONNECT_FAILED'
     ];
     const upper = String(message || '').toUpperCase();
@@ -163,6 +172,10 @@
         return '当前数据库驱动文件无效';
       case 'AGENT_UNAVAILABLE':
         return 'JDBC agent 当前不可用';
+      case 'QUERY_TIMEOUT':
+        return '查询执行超时';
+      case 'QUERY_FAILED':
+        return 'SQL 执行失败';
       default:
         return '数据库连接或查询失败';
     }
@@ -289,6 +302,34 @@
     await window.wailsBindings.RemoveJDBCDriver(driver.id, profile.version);
     resourcePath = '';
   }
+
+  function formatCell(cell) {
+    if (cell === null || cell === undefined) return { kind: 'null', text: 'NULL' };
+    if (cell === '') return { kind: 'empty', text: '∅' };
+    return { kind: 'value', text: String(cell) };
+  }
+
+  function startSplitResize(event) {
+    event.preventDefault();
+    isResizingSplit = true;
+    const onMove = (moveEvent) => {
+      if (!isResizingSplit || !splitShell) return;
+      const rect = splitShell.getBoundingClientRect();
+      const next = (moveEvent.clientY - rect.top) / rect.height;
+      editorRatio = Math.max(0.3, Math.min(0.75, next));
+    };
+    const onUp = () => {
+      isResizingSplit = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  function resetSplitRatio() {
+    editorRatio = 0.58;
+  }
 </script>
 
 <div class="db-panel">
@@ -339,77 +380,97 @@
       <button class="toolbar-btn btn-primary" on:click={executeQuery} disabled={isLoading}>
         {#if isLoading}
           <span class="loading-spinner"></span>
+          执行中
         {:else}
-          ▶ 执行
+          运行
         {/if}
       </button>
-      <button class="toolbar-btn btn-secondary" on:click={clearQuery}>✖ 清空</button>
+      <button class="toolbar-btn btn-secondary" on:click={clearQuery}>清空</button>
       {#if resultData}
-        <button class="toolbar-btn btn-secondary" on:click={exportResults}>📥 导出CSV</button>
+        <button class="toolbar-btn btn-secondary" on:click={exportResults}>导出 CSV</button>
+      {/if}
+      {#if isLoading}
+        <span class="exec-signal" aria-live="polite">查询执行中</span>
       {/if}
     </div>
 
-    <textarea
-      class="query-textarea"
-      bind:value={query}
-      placeholder={dbTypeLabel ? `在此输入 SQL 查询语句 (${dbTypeLabel})...` : '在此输入 SQL 查询语句...'}
-      on:keydown={(e) => {
-        if (e.ctrlKey && e.key === 'Enter') {
-          e.preventDefault();
-          executeQuery();
-        }
-      }}
-    ></textarea>
-
-    {#if errorMessage}
-      <div class="error-message" role="alert">
-        <div class="error-message__title">{errorMessage}</div>
-        <div class="error-message__actions">
-          {#each errorActions as action}
-            <button type="button" on:click={() => handleErrorAction(action.id)}>{action.label}</button>
-          {/each}
-        </div>
-        {#if resourcePath}
-          <code class="error-message__detail">{resourcePath}</code>
-        {/if}
-        {#if showRawError}
-          <pre class="error-message__detail">{rawError}</pre>
-        {/if}
+    <div class="db-split" bind:this={splitShell}>
+      <div class="sql-editor-shell db-editor" style={`flex: ${editorRatio} 1 0;`}>
+        <textarea
+          class="query-textarea"
+          bind:value={query}
+          placeholder={dbTypeLabel ? `在此输入 SQL 查询语句 (${dbTypeLabel})...` : '在此输入 SQL 查询语句...'}
+          on:keydown={(e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+              e.preventDefault();
+              executeQuery();
+            }
+          }}
+        ></textarea>
       </div>
-    {/if}
 
-    <div class="results-wrapper">
-      {#if resultData && resultData.columns && resultData.columns.length > 0}
-        <div class="results-header">查询结果</div>
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                {#each resultData.columns as column}
-                  <th>{column}</th>
-                {/each}
-              </tr>
-            </thead>
-            <tbody>
-              {#each resultData.rows as row}
+      <div
+        class="ops-split-handle"
+        role="separator"
+        aria-orientation="horizontal"
+        title="拖拽调整比例，双击复位 58/42"
+        on:mousedown={startSplitResize}
+        on:dblclick={resetSplitRatio}
+      ></div>
+
+      <div class="results-wrapper" style={`flex: ${1 - editorRatio} 1 0;`}>
+        {#if errorMessage}
+          <div class="error-message" role="alert">
+            <div class="error-message__title">{errorMessage}</div>
+            <div class="error-message__actions">
+              {#each errorActions as action}
+                <button type="button" on:click={() => handleErrorAction(action.id)}>{action.label}</button>
+              {/each}
+            </div>
+            {#if resourcePath}
+              <code class="error-message__detail">{resourcePath}</code>
+            {/if}
+            {#if showRawError}
+              <pre class="error-message__detail">{rawError}</pre>
+            {/if}
+          </div>
+        {/if}
+
+        {#if resultData && resultData.columns && resultData.columns.length > 0}
+          <div class="results-header">查询结果</div>
+          <div class="table-container">
+            <table class="result-table">
+              <thead>
                 <tr>
-                  {#each row as cell}
-                    <td>{cell}</td>
+                  {#each resultData.columns as column}
+                    <th>{column}</th>
                   {/each}
                 </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-        <div class="status-bar">
-          <span class="info-text">共 {resultData.rows ? resultData.rows.length : 0} 行</span>
-        </div>
-      {:else}
-        <div class="empty-state">
-          <p>执行查询以显示结果</p>
-          <p class="hint-text">提示: Ctrl+Enter 快速执行查询</p>
-        </div>
-      {/if}
+              </thead>
+              <tbody>
+                {#each resultData.rows as row}
+                  <tr>
+                    {#each row as cell}
+                      {@const formatted = formatCell(cell)}
+                      <td class:cell-null={formatted.kind !== 'value'}>
+                        {formatted.text}
+                      </td>
+                    {/each}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <div class="status-bar">
+            <span class="info-text">共 {resultData.rows ? resultData.rows.length : 0} 行</span>
+          </div>
+        {:else if !errorMessage}
+          <div class="empty-state">
+            <p>运行查询以显示结果</p>
+            <p class="hint-text">提示: Ctrl+Enter 快速运行</p>
+          </div>
+        {/if}
+      </div>
     </div>
   </section>
 </div>
@@ -418,21 +479,25 @@
   .db-panel {
     display: flex;
     height: 100%;
+    min-height: 0;
+    background: var(--bg-primary);
+    color: var(--text-primary);
   }
 
   .db-sidebar {
     width: 220px;
-    border-right: 1px solid #e5e7eb;
-    background: #f9fafb;
+    min-width: 200px;
     display: flex;
     flex-direction: column;
+    background: var(--bg-secondary);
+    box-shadow: inset -1px 0 0 var(--border-secondary);
   }
 
   .sidebar-section {
     display: flex;
     flex-direction: column;
-    border-bottom: 1px solid #e5e7eb;
     min-height: 0;
+    border-bottom: 1px solid var(--border-secondary);
   }
 
   .section-header {
@@ -442,8 +507,8 @@
     padding: 8px 10px;
     font-size: 12px;
     font-weight: 600;
-    color: #4b5563;
-    background: #f3f4f6;
+    color: var(--text-secondary);
+    background: transparent;
   }
 
   .section-body {
@@ -460,20 +525,20 @@
     background: transparent;
     padding: 6px 8px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     font-size: 12px;
-    color: #374151;
-    transition: background 0.15s ease;
+    color: var(--text-primary);
+    transition: background var(--trans-fast, 140ms ease);
   }
 
   .table-item:hover,
   .history-item:hover {
-    background: #e5e7eb;
+    background: var(--bg-hover);
   }
 
   .empty-text {
     font-size: 12px;
-    color: #9ca3af;
+    color: var(--text-tertiary);
     padding: 8px 4px;
   }
 
@@ -482,15 +547,17 @@
     background: transparent;
     font-size: 12px;
     cursor: pointer;
-    color: #6b7280;
+    color: var(--text-secondary);
   }
 
   .db-main {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 12px;
-    gap: 10px;
+    padding: 10px 12px;
+    gap: 8px;
   }
 
   .query-toolbar {
@@ -504,56 +571,97 @@
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-md, 8px);
     font-size: 12px;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .toolbar-btn:hover {
-    background: #f3f4f6;
+    transition: background var(--trans-fast, 140ms ease), border-color var(--trans-fast, 140ms ease);
   }
 
   .btn-primary {
-    background: #2563eb;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
     color: #fff;
     border: none;
   }
 
+  .btn-primary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
   .btn-secondary {
-    background: #e5e7eb;
-    color: #374151;
-    border: 1px solid #d1d5db;
+    background: var(--glass-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+  }
+
+  .btn-secondary:hover {
+    background: var(--bg-hover);
+  }
+
+  .exec-signal {
+    margin-left: 4px;
+    padding-left: 10px;
+    border-left: 3px solid var(--ops-blue);
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  .db-split {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .db-editor {
+    flex: 1 1 auto;
+    min-height: 120px;
+    display: flex;
+    border-radius: var(--radius-md, 8px);
+    background: var(--ops-terminal-bg);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .query-textarea {
-    flex: 0 0 140px;
+    flex: 1;
     width: 100%;
-    font-family: Menlo, Monaco, 'Courier New', monospace;
-    font-size: 13px;
-    background: #1e1e1e;
-    color: #d4d4d8;
-    border: 1px solid #e5e7eb;
-    border-radius: 4px;
-    padding: 10px;
-    resize: vertical;
+    min-height: 0;
+    resize: none;
+    border: none;
     outline: none;
-    line-height: 1.5;
+    padding: 12px;
+    background: transparent;
+    color: #d4d4d8;
+    font-family: var(--terminal-font-family);
+    font-size: 13px;
+    line-height: 1.55;
   }
 
   .results-wrapper {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    border-radius: var(--radius-md, 8px);
+    background: var(--bg-secondary);
   }
 
-  .results-header {
-    border-bottom: 1px solid #e5e7eb;
+  .results-header,
+  .status-bar {
     padding: 6px 10px;
-    background: #f9fafb;
-    font-weight: 600;
     font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: transparent;
+    border-bottom: 1px solid var(--border-secondary);
+  }
+
+  .status-bar {
+    border-bottom: none;
+    border-top: 1px solid var(--border-secondary);
+    font-weight: 500;
   }
 
   .table-container {
@@ -561,43 +669,8 @@
     overflow: auto;
   }
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
-
-  th {
-    text-align: left;
-    padding: 8px 12px;
-    font-weight: 600;
-    color: #6b7280;
-    background: #f3f4f6;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-  }
-
-  td {
-    padding: 8px;
-    border-bottom: 1px solid #f3f4f6;
-  }
-
-  tr:hover {
-    background: #f9fafb;
-  }
-
-  .status-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 10px;
-    background: #f9fafb;
-    border-top: 1px solid #e5e7eb;
-  }
-
   .info-text {
-    color: #6b7280;
+    color: var(--text-tertiary);
     font-size: 12px;
   }
 
@@ -607,20 +680,22 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: #9ca3af;
+    color: var(--text-tertiary);
     gap: 6px;
   }
 
   .hint-text {
     font-size: 11px;
-    color: #9ca3af;
+    color: var(--text-tertiary);
   }
 
   .error-message {
+    margin: 8px;
     padding: 10px;
-    background: #fee2e2;
-    border-radius: 4px;
-    color: #dc2626;
+    border-radius: var(--radius-md, 8px);
+    background: color-mix(in srgb, var(--ops-alert) 12%, transparent);
+    color: var(--ops-alert);
+    border-left: 3px solid var(--ops-alert);
   }
 
   .error-message__title {
@@ -637,10 +712,10 @@
 
   .error-message__actions button {
     min-height: 28px;
-    border: 1px solid rgba(220, 38, 38, 0.35);
-    border-radius: 4px;
-    background: #fff;
-    color: #b91c1c;
+    border: 1px solid color-mix(in srgb, var(--ops-alert) 35%, transparent);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--bg-elevated);
+    color: var(--ops-alert);
     padding: 0 9px;
     font-size: 11px;
     font-weight: 600;
@@ -651,12 +726,11 @@
     max-height: 96px;
     overflow: auto;
     margin: 8px 0 0;
-    border: 1px solid rgba(220, 38, 38, 0.2);
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.7);
+    border-radius: var(--radius-sm, 4px);
+    background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
     padding: 7px;
-    color: #7f1d1d;
-    font-family: Menlo, Monaco, 'Courier New', monospace;
+    color: var(--text-secondary);
+    font-family: var(--terminal-font-family);
     font-size: 11px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -664,58 +738,15 @@
 
   .loading-spinner {
     animation: spin 1s linear infinite;
-    border: 2px solid #f3f4f6;
-    border-top: 2px solid #e5e7eb;
+    border: 2px solid color-mix(in srgb, #fff 35%, transparent);
+    border-top: 2px solid #fff;
     border-radius: 50%;
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
   }
 
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
-  }
-
-  :global(.dark) .db-panel {
-    background: #1f2937;
-  }
-
-  :global(.dark) .db-sidebar {
-    background: #111827;
-    border-color: #374151;
-  }
-
-  :global(.dark) .section-header {
-    background: #1f2937;
-    color: #d1d5db;
-  }
-
-  :global(.dark) .table-item,
-  :global(.dark) .history-item {
-    color: #d1d5db;
-  }
-
-  :global(.dark) .table-item:hover,
-  :global(.dark) .history-item:hover {
-    background: #374151;
-  }
-
-  :global(.dark) .results-header,
-  :global(.dark) .status-bar {
-    background: #1f2937;
-    border-color: #374151;
-  }
-
-  :global(.dark) th {
-    background: #1f2937;
-    color: #e5e7eb;
-  }
-
-  :global(.dark) td {
-    border-color: #374151;
-  }
-
-  :global(.dark) tr:hover {
-    background: #1f2937;
   }
 </style>

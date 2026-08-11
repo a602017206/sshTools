@@ -2,6 +2,8 @@ package service
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"AHaSSHTools/internal/config"
 )
@@ -31,7 +33,25 @@ func (s *SettingsService) UpdateSettings(updates map[string]interface{}) error {
 	if s.configManager == nil {
 		return fmt.Errorf("config manager not initialized")
 	}
-	return s.configManager.UpdateSettings(updates)
+
+	previous := s.configManager.GetSettings()
+	if err := s.configManager.UpdateSettings(updates); err != nil {
+		return err
+	}
+
+	next := s.configManager.GetSettings()
+	prevPath := strings.TrimSpace(previous.BackgroundImagePath)
+	nextPath := strings.TrimSpace(next.BackgroundImagePath)
+	if prevPath != "" && prevPath != nextPath {
+		_ = os.Remove(prevPath)
+	}
+	if !next.BackgroundImageEnabled && nextPath != "" {
+		_ = os.Remove(nextPath)
+		_ = s.configManager.UpdateSettings(map[string]interface{}{
+			"background_image_path": "",
+		})
+	}
+	return nil
 }
 
 // GetFileManagerSettings returns file manager settings for a specific connection

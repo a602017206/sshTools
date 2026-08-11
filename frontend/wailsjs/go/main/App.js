@@ -18,6 +18,10 @@ export function ChangeDirectory(arg1, arg2) {
   return window['go']['main']['App']['ChangeDirectory'](arg1, arg2);
 }
 
+export function ClearBackgroundImage() {
+  return window['go']['main']['App']['ClearBackgroundImage']();
+}
+
 export function CloseDatabase(arg1) {
   return window['go']['main']['App']['CloseDatabase'](arg1);
 }
@@ -128,6 +132,10 @@ export function FormatJSON(arg1) {
 
 export function GenerateUUIDv4() {
   return window['go']['main']['App']['GenerateUUIDv4']();
+}
+
+export function GetBackgroundImageDataURL() {
+  return window['go']['main']['App']['GetBackgroundImageDataURL']();
 }
 
 export function GetConnection(arg1) {
@@ -336,6 +344,10 @@ export function SavePassword(arg1, arg2) {
 
 export function SearchDirectories(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SearchDirectories'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function SelectBackgroundImage() {
+  return window['go']['main']['App']['SelectBackgroundImage']();
 }
 
 export function SelectDownloadDirectory() {

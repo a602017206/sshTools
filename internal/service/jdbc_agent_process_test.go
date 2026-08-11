@@ -73,6 +73,62 @@ func TestExecAgentCommandRunnerWritesLifecycleLog(t *testing.T) {
 	}
 }
 
+func TestExecAgentProcessStopKillsRunningProcess(t *testing.T) {
+	process, err := startExecAgentProcess(context.Background(), "sleep", nil, "30")
+	if err != nil {
+		t.Fatalf("start sleep process: %v", err)
+	}
+	if !process.Alive() {
+		t.Fatal("expected sleep process to be alive")
+	}
+	if err := process.Stop(); err != nil {
+		t.Fatalf("stop failed: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for process.Alive() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if process.Alive() {
+		t.Fatal("expected sleep process to be stopped")
+	}
+	if err := process.Stop(); err != nil {
+		t.Fatalf("second stop should be idempotent: %v", err)
+	}
+}
+
+func TestAgentProcessManagerStopClearsHandleAndKillsProcess(t *testing.T) {
+	manager := NewAgentProcessManager(&sleepCommandRunner{}, AgentProcessConfig{
+		JavaPath: "sleep",
+		AgentJar: "/tmp/jdbc-agent.jar",
+	})
+	handle, err := manager.Start(context.Background())
+	if err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	if handle == nil || handle.Process == nil || !handle.Process.Alive() {
+		t.Fatal("expected running agent process handle")
+	}
+	if err := manager.Stop(); err != nil {
+		t.Fatalf("manager stop failed: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for handle.Process.Alive() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if handle.Process.Alive() {
+		t.Fatal("expected manager stop to kill agent process")
+	}
+	if err := manager.Health(context.Background()); err == nil {
+		t.Fatal("expected health failure after stop")
+	}
+}
+
+type sleepCommandRunner struct{}
+
+func (sleepCommandRunner) Start(ctx context.Context, name string, args ...string) (AgentProcess, error) {
+	return startExecAgentProcess(ctx, name, nil, "30")
+}
+
 type fakeCommandRunner struct {
 	name    string
 	args    []string

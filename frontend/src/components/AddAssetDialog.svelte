@@ -561,7 +561,7 @@
      isOpen = false;
    }}
    title={editingAsset ? "编辑连接" : "添加连接"}
-   size="sm"
+   size="md"
   >
    <div class="mb-4">
     <div class="block text-xs font-medium ops-field-label mb-2">连接类型</div>

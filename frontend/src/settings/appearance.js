@@ -16,42 +16,42 @@ export const ACCENT_PRESETS = {
     label: '海盐青',
     light: {
       accentPrimary: '#0f9f9a',
-      accentSecondary: '#38bdf8',
+      accentSecondary: '#14b8a6',
       accentHover: '#0f766e',
       accentSoft: '#ccfbf1',
       focusRing: '#2dd4bf',
-      glow1: 'rgba(15, 159, 154, 0.1)',
-      glow2: 'rgba(56, 189, 248, 0.08)'
+      glow1: 'rgba(148, 163, 184, 0.1)',
+      glow2: 'rgba(148, 163, 184, 0.06)'
     },
     dark: {
       accentPrimary: '#5eead4',
-      accentSecondary: '#7dd3fc',
+      accentSecondary: '#2dd4bf',
       accentHover: '#2dd4bf',
       accentSoft: '#123a3a',
       focusRing: '#5eead4',
-      glow1: 'rgba(94, 234, 212, 0.12)',
-      glow2: 'rgba(125, 211, 252, 0.1)'
+      glow1: 'rgba(148, 163, 184, 0.08)',
+      glow2: 'rgba(71, 85, 105, 0.14)'
     }
   },
   blue: {
     label: '晴空蓝',
     light: {
       accentPrimary: '#2f6df6',
-      accentSecondary: '#38bdf8',
+      accentSecondary: '#60a5fa',
       accentHover: '#2457d6',
       accentSoft: '#dbeafe',
       focusRing: '#60a5fa',
-      glow1: 'rgba(47, 109, 246, 0.1)',
-      glow2: 'rgba(56, 189, 248, 0.08)'
+      glow1: 'rgba(148, 163, 184, 0.1)',
+      glow2: 'rgba(148, 163, 184, 0.06)'
     },
     dark: {
       accentPrimary: '#8ab7ff',
-      accentSecondary: '#67e8f9',
+      accentSecondary: '#93c5fd',
       accentHover: '#60a5fa',
       accentSoft: '#1e3a8a',
       focusRing: '#93c5fd',
-      glow1: 'rgba(138, 183, 255, 0.13)',
-      glow2: 'rgba(103, 232, 249, 0.1)'
+      glow1: 'rgba(148, 163, 184, 0.08)',
+      glow2: 'rgba(71, 85, 105, 0.14)'
     }
   },
   emerald: {
@@ -215,7 +215,7 @@ export function resolveTheme(themeMode, explicitTheme) {
     if (explicitTheme === 'light' || explicitTheme === 'dark') {
       return explicitTheme;
     }
-    return 'light';
+    return 'dark';
   }
 
   if (explicitTheme === 'light' || explicitTheme === 'dark') {
@@ -226,7 +226,7 @@ export function resolveTheme(themeMode, explicitTheme) {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
 
-  return 'light';
+  return 'dark';
 }
 
 export function applyAppearanceSettings(settings) {
@@ -235,7 +235,7 @@ export function applyAppearanceSettings(settings) {
   }
 
   const root = document.documentElement;
-  const accent = ACCENT_PRESETS[settings.accent_color] || ACCENT_PRESETS.blue;
+  const accent = ACCENT_PRESETS[settings.accent_color] || ACCENT_PRESETS.teal;
   const mode = settings.theme === 'dark' ? 'dark' : 'light';
   const accentValues = accent[mode];
 
@@ -243,9 +243,18 @@ export function applyAppearanceSettings(settings) {
   root.style.setProperty('--accent-secondary', accentValues.accentSecondary || accentValues.accentHover);
   root.style.setProperty('--accent-hover', accentValues.accentHover);
   root.style.setProperty('--accent-soft', accentValues.accentSoft);
+  root.style.setProperty('--accent-glow', accentValues.glow1 || (mode === 'dark' ? 'rgba(45, 212, 191, 0.35)' : 'rgba(13, 148, 136, 0.22)'));
   root.style.setProperty('--focus-ring', accentValues.focusRing);
-  root.style.setProperty('--bg-glow-1', accentValues.glow1);
-  root.style.setProperty('--bg-glow-2', accentValues.glow2);
+  root.style.setProperty('--ops-signal', accentValues.accentPrimary);
+  root.style.setProperty('--border-active', accentValues.accentPrimary);
+  // 氛围光固定中性灰，不跟强调色染色（避免蓝/紫染屏）
+  if (mode === 'dark') {
+    root.style.setProperty('--bg-glow-1', 'rgba(148, 163, 184, 0.08)');
+    root.style.setProperty('--bg-glow-2', 'rgba(71, 85, 105, 0.14)');
+  } else {
+    root.style.setProperty('--bg-glow-1', 'rgba(148, 163, 184, 0.1)');
+    root.style.setProperty('--bg-glow-2', 'rgba(148, 163, 184, 0.06)');
+  }
   const appFontSize = Number(settings.font_size) || 14;
   const terminalFontSize = Number(settings.terminal_font_size) || 14;
 
@@ -257,22 +266,51 @@ export function applyAppearanceSettings(settings) {
   root.setAttribute('data-compact', settings.compact_mode ? 'true' : 'false');
   root.setAttribute('data-reduced-motion', settings.reduced_motion ? 'true' : 'false');
 
+  applyBackgroundImage(settings);
+
   window.dispatchEvent(new CustomEvent('app:appearance-updated', { detail: settings }));
+}
+
+export function applyBackgroundImage(settings = {}) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  const root = document.documentElement;
+  const enabled = Boolean(settings.background_image_enabled && settings.background_image_data_url);
+  const fit = settings.background_image_fit === 'contain' ? 'contain' : 'cover';
+  const opacity = Math.max(0, Math.min(100, Number(settings.background_image_opacity) || 0));
+
+  if (enabled) {
+    root.setAttribute('data-bg-image', 'true');
+    root.style.setProperty('--ops-bg-image', `url("${settings.background_image_data_url}")`);
+    root.style.setProperty('--ops-bg-image-fit', fit);
+    root.style.setProperty('--ops-bg-image-opacity', String(opacity / 100));
+  } else {
+    root.removeAttribute('data-bg-image');
+    root.style.removeProperty('--ops-bg-image');
+    root.style.removeProperty('--ops-bg-image-fit');
+    root.style.removeProperty('--ops-bg-image-opacity');
+  }
 }
 
 export function getDefaultAppSettings() {
   return {
-    theme: 'light',
-    theme_mode: 'system',
-    use_system_theme: true,
+    theme: 'dark',
+    theme_mode: 'dark',
+    use_system_theme: false,
     font_family: FONT_PRESETS[0].value,
     font_size: 14,
     terminal_theme: 'default',
-    terminal_font_family: TERMINAL_FONT_PRESETS[0].value,
+    terminal_font_family: TERMINAL_FONT_PRESETS[1].value,
     terminal_font_size: 14,
-    accent_color: 'blue',
+    accent_color: 'teal',
     compact_mode: false,
     reduced_motion: false,
-    sidebar_width: 300
+    sidebar_width: 260,
+    background_image_enabled: false,
+    background_image_path: '',
+    background_image_fit: 'cover',
+    background_image_opacity: 35,
+    background_image_data_url: ''
   };
 }

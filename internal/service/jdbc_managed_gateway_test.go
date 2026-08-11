@@ -119,6 +119,34 @@ func TestManagedJDBCGatewayListsKingbaseDatabasesThroughPostgreSQLCatalog(t *tes
 	}
 }
 
+func TestManagedJDBCGatewayClearsOracleCatalogForMetadata(t *testing.T) {
+	client := &managedGatewayClient{}
+	supervisor := &managedGatewaySupervisor{
+		current: &JDBCAgentConnection{Client: client, Token: "token"},
+	}
+	gateway := NewManagedJDBCGateway(supervisor)
+	gateway.SetProfileResolver(func(context.Context, config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return config.JDBCDriverProfile{ID: "oracle", DriverClass: "oracle.jdbc.OracleDriver"}, nil
+	})
+	if err := gateway.ConnectDatabase(context.Background(), "oracle-session", config.DatabaseConfig{DBType: "oracle", Database: "pdb"}); err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+
+	if _, err := gateway.GetTableSchemaInDatabaseAndSchema(context.Background(), "oracle-session", "pdb", "HR", "USERS"); err != nil {
+		t.Fatalf("get schema failed: %v", err)
+	}
+	if len(client.columnRequests) != 1 {
+		t.Fatalf("expected one listColumns call, got %d", len(client.columnRequests))
+	}
+	req := client.columnRequests[0]
+	if req.GetCatalog() != "" {
+		t.Fatalf("oracle catalog should be cleared, got %q", req.GetCatalog())
+	}
+	if req.GetSchema() != "HR" || req.GetTable() != "USERS" {
+		t.Fatalf("unexpected schema request: %+v", req)
+	}
+}
+
 type managedGatewaySupervisor struct {
 	current      *JDBCAgentConnection
 	restarted    *JDBCAgentConnection
@@ -136,11 +164,12 @@ func (s *managedGatewaySupervisor) Restart(context.Context) (*JDBCAgentConnectio
 }
 
 type managedGatewayClient struct {
-	openRequests  []*jdbcproto.OpenSessionRequest
-	queryRequests []*jdbcproto.ExecuteQueryRequest
-	queryErr      error
-	queryResult   *jdbcproto.QueryResult
-	queryCalls    int
+	openRequests   []*jdbcproto.OpenSessionRequest
+	queryRequests  []*jdbcproto.ExecuteQueryRequest
+	columnRequests []*jdbcproto.ListColumnsRequest
+	queryErr       error
+	queryResult    *jdbcproto.QueryResult
+	queryCalls     int
 }
 
 func (c *managedGatewayClient) OpenSession(_ context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error) {
@@ -172,7 +201,8 @@ func (c *managedGatewayClient) ListTables(context.Context, *jdbcproto.ListTables
 	return &jdbcproto.ListTablesResponse{}, nil
 }
 
-func (c *managedGatewayClient) ListColumns(context.Context, *jdbcproto.ListColumnsRequest) (*jdbcproto.ListColumnsResponse, error) {
+func (c *managedGatewayClient) ListColumns(_ context.Context, request *jdbcproto.ListColumnsRequest) (*jdbcproto.ListColumnsResponse, error) {
+	c.columnRequests = append(c.columnRequests, request)
 	return &jdbcproto.ListColumnsResponse{}, nil
 }
 

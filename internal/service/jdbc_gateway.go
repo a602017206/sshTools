@@ -91,7 +91,7 @@ func (s *JdbcGatewayService) ExecuteQuery(ctx context.Context, sessionID string,
 	result, err := s.client.ExecuteQuery(ctx, &jdbcproto.ExecuteQueryRequest{
 		Token:     s.token,
 		SessionId: sessionID,
-		Sql:       query,
+		Sql:       sanitizeJDBCSQL(query),
 	})
 	if err != nil {
 		return nil, mapJdbcGatewayError(err)
@@ -244,4 +244,14 @@ func mapJdbcGatewayError(err error) error {
 		return err
 	}
 	return newJDBCError(err.Error(), err)
+}
+
+// sanitizeJDBCSQL strips trailing statement terminators. Oracle JDBC rejects a
+// trailing semicolon with ORA-00933 ("SQL command not properly ended").
+func sanitizeJDBCSQL(query string) string {
+	trimmed := strings.TrimSpace(query)
+	for strings.HasSuffix(trimmed, ";") {
+		trimmed = strings.TrimSpace(strings.TrimSuffix(trimmed, ";"))
+	}
+	return trimmed
 }

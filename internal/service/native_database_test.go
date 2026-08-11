@@ -56,6 +56,34 @@ func TestNativeDatabaseServiceConnectsAndBrowsesResources(t *testing.T) {
 	}
 }
 
+func TestNativeDatabaseServiceCloseAllClosesEverySession(t *testing.T) {
+	clientA := &fakeNativeDatabaseClient{}
+	clientB := &fakeNativeDatabaseClient{}
+	provider := &sequencedNativeProvider{clients: []*fakeNativeDatabaseClient{clientA, clientB}}
+	service := NewNativeDatabaseService(map[NativeDatabaseType]NativeDatabaseProvider{
+		NativeDatabaseTypeRedis: provider,
+	})
+
+	if err := service.Connect(context.Background(), "a", NativeDatabaseConfig{Type: NativeDatabaseTypeRedis}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Connect(context.Background(), "b", NativeDatabaseConfig{Type: NativeDatabaseTypeRedis}); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.ListSessions(); len(got) != 2 {
+		t.Fatalf("expected 2 sessions, got %v", got)
+	}
+	if err := service.CloseAll(); err != nil {
+		t.Fatalf("CloseAll: %v", err)
+	}
+	if got := service.ListSessions(); len(got) != 0 {
+		t.Fatalf("expected no sessions, got %v", got)
+	}
+	if !clientA.closed || !clientB.closed {
+		t.Fatal("expected all native clients closed")
+	}
+}
+
 func TestNativeDatabaseServiceRejectsUnsupportedTypeAndUnknownSession(t *testing.T) {
 	service := NewNativeDatabaseService(nil)
 	if err := service.Connect(context.Background(), "unsupported", NativeDatabaseConfig{Type: "unknown"}); err == nil {
@@ -115,4 +143,20 @@ func (c *fakeNativeDatabaseClient) ListSecondaryResources(_ context.Context, par
 func (c *fakeNativeDatabaseClient) Close() error {
 	c.closed = true
 	return nil
+}
+
+type sequencedNativeProvider struct {
+	clients []*fakeNativeDatabaseClient
+	next    int
+}
+
+func (*sequencedNativeProvider) Test(context.Context, NativeDatabaseConfig) error { return nil }
+
+func (p *sequencedNativeProvider) Connect(context.Context, NativeDatabaseConfig) (NativeDatabaseClient, error) {
+	if p.next >= len(p.clients) {
+		return nil, errors.New("no more fake clients")
+	}
+	client := p.clients[p.next]
+	p.next++
+	return client, nil
 }

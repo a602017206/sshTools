@@ -100,6 +100,26 @@ func TestJdbcGatewayExecuteQueryConvertsRows(t *testing.T) {
 	}
 }
 
+func TestJdbcGatewayExecuteQueryStripsTrailingSemicolons(t *testing.T) {
+	client := &fakeJdbcAgentClient{
+		queryResult: &jdbcproto.QueryResult{Columns: []string{"ID"}},
+	}
+	gateway := NewJdbcGatewayService(client, "secret")
+
+	if _, err := gateway.ExecuteQuery(context.Background(), "db-test", "SELECT * FROM \"T\" FETCH FIRST 100 ROWS ONLY;\n"); err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if client.querySQL != `SELECT * FROM "T" FETCH FIRST 100 ROWS ONLY` {
+		t.Fatalf("expected trailing semicolon stripped, got %q", client.querySQL)
+	}
+}
+
+func TestSanitizeJDBCSQL(t *testing.T) {
+	if got := sanitizeJDBCSQL("  select 1; ; "); got != "select 1" {
+		t.Fatalf("unexpected sanitize result: %q", got)
+	}
+}
+
 func TestJdbcGatewayMapsDriverMissingError(t *testing.T) {
 	client := &fakeJdbcAgentClient{openErr: errors.New("DRIVER_MISSING: h2")}
 	gateway := NewJdbcGatewayService(client, "secret")

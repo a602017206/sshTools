@@ -1,9 +1,10 @@
 <script>
-  import { assetsStore, groupedAssetsStore } from '../stores.js';
+  import { assetsStore, groupedAssetsStore, connectionsStore, activeSessionIdStore } from '../stores.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import Dialog from './ui/Dialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
   import DatabaseSidebarTree from './DatabaseSidebarTree.svelte';
+  import { onMount } from 'svelte';
 
   export let onConnect;
   export let onAddClick;
@@ -24,6 +25,7 @@
   let showPassphraseConfirm = false;
   let passphraseValue = '';
   let showImportPassphraseInput = false;
+  let appVersion = '';
 
   let expandedDatabaseAssets = new Set();
   let expandedDatabaseNames = {};
@@ -33,6 +35,37 @@
   let showDbContextMenu = false;
   let dbContextMenuAsset = null;
   let dbContextMenuPosition = { x: 0, y: 0 };
+
+  $: activeAssetId = (() => {
+    const session = $connectionsStore?.get?.($activeSessionIdStore);
+    return session?.connection?.id || null;
+  })();
+
+  onMount(async () => {
+    try {
+      const { GetVersion } = await import('../../wailsjs/go/main/App.js');
+      appVersion = await GetVersion();
+    } catch {
+      appVersion = '';
+    }
+  });
+
+  function getAssetLinkState(asset) {
+    const sessions = Array.from($connectionsStore?.values?.() || []).filter(
+      (session) => session?.connection?.id === asset.id
+    );
+    if (sessions.some((session) => session && session.connected === false && !session.panelType)) {
+      return 'connecting';
+    }
+    if (asset.type === 'database') {
+      if (asset.dbConnected || sessions.some((session) => session?.connected)) return 'online';
+      if (asset.status === 'error') return 'error';
+      return 'idle';
+    }
+    if (sessions.some((session) => session?.connected) || asset.status === 'online') return 'online';
+    if (asset.status === 'error') return 'error';
+    return 'idle';
+  }
 
   function showMessage(title, message) {
     const showDialog = window.wailsBindings?.ShowMessageDialog;
@@ -564,7 +597,7 @@
   }
 </script>
 
-<div class="h-full flex flex-col ops-sidebar" on:click={handleClickOutside}>
+<div class="h-full flex flex-col" on:click={handleClickOutside}>
   <!-- 头部 -->
   <div class="px-3 py-3 border-b" style="border-color: var(--border-primary);">
     <div class="flex items-center justify-between mb-2">
@@ -686,6 +719,7 @@
                   on:click={() => onConnect(asset)}
                   on:contextmenu={(event) => openDbContextMenu(asset, event)}
                   class="ops-asset-row group relative flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer transition-all"
+                  class:is-active={asset.id === activeAssetId}
                   role="button"
                   tabindex="0"
                   title={`${asset.username}@${asset.host}:${asset.port}`}
@@ -699,30 +733,33 @@
                   {#if asset.type === 'database'}
                     <button
                       type="button"
-                      class="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100 dark:hover:bg-gray-700"
+                      class="ops-asset-expand flex-shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-[var(--bg-hover)]"
                       on:click|stopPropagation={() => toggleDatabaseAsset(asset)}
-                      title={asset.dbConnected ? '展开数据库' : '连接后展开'}
+                      title={asset.dbConnected ? (expandedDatabaseAssets.has(asset.id) ? '收起数据库' : '展开数据库') : '连接后展开'}
+                      aria-expanded={expandedDatabaseAssets.has(asset.id)}
                     >
                       {#if expandedDatabaseAssets.has(asset.id)}
-                        <svg class="w-3 h-3 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-3 h-3" style="color: var(--text-secondary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       {:else}
-                        <svg class="w-3 h-3 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-3 h-3" style="color: var(--text-secondary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                         </svg>
                       {/if}
                     </button>
                   {/if}
+                  <span
+                    class={`ops-pulse is-${getAssetLinkState(asset)}`}
+                    title={getAssetLinkState(asset)}
+                    aria-hidden="true"
+                  ></span>
                   <div class="flex-shrink-0">
                     {@html getAssetIcon(asset.type)}
                   </div>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
                       <span class="text-xs font-medium truncate" style="color: var(--text-primary);">{asset.name}</span>
-                      <div class={`ops-status-dot w-2 h-2 rounded-full flex-shrink-0 ${
-                        asset.status === 'online' ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`} />
                     </div>
                   </div>
                   <div class="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
@@ -760,11 +797,19 @@
       </div>
     {/each}
   </div>
+
+  <div class="brand-watermark mt-auto border-t" style="border-color: var(--border-secondary);">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 3 4.5 7.5v9L12 21l7.5-4.5v-9L12 3Z" />
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 7.5 12 12l7.5-4.5M12 12v9" />
+    </svg>
+    <span>AHa{appVersion ? `  v${appVersion}` : ''}</span>
+  </div>
 </div>
 
 {#if showDbContextMenu && dbContextMenuAsset}
   <div
-    class="fixed z-[120] w-40 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
+    class="ops-flyout fixed z-[120] w-40 rounded-xl"
     style={`top: ${dbContextMenuPosition.y}px; left: ${dbContextMenuPosition.x}px;`}
   >
     <button
@@ -775,7 +820,7 @@
       <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
       </svg>
-      <span>断开连接</span>
+      <span>断开</span>
     </button>
   </div>
 {/if}

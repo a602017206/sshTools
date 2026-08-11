@@ -94,6 +94,14 @@ func (s *SessionService) CloseSession(sessionID string) error {
 	return s.sessionManager.CloseSession(sessionID)
 }
 
+// CloseAllSessions closes every active SSH/local session.
+func (s *SessionService) CloseAllSessions() error {
+	if s == nil || s.sessionManager == nil {
+		return nil
+	}
+	return s.sessionManager.CloseAllSessions()
+}
+
 // ListSessions returns all active session IDs
 func (s *SessionService) ListSessions() []string {
 	return s.sessionManager.ListSessions()

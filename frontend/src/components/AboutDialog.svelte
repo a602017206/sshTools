@@ -41,7 +41,7 @@
 <Dialog bind:isOpen={isOpen} onClose={onClose} title="关于 AHaSSHTools" size="sm">
   <div class="flex flex-col items-center gap-5 py-4">
     <!-- Logo -->
-    <div class="w-20 h-20 bg-gradient-to-br from-purple-600 to-blue-600 rounded-2xl flex items-center justify-center font-bold text-3xl text-white shadow-lg">
+    <div class="w-20 h-20 rounded-2xl flex items-center justify-center font-bold text-3xl text-white shadow-lg" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));">
       哈
     </div>
 

@@ -83,6 +83,26 @@ func TestDatabaseService_CloseDatabase_RemovesSession(t *testing.T) {
 	}
 }
 
+func TestDatabaseServiceCloseAllSessionsClosesGatewaySessions(t *testing.T) {
+	gateway := &fakeJdbcGateway{}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+	if err := ds.ConnectDatabase("db-a", "localhost", 3306, "u", "p", "mysql", "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ds.ConnectDatabase("db-b", "localhost", 3306, "u", "p", "mysql", "b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ds.CloseAllSessions(); err != nil {
+		t.Fatalf("CloseAllSessions: %v", err)
+	}
+	if got := ds.ListSessions(); len(got) != 0 {
+		t.Fatalf("expected no sessions, got %v", got)
+	}
+	if gateway.closeCalls != 2 {
+		t.Fatalf("closeCalls = %d, want 2", gateway.closeCalls)
+	}
+}
+
 func TestDatabaseServiceDelegatesConnectToJdbcGateway(t *testing.T) {
 	gateway := &fakeJdbcGateway{}
 	ds := NewDatabaseServiceWithGateway(nil, gateway)

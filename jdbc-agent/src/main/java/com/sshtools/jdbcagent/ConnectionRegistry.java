@@ -9,9 +9,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ConnectionRegistry {
     private final Map<String, Connection> connections = new ConcurrentHashMap<>();
+    private final Map<String, Object> locks = new ConcurrentHashMap<>();
 
     public void put(String sessionId, Connection connection) {
         connections.put(sessionId, connection);
+        locks.computeIfAbsent(sessionId, ignored -> new Object());
     }
 
     public Connection get(String sessionId) {
@@ -24,12 +26,33 @@ public class ConnectionRegistry {
         return connection;
     }
 
-    public boolean close(String sessionId) throws SQLException {
-        Connection connection = connections.remove(sessionId);
-        if (connection == null) {
-            return false;
+    public Object lockFor(String sessionId) {
+        get(sessionId);
+        return locks.computeIfAbsent(sessionId, ignored -> new Object());
+    }
+
+    public <T> T withConnection(String sessionId, ConnectionCallback<T> callback) throws Exception {
+        Connection connection = get(sessionId);
+        synchronized (lockFor(sessionId)) {
+            return callback.apply(connection);
         }
-        connection.close();
-        return true;
+    }
+
+    public boolean close(String sessionId) throws SQLException {
+        Object lock = locks.computeIfAbsent(sessionId, ignored -> new Object());
+        synchronized (lock) {
+            Connection connection = connections.remove(sessionId);
+            locks.remove(sessionId);
+            if (connection == null) {
+                return false;
+            }
+            connection.close();
+            return true;
+        }
+    }
+
+    @FunctionalInterface
+    public interface ConnectionCallback<T> {
+        T apply(Connection connection) throws Exception;
     }
 }

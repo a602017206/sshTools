@@ -749,11 +749,11 @@
   });
 </script>
 
-<div class="h-full flex flex-col bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+<div class="file-manager h-full flex flex-col">
   <!-- 头部工具栏 -->
-  <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+  <div class="file-manager__toolbar p-3">
     <div class="flex items-center justify-between mb-2">
-       <h3 class="text-sm font-semibold text-gray-900 dark:text-white">文件管理</h3>
+       <h3 class="text-sm font-semibold" style="color: var(--text-primary);">文件管理</h3>
        <div class="flex items-center gap-1">
           <button
             on:click={handleRefresh}
@@ -782,10 +782,8 @@
                 }
               }}
               disabled={isLocalSession}
-              class={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                currentTrackingEnabled
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              class={`file-manager__track flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                currentTrackingEnabled ? 'is-on' : ''
               }`}
               title="切换目录跟踪"
             >
@@ -839,7 +837,7 @@
 
     <!-- 路径导航 -->
     <div class="flex items-center gap-2">
-      <div class="flex-1 flex items-center gap-1 text-xs bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+      <div class="file-manager__path flex-1 flex items-center gap-1 text-xs rounded-xl px-3 py-2">
         <button
           on:click={() => handleBreadcrumbClick(-1)}
           class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
@@ -863,12 +861,12 @@
             }}
             on:blur={handleSaveEditPath}
             use:focus
-            class="flex-1 bg-white dark:bg-gray-800 border border-purple-300 dark:border-purple-600 rounded px-2 py-1 text-purple-600 dark:text-purple-400 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
+            class="file-manager__path-input flex-1 rounded px-2 py-1 font-medium focus:outline-none"
           />
         {:else}
           <span
             on:click={handleStartEditPath}
-            class="flex-1 text-purple-600 dark:text-purple-400 font-medium cursor-text hover:bg-purple-100 dark:hover:bg-purple-900/30 px-2 py-1 rounded transition-colors"
+            class="file-manager__path-text flex-1 font-medium cursor-text px-2 py-1 rounded transition-colors"
             title="点击编辑路径"
           >
             {#if currentPath === '/'}
@@ -909,7 +907,7 @@
                  type="text"
                  bind:value={historyFilter}
                  placeholder="搜索历史..."
-                 class="w-full px-2 py-1 text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                 class="w-full px-2 py-1 text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-[var(--ops-signal)]"
                />
              </div>
               {#if filteredHistory.length > 0}
@@ -920,7 +918,7 @@
                       showHistoryDropdown = false;
                       historyFilter = '';
                     }}
-                    class="w-full text-left px-3 py-1.5 text-xs text-gray-900 dark:text-white hover:bg-purple-50 dark:hover:bg-purple-900/30 truncate"
+                    class="w-full text-left px-3 py-1.5 text-xs text-gray-900 dark:text-white file-manager__row truncate"
                   >
                     {path}
                   </button>
@@ -1056,7 +1054,7 @@
      {:else}
       {#each displayFiles as file, index (file.path)}
         <div
-          class="group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors mx-2 my-0.5 rounded-lg {file.is_parent ? 'text-gray-500 dark:text-gray-400 italic' : ''} {selectedFiles.has(file.path) && !file.is_parent ? 'bg-purple-100 dark:bg-purple-900/40' : 'hover:bg-purple-50 dark:hover:bg-purple-900/20'}"
+          class="group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors mx-2 my-0.5 rounded-lg {file.is_parent ? 'text-gray-500 dark:text-gray-400 italic' : ''} {selectedFiles.has(file.path) && !file.is_parent ? 'file-manager__row--selected' : 'file-manager__row'}"
           on:click={() => (file.is_parent ? handleParentClick(file) : handleItemClick(file))}
           on:dblclick={() => {
             if (file.is_dir && !file.is_parent) {
@@ -1113,7 +1111,7 @@
 
   {#if contextMenu.open}
     <div
-      class="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg text-xs py-1 min-w-[140px]"
+      class="ops-flyout fixed z-50 rounded-xl text-xs py-1 min-w-[140px]"
       style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
     >
       <button
@@ -1317,7 +1315,7 @@
                     step="5"
                     bind:value={fileManagerConfig.historyLimit}
                     on:change={handleSaveSettings}
-                    class="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
+                    class="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-600 focus:outline-none focus:ring-2 focus:ring-[var(--ops-signal)]/30"
                   />
                   <div class="flex justify-between text-[10px] text-slate-400 mt-1.5">
                     <span>5</span>
@@ -1360,7 +1358,7 @@
                 {#each fileManagerConfig.history.slice().reverse() as path, index (index)}
                   <div class="group flex items-center justify-between text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-100 dark:border-slate-700/50 hover:border-purple-300 dark:hover:border-purple-700/50 transition-all duration-200">
                     <div class="flex items-center gap-2 flex-1 min-w-0">
-                      <div class="w-5 h-5 flex items-center justify-center rounded-md bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 font-bold text-[10px]">
+                      <div class="w-5 h-5 flex items-center justify-center rounded-md file-manager__row--selected text-purple-600 dark:text-purple-400 font-bold text-[10px]">
                         {fileManagerConfig.history.length - index}
                       </div>
                       <span class="truncate text-slate-700 dark:text-slate-300 font-medium">{path}</span>
@@ -1414,3 +1412,51 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .file-manager {
+    background: transparent;
+    color: var(--text-primary);
+    min-height: 0;
+  }
+  .file-manager__toolbar {
+    border-bottom: 1px solid var(--glass-border);
+    background: color-mix(in srgb, var(--glass-bg) 55%, transparent);
+  }
+  .file-manager__path {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(12px) saturate(var(--glass-saturate));
+  }
+  .file-manager__path-text {
+    color: var(--ops-signal);
+  }
+  .file-manager__path-text:hover {
+    background: var(--accent-subtle);
+  }
+  .file-manager__path-input {
+    border: 1px solid color-mix(in srgb, var(--ops-signal) 45%, var(--glass-border));
+    background: var(--glass-bg-strong);
+    color: var(--ops-signal);
+  }
+  .file-manager__path-input:focus {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ops-signal) 25%, transparent);
+  }
+  .file-manager__track {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    color: var(--text-secondary);
+  }
+  .file-manager__track.is-on {
+    border-color: color-mix(in srgb, var(--ops-success) 40%, var(--glass-border));
+    background: color-mix(in srgb, var(--ops-success) 14%, transparent);
+    color: var(--ops-success);
+  }
+  :global(.file-manager__row:hover) {
+    background: var(--accent-subtle) !important;
+  }
+  :global(.file-manager__row--selected) {
+    background: color-mix(in srgb, var(--accent-subtle) 88%, var(--glass-bg-strong)) !important;
+  }
+</style>

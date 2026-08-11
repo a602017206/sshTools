@@ -31,20 +31,24 @@ type AppConfig struct {
 
 // AppSettings represents application settings
 type AppSettings struct {
-	Theme              string `json:"theme"`
-	ThemeMode          string `json:"theme_mode"`
-	UseSystemTheme     bool   `json:"use_system_theme"`
-	AccentColor        string `json:"accent_color"`
-	FontFamily         string `json:"font_family"`
-	FontSize           int    `json:"font_size"`
-	TerminalTheme      string `json:"terminal_theme"`
-	TerminalFontFamily string `json:"terminal_font_family"`
-	TerminalFontSize   int    `json:"terminal_font_size"`
-	CompactMode        bool   `json:"compact_mode"`
-	ReducedMotion      bool   `json:"reduced_motion"`
-	SidebarWidth       int    `json:"sidebar_width"`
-	JDBCRuntimeMode    string `json:"jdbc_runtime_mode"`
-	JDBCSystemJavaPath string `json:"jdbc_system_java_path"`
+	Theme                  string `json:"theme"`
+	ThemeMode              string `json:"theme_mode"`
+	UseSystemTheme         bool   `json:"use_system_theme"`
+	AccentColor            string `json:"accent_color"`
+	FontFamily             string `json:"font_family"`
+	FontSize               int    `json:"font_size"`
+	TerminalTheme          string `json:"terminal_theme"`
+	TerminalFontFamily     string `json:"terminal_font_family"`
+	TerminalFontSize       int    `json:"terminal_font_size"`
+	CompactMode            bool   `json:"compact_mode"`
+	ReducedMotion          bool   `json:"reduced_motion"`
+	SidebarWidth           int    `json:"sidebar_width"`
+	BackgroundImageEnabled bool   `json:"background_image_enabled"`
+	BackgroundImagePath    string `json:"background_image_path"`
+	BackgroundImageFit     string `json:"background_image_fit"`
+	BackgroundImageOpacity int    `json:"background_image_opacity"`
+	JDBCRuntimeMode        string `json:"jdbc_runtime_mode"`
+	JDBCSystemJavaPath     string `json:"jdbc_system_java_path"`
 
 	// Monitor panel settings
 	MonitorCollapsed       bool `json:"monitor_collapsed"`
@@ -72,17 +76,21 @@ type FileManagerSettings struct {
 func DefaultSettings() AppSettings {
 	return AppSettings{
 		Theme:                  "dark",
-		ThemeMode:              "system",
-		UseSystemTheme:         true,
+		ThemeMode:              "dark",
+		UseSystemTheme:         false,
 		AccentColor:            "teal",
-		FontFamily:             "\"Avenir Next\", \"SF Pro Text\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+		FontFamily:             "\"SF Pro Text\", \"Inter\", \"Avenir Next\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
 		FontSize:               14,
 		TerminalTheme:          "default",
-		TerminalFontFamily:     "Menlo, Monaco, \"Courier New\", monospace",
+		TerminalFontFamily:     "\"JetBrains Mono\", Menlo, Monaco, \"Courier New\", monospace",
 		TerminalFontSize:       14,
 		CompactMode:            false,
 		ReducedMotion:          false,
-		SidebarWidth:           300,
+		SidebarWidth:           260,
+		BackgroundImageEnabled: false,
+		BackgroundImagePath:    "",
+		BackgroundImageFit:     "cover",
+		BackgroundImageOpacity: 35,
 		MonitorCollapsed:       true,
 		MonitorWidth:           350,
 		MonitorRefreshInterval: 2,
@@ -303,6 +311,21 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 	if reducedMotion, ok := updates["reduced_motion"].(bool); ok {
 		cm.config.Settings.ReducedMotion = reducedMotion
+	}
+	if backgroundImageEnabled, ok := updates["background_image_enabled"].(bool); ok {
+		cm.config.Settings.BackgroundImageEnabled = backgroundImageEnabled
+	}
+	if backgroundImagePath, ok := updates["background_image_path"].(string); ok {
+		cm.config.Settings.BackgroundImagePath = backgroundImagePath
+	}
+	if backgroundImageFit, ok := updates["background_image_fit"].(string); ok {
+		cm.config.Settings.BackgroundImageFit = backgroundImageFit
+	}
+	if backgroundImageOpacity, ok := updates["background_image_opacity"].(float64); ok {
+		cm.config.Settings.BackgroundImageOpacity = int(backgroundImageOpacity)
+	}
+	if backgroundImageOpacity, ok := updates["background_image_opacity"].(int); ok {
+		cm.config.Settings.BackgroundImageOpacity = backgroundImageOpacity
 	}
 
 	// Monitor panel settings

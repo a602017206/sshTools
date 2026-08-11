@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"AHaSSHTools/internal/config"
@@ -73,19 +74,19 @@ func (s *ManagedJDBCGateway) ListTablesInSchema(ctx context.Context, sessionID, 
 
 func (s *ManagedJDBCGateway) ListObjects(ctx context.Context, sessionID, database, schema string, types []string) ([]string, error) {
 	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) ([]string, error) {
-		return gateway.ListObjects(ctx, sessionID, database, schema, types)
+		return gateway.ListObjects(ctx, sessionID, s.jdbcCatalog(sessionID, database), schema, types)
 	})
 }
 
 func (s *ManagedJDBCGateway) ListSchemas(ctx context.Context, sessionID, database string) ([]string, error) {
 	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) ([]string, error) {
-		return gateway.ListSchemas(ctx, sessionID, database)
+		return gateway.ListSchemas(ctx, sessionID, s.jdbcCatalog(sessionID, database))
 	})
 }
 
 func (s *ManagedJDBCGateway) ListRoutines(ctx context.Context, sessionID, database, schema string, functions bool) ([]string, error) {
 	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) ([]string, error) {
-		return gateway.ListRoutines(ctx, sessionID, database, schema, functions)
+		return gateway.ListRoutines(ctx, sessionID, s.jdbcCatalog(sessionID, database), schema, functions)
 	})
 }
 
@@ -130,7 +131,7 @@ func (s *ManagedJDBCGateway) GetTableSchemaInSchema(ctx context.Context, session
 // GetTableSchemaInDatabaseAndSchema delegates catalog and schema scoped metadata loading to the active JDBC agent.
 func (s *ManagedJDBCGateway) GetTableSchemaInDatabaseAndSchema(ctx context.Context, sessionID, database, schema, table string) (*config.TableSchema, error) {
 	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) (*config.TableSchema, error) {
-		return gateway.GetTableSchemaInDatabaseAndSchema(ctx, sessionID, database, schema, table)
+		return gateway.GetTableSchemaInDatabaseAndSchema(ctx, sessionID, s.jdbcCatalog(sessionID, database), schema, table)
 	})
 }
 
@@ -154,6 +155,20 @@ func (s *ManagedJDBCGateway) ActiveSessionConfigs() map[string]config.DatabaseCo
 		sessions[sessionID] = cfg
 	}
 	return sessions
+}
+
+func (s *ManagedJDBCGateway) jdbcCatalog(sessionID, database string) string {
+	cfg, ok := s.sessionConfig(sessionID)
+	if !ok {
+		return database
+	}
+	switch strings.ToLower(cfg.DBType) {
+	case "oracle", "dm":
+		// Oracle/达梦的服务名不是 JDBC catalog；传入会导致元数据扫描异常缓慢。
+		return ""
+	default:
+		return database
+	}
 }
 
 func managedGatewayCall[T any](s *ManagedJDBCGateway, ctx context.Context, sessionID string, call func(*JdbcGatewayService) (T, error)) (T, error) {

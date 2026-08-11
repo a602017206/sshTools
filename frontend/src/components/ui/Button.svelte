@@ -9,9 +9,9 @@
   const baseClasses = 'inline-flex items-center justify-center rounded-lg font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
   
   const variantClasses = {
-    primary: 'accent-gradient hover:brightness-95 text-white shadow-sm',
-    secondary: 'bg-slate-100 hover:bg-slate-200 text-slate-700 focus-visible:ring-slate-500 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200',
-    ghost: 'bg-transparent hover:bg-slate-100 text-slate-700 focus-visible:ring-slate-500 dark:hover:bg-slate-800 dark:text-slate-200',
+    primary: 'accent-gradient hover:brightness-105 text-white shadow-sm',
+    secondary: 'ops-btn-glass text-slate-700 dark:text-slate-200 focus-visible:ring-slate-500',
+    ghost: 'bg-transparent hover:bg-white/40 dark:hover:bg-white/10 text-slate-700 focus-visible:ring-slate-500 dark:text-slate-200',
     danger: 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm focus-visible:ring-rose-500',
   };
   

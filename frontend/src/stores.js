@@ -102,7 +102,7 @@ const defaultUIConfig = {
   isDevToolsOpen: false,
   isFileManagerOpen: false,
   isMonitorOpen: false,
-  sidebarWidth: 288,
+  sidebarWidth: 260,
   rightPanelWidth: 320,
   fileManagerHeight: 50,
 };

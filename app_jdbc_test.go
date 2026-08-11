@@ -436,6 +436,12 @@ func (activationJdbcClient) OpenSession(context.Context, *jdbcproto.OpenSessionR
 func (activationJdbcClient) ExecuteQuery(context.Context, *jdbcproto.ExecuteQueryRequest) (*jdbcproto.QueryResult, error) {
 	return &jdbcproto.QueryResult{}, nil
 }
+func (activationJdbcClient) ListSchemas(context.Context, *jdbcproto.ListSchemasRequest) (*jdbcproto.ListSchemasResponse, error) {
+	return &jdbcproto.ListSchemasResponse{}, nil
+}
+func (activationJdbcClient) ListRoutines(context.Context, *jdbcproto.ListRoutinesRequest) (*jdbcproto.ListRoutinesResponse, error) {
+	return &jdbcproto.ListRoutinesResponse{}, nil
+}
 func (activationJdbcClient) ListTables(context.Context, *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
 	return &jdbcproto.ListTablesResponse{}, nil
 }

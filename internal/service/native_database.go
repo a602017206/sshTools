@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -157,6 +158,35 @@ func (s *NativeDatabaseService) Close(sessionID string) error {
 		return fmt.Errorf("关闭 %s 会话失败: %w", nativeDatabaseTypeName(session.Config.Type), err)
 	}
 	return nil
+}
+
+// ListSessions returns active native database session IDs.
+func (s *NativeDatabaseService) ListSessions() []string {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ids := make([]string, 0, len(s.sessions))
+	for id := range s.sessions {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// CloseAll closes every active native database session.
+func (s *NativeDatabaseService) CloseAll() error {
+	if s == nil {
+		return nil
+	}
+	ids := s.ListSessions()
+	var errs []error
+	for _, id := range ids {
+		if err := s.Close(id); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (s *NativeDatabaseService) provider(databaseType NativeDatabaseType) (NativeDatabaseProvider, error) {

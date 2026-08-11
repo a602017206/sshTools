@@ -137,6 +137,7 @@ func (execAgentCommandRunner) StartWithOutput(ctx context.Context, name, logPath
 
 func startExecAgentProcess(ctx context.Context, name string, logFile *os.File, args ...string) (AgentProcess, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	configureAgentCmd(cmd)
 	if logFile != nil {
 		if _, err := fmt.Fprintf(logFile, "%s JDBC agent 启动: executable=%s\n", time.Now().Format(time.RFC3339), name); err != nil {
 			_ = logFile.Close()
@@ -176,11 +177,23 @@ func (p *execAgentProcess) Stop() error {
 	if !p.Alive() {
 		return nil
 	}
-	err := p.cmd.Process.Kill()
+
+	err := stopAgentCmd(p.cmd)
 	if errors.Is(err, os.ErrProcessDone) {
-		return nil
+		err = nil
 	}
-	return err
+
+	select {
+	case <-p.done:
+		return err
+	case <-time.After(3 * time.Second):
+		forceErr := forceKillAgentCmd(p.cmd)
+		select {
+		case <-p.done:
+		case <-time.After(2 * time.Second):
+		}
+		return errors.Join(err, forceErr)
+	}
 }
 
 func (p *execAgentProcess) Alive() bool {

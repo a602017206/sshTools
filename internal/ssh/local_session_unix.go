@@ -46,6 +46,8 @@ func NewLocalSession(shellType string) (*LocalSession, error) {
 		return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
 
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
 	// Start the process with a pseudo-terminal
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
@@ -81,14 +83,13 @@ func (ls *LocalSession) Close() error {
 		}
 	}
 
-	// Kill the process if it's still running
+	// Kill the process group so child processes of the shell also exit.
 	if ls.cmd != nil && ls.cmd.Process != nil {
-		// Send SIGTERM first for graceful shutdown
-		if killErr := ls.cmd.Process.Signal(syscall.SIGTERM); killErr != nil {
-			// If SIGTERM fails, force kill
-			if killErr2 := ls.cmd.Process.Kill(); killErr2 != nil {
-				if err == nil {
-					err = killErr2
+		pid := ls.cmd.Process.Pid
+		if killErr := syscall.Kill(-pid, syscall.SIGTERM); killErr != nil {
+			if killErr2 := ls.cmd.Process.Signal(syscall.SIGTERM); killErr2 != nil {
+				if killErr3 := ls.cmd.Process.Kill(); killErr3 != nil && err == nil {
+					err = killErr3
 				}
 			}
 		}

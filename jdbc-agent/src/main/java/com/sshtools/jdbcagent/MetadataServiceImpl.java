@@ -32,15 +32,18 @@ public class MetadataServiceImpl extends QueryServiceImpl {
     public void listRoutines(ListRoutinesRequest request, StreamObserver<ListRoutinesResponse> responseObserver) {
         if (!isAuthorized(request.getToken(), responseObserver)) return;
         try {
-            DatabaseMetaData metaData = registry.get(request.getSessionId()).getMetaData();
-            ListRoutinesResponse.Builder response = ListRoutinesResponse.newBuilder();
-            try (ResultSet routines = request.getFunctions()
-                    ? metaData.getFunctions(emptyToNull(request.getCatalog()), emptyToNull(request.getSchema()), null)
-                    : metaData.getProcedures(emptyToNull(request.getCatalog()), emptyToNull(request.getSchema()), null)) {
-                String nameColumn = request.getFunctions() ? "FUNCTION_NAME" : "PROCEDURE_NAME";
-                while (routines.next()) response.addRoutines(routines.getString(nameColumn));
-            }
-            responseObserver.onNext(response.build());
+            ListRoutinesResponse response = registry.withConnection(request.getSessionId(), connection -> {
+                DatabaseMetaData metaData = connection.getMetaData();
+                ListRoutinesResponse.Builder builder = ListRoutinesResponse.newBuilder();
+                try (ResultSet routines = request.getFunctions()
+                        ? metaData.getFunctions(emptyToNull(request.getCatalog()), emptyToNull(request.getSchema()), null)
+                        : metaData.getProcedures(emptyToNull(request.getCatalog()), emptyToNull(request.getSchema()), null)) {
+                    String nameColumn = request.getFunctions() ? "FUNCTION_NAME" : "PROCEDURE_NAME";
+                    while (routines.next()) builder.addRoutines(routines.getString(nameColumn));
+                }
+                return builder.build();
+            });
+            responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (Exception e) {
             responseObserver.onError(Status.fromThrowable(e).withDescription(e.getMessage()).withCause(e).asRuntimeException());
@@ -54,18 +57,20 @@ public class MetadataServiceImpl extends QueryServiceImpl {
         }
 
         try {
-            Connection connection = registry.get(request.getSessionId());
-            DatabaseMetaData metaData = connection.getMetaData();
-            ListSchemasResponse.Builder response = ListSchemasResponse.newBuilder();
-            try (ResultSet schemas = metaData.getSchemas(emptyToNull(request.getCatalog()), null)) {
-                while (schemas.next()) {
-                    String schema = schemas.getString("TABLE_SCHEM");
-                    if (schema != null && !schema.isBlank()) {
-                        response.addSchemas(schema);
+            ListSchemasResponse response = registry.withConnection(request.getSessionId(), connection -> {
+                DatabaseMetaData metaData = connection.getMetaData();
+                ListSchemasResponse.Builder builder = ListSchemasResponse.newBuilder();
+                try (ResultSet schemas = metaData.getSchemas(emptyToNull(request.getCatalog()), null)) {
+                    while (schemas.next()) {
+                        String schema = schemas.getString("TABLE_SCHEM");
+                        if (schema != null && !schema.isBlank()) {
+                            builder.addSchemas(schema);
+                        }
                     }
                 }
-            }
-            responseObserver.onNext(response.build());
+                return builder.build();
+            });
+            responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (Exception e) {
             responseObserver.onError(Status.fromThrowable(e)
@@ -82,21 +87,23 @@ public class MetadataServiceImpl extends QueryServiceImpl {
         }
 
         try {
-            Connection connection = registry.get(request.getSessionId());
-            DatabaseMetaData metaData = connection.getMetaData();
-            ListTablesResponse.Builder response = ListTablesResponse.newBuilder();
-            try (ResultSet tables = metaData.getTables(
-                    emptyToNull(request.getCatalog()),
-                    emptyToNull(request.getSchema()),
-                    null,
-                    request.getTypesCount() == 0
-                            ? new String[]{"TABLE", "SYSTEM TABLE"}
-                            : request.getTypesList().toArray(new String[0]))) {
-                while (tables.next()) {
-                    response.addTables(tables.getString("TABLE_NAME"));
+            ListTablesResponse response = registry.withConnection(request.getSessionId(), connection -> {
+                DatabaseMetaData metaData = connection.getMetaData();
+                ListTablesResponse.Builder builder = ListTablesResponse.newBuilder();
+                try (ResultSet tables = metaData.getTables(
+                        emptyToNull(request.getCatalog()),
+                        emptyToNull(request.getSchema()),
+                        null,
+                        request.getTypesCount() == 0
+                                ? new String[]{"TABLE", "SYSTEM TABLE"}
+                                : request.getTypesList().toArray(new String[0]))) {
+                    while (tables.next()) {
+                        builder.addTables(tables.getString("TABLE_NAME"));
+                    }
                 }
-            }
-            responseObserver.onNext(response.build());
+                return builder.build();
+            });
+            responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (Exception e) {
             responseObserver.onError(Status.fromThrowable(e)
@@ -113,31 +120,33 @@ public class MetadataServiceImpl extends QueryServiceImpl {
         }
 
         try {
-            Connection connection = registry.get(request.getSessionId());
-            DatabaseMetaData metaData = connection.getMetaData();
-            Set<String> primaryKeys = loadPrimaryKeys(metaData, request);
-            ListColumnsResponse.Builder response = ListColumnsResponse.newBuilder();
-            try (ResultSet columns = metaData.getColumns(
-                    emptyToNull(request.getCatalog()),
-                    emptyToNull(request.getSchema()),
-                    request.getTable(),
-                    null)) {
-                while (columns.next()) {
-                    String name = columns.getString("COLUMN_NAME");
-                    response.addColumns(Column.newBuilder()
-                            .setName(name)
-                            .setType(columns.getString("TYPE_NAME"))
-                            .setNullable(columns.getInt("NULLABLE") == DatabaseMetaData.columnNullable)
-                            .setPrimaryKey(primaryKeys.stream().anyMatch(key -> sameIdentifier(key, name)))
-                            .setColumnSize(columns.getInt("COLUMN_SIZE"))
-                            .setDecimalDigits(columns.getInt("DECIMAL_DIGITS"))
-                            .setHasDefault(columns.getObject("COLUMN_DEF") != null)
-                            .setDefaultValue(columns.getObject("COLUMN_DEF") == null ? "" : columns.getString("COLUMN_DEF"))
-                            .setDescription(columns.getString("REMARKS") == null ? "" : columns.getString("REMARKS"))
-                            .build());
+            ListColumnsResponse response = registry.withConnection(request.getSessionId(), connection -> {
+                DatabaseMetaData metaData = connection.getMetaData();
+                Set<String> primaryKeys = loadPrimaryKeys(metaData, request);
+                ListColumnsResponse.Builder builder = ListColumnsResponse.newBuilder();
+                try (ResultSet columns = metaData.getColumns(
+                        emptyToNull(request.getCatalog()),
+                        emptyToNull(request.getSchema()),
+                        request.getTable(),
+                        null)) {
+                    while (columns.next()) {
+                        String name = columns.getString("COLUMN_NAME");
+                        builder.addColumns(Column.newBuilder()
+                                .setName(name)
+                                .setType(columns.getString("TYPE_NAME"))
+                                .setNullable(columns.getInt("NULLABLE") == DatabaseMetaData.columnNullable)
+                                .setPrimaryKey(primaryKeys.stream().anyMatch(key -> sameIdentifier(key, name)))
+                                .setColumnSize(columns.getInt("COLUMN_SIZE"))
+                                .setDecimalDigits(columns.getInt("DECIMAL_DIGITS"))
+                                .setHasDefault(columns.getObject("COLUMN_DEF") != null)
+                                .setDefaultValue(columns.getObject("COLUMN_DEF") == null ? "" : columns.getString("COLUMN_DEF"))
+                                .setDescription(columns.getString("REMARKS") == null ? "" : columns.getString("REMARKS"))
+                                .build());
+                    }
                 }
-            }
-            responseObserver.onNext(response.build());
+                return builder.build();
+            });
+            responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (Exception e) {
             responseObserver.onError(Status.fromThrowable(e)

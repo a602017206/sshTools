@@ -1,6 +1,7 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
   import {
+    buildQualifiedTableName as buildQualifiedTableSQL,
     buildTableBrowseSQL,
     operationNeedsValue,
     operationUsesList,
@@ -9,6 +10,7 @@
   import { formatColumnDescription, formatColumnLength, formatColumnType } from '../lib/tableStructureMetadata.js';
   import { buildGridTemplateColumns, clampColumnWidth, getInitialColumnWidth } from '../lib/tableGridColumns.js';
   import { buildDeleteSQL, buildInsertSQL, buildUpdateSQL } from '../lib/tableDataMutations.js';
+  import { formatConnectionError } from '../lib/formatConnectionError.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
 
   export let sessionId = null;
@@ -45,22 +47,27 @@
 
   const historyLimit = 50;
 
-  function quoteIdentifier(name, quote) {
-    return `${quote}${String(name).replaceAll(quote, `${quote}${quote}`)}${quote}`;
-  }
-
   function buildQualifiedTableName() {
-    if (!tableName) return '';
-    const dbType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase();
-    const schemaScoped = ['postgresql', 'kingbase', 'opengauss'].includes(dbType);
-    const quote = dbType === 'mysql' ? '`' : '"';
-    const parts = schemaScoped ? [schemaName, tableName] : [databaseName, tableName];
-    return parts.filter(Boolean).map(part => quoteIdentifier(part, quote)).join('.');
+    return buildQualifiedTableSQL({
+      databaseType: String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase(),
+      databaseName,
+      schemaName,
+      tableName
+    });
   }
 
-  function buildDefaultQuery() {
+  function buildDefaultQuery(page = 1) {
     const qualifiedName = buildQualifiedTableName();
-    return qualifiedName ? `SELECT * FROM ${qualifiedName} LIMIT 100;` : '';
+    if (!qualifiedName) return '';
+    const size = Number(pageSize) > 0 ? Number(pageSize) : 100;
+    return buildTableBrowseSQL({
+      fromSQL: qualifiedName,
+      databaseType: String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase(),
+      filters: [],
+      sorters: [],
+      limit: size,
+      offset: Math.max(0, (page - 1) * size)
+    });
   }
 
   function createFilterRule() {
@@ -110,13 +117,14 @@
   async function applyQueryBuilder() {
     const qualifiedName = buildQualifiedTableName();
     if (!qualifiedName) return;
+    const size = Number(pageSize) > 0 ? Number(pageSize) : 100;
     query = buildTableBrowseSQL({
       fromSQL: qualifiedName,
       databaseType,
       filters: filterRules,
       sorters: sortRules,
-      limit: pageSize,
-      offset: (currentPage - 1) * pageSize
+      limit: size,
+      offset: (currentPage - 1) * size
     });
     sortState = { key: '', direction: 'desc' };
     await executeQuery();
@@ -196,16 +204,16 @@
     errorMessage = '';
     warningMessage = '';
     try {
-      const sql = query.trim();
+      const sql = query.trim().replace(/;+\s*$/g, '');
       resultData = JSON.parse(await window.wailsBindings.ExecuteDatabaseQuery(sessionId, sql));
       selectedCell = { row: -1, column: -1 };
-      addToHistory(sql);
+      addToHistory(query.trim());
       if (resultData?.rows?.length && !hasOrderBy(sql) && /^\s*select\b/i.test(sql)) {
         warningMessage = '当前查询未包含 ORDER BY，结果行顺序可能不稳定。';
       }
       activeMode = 'data';
     } catch (error) {
-      errorMessage = `查询执行失败: ${error.message || '未知错误'}`;
+      errorMessage = `查询执行失败: ${formatConnectionError(error, '未知错误')}`;
     } finally {
       isLoading = false;
     }
@@ -213,12 +221,18 @@
 
   async function runDefaultQuery(page = 1) {
     currentPage = page;
-    query = buildDefaultQuery().replace('LIMIT 100', `LIMIT ${pageSize}${page > 1 ? ` OFFSET ${(page - 1) * pageSize}` : ''}`);
+    query = buildDefaultQuery(page);
     await executeQuery();
   }
 
   async function loadColumnMetadata() {
     if (!window.wailsBindings || !sessionId || !tableName) return;
+    const dbType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase();
+    // Oracle/达梦在无 schema 时全库扫列元数据极慢，且会与查询争用同一连接。
+    if (['oracle', 'dm'].includes(dbType) && !String(schemaName || '').trim()) {
+      columnMetadata = {};
+      return;
+    }
     try {
       const schema = await window.wailsBindings.GetTableSchemaInSchema(sessionId, databaseName, schemaName, tableName);
       columnMetadata = Object.fromEntries((schema?.columns || []).map(column => [column.name, column]));
@@ -291,7 +305,7 @@
         ? `删除结果：已删除 ${result.affected} 条记录。`
         : '删除结果：未匹配到记录，数据未发生变化。';
     } catch (error) {
-      errorMessage = `删除记录失败: ${error.message || '未知错误'}`;
+      errorMessage = `删除记录失败: ${formatConnectionError(error, '未知错误')}`;
     } finally {
       isMutating = false;
       pendingDelete = null;
@@ -303,7 +317,7 @@
     const statements = Object.entries(groups).map(([rowIndex, changes]) => buildUpdateSQL(mutationInput(filteredRows[Number(rowIndex)], changes))).filter(Boolean);
     if (!statements.length) return;
     isMutating = true;
-    try { for (const statement of statements) await window.wailsBindings.ExecuteDatabaseQuery(sessionId, statement); editedCells = {}; await runDefaultQuery(currentPage); } catch (error) { errorMessage = `保存修改失败: ${error.message || '未知错误'}`; } finally { isMutating = false; }
+    try { for (const statement of statements) await window.wailsBindings.ExecuteDatabaseQuery(sessionId, statement); editedCells = {}; await runDefaultQuery(currentPage); } catch (error) { errorMessage = `保存失败: ${formatConnectionError(error, '未知错误')}`; } finally { isMutating = false; }
   }
 
   function discardChanges() { editedCells = {}; }
@@ -314,7 +328,8 @@
   }
 
   onMount(async () => {
-    loadColumnMetadata();
+    // JDBC Connection 非线程安全：必须先完成元数据再跑查询，避免 Oracle 等驱动并发挂死超时。
+    await loadColumnMetadata();
     if (tableName) await runDefaultQuery();
     else {
       query = initialQuery;
@@ -361,15 +376,15 @@
       <button type="button" class:table-workspace__mode--active={activeMode === 'data'} class="table-workspace__mode" on:click={() => activeMode = 'data'}>数据</button>
       <button type="button" class:table-workspace__mode--active={activeMode === 'sql'} class="table-workspace__mode" on:click={() => activeMode = 'sql'}>SQL</button>
     </nav>
-    <div class="table-workspace__header-meta">{dbTypeLabel || 'JDBC'}{tableName ? ' · LIMIT 100' : ''}</div>
+    <div class="table-workspace__header-meta">{dbTypeLabel || 'JDBC'}{tableName ? ` · ${pageSize} 行/页` : ''}</div>
   </header>
 
   <div class="table-workspace__toolbar table-workspace__query-strip">
-    <button type="button" class="table-workspace__tool table-workspace__tool--primary" title="执行 SQL" on:click={executeQuery} disabled={isLoading}>▶</button>
+    <button type="button" class="table-workspace__tool table-workspace__tool--primary" title="运行" on:click={executeQuery} disabled={isLoading}>▶</button>
     <button type="button" class="table-workspace__tool" title="重新加载当前页" on:click={() => runDefaultQuery(currentPage)} disabled={isLoading || !tableName}>↻</button>
     <button type="button" class:table-workspace__tool--active={queryBuilderOpen} class="table-workspace__tool" title="筛选与排序" on:click={() => queryBuilderOpen = !queryBuilderOpen} disabled={!tableName}>⏷</button>
     <button type="button" class="table-workspace__tool" title="清空结果" on:click={clearResult}>⌫</button>
-    <button type="button" class="table-workspace__tool" title={hasEdits ? '保存修改' : '修改单元格后可保存'} disabled={!hasEdits || isMutating} on:click={saveChanges}>✓</button>
+    <button type="button" class="table-workspace__tool" title={hasEdits ? '保存' : '修改单元格后可保存'} disabled={!hasEdits || isMutating} on:click={saveChanges}>✓</button>
     <button type="button" class="table-workspace__tool" title={hasEdits ? '放弃修改' : '当前没有待放弃的修改'} disabled={!hasEdits || isMutating} on:click={discardChanges}>↶</button>
     <span class="table-workspace__divider"></span>
     <button type="button" class="table-workspace__tool" title="打开 SQL 编辑器" on:click={() => activeMode = 'sql'}>{'</>'}</button>
@@ -464,8 +479,8 @@
 
   {#if activeMode === 'sql'}
     <section class="table-workspace__sql-panel" aria-label="SQL 编辑器">
-      <textarea bind:value={query} placeholder="输入 SQL，Ctrl+Enter 执行" on:keydown={(event) => { if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); executeQuery(); } }}></textarea>
-      <div><span>Ctrl+Enter 执行</span><button type="button" on:click={executeQuery} disabled={isLoading}>执行 SQL</button></div>
+      <textarea bind:value={query} placeholder="输入 SQL，Ctrl+Enter 运行" on:keydown={(event) => { if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); executeQuery(); } }}></textarea>
+      <div><span>Ctrl+Enter 运行</span><button type="button" on:click={executeQuery} disabled={isLoading}>运行</button></div>
     </section>
   {/if}
 
@@ -500,12 +515,25 @@
             <div class="table-workspace__grid-row" class:table-workspace__grid-row--selected={selectedCell.row === rowIndex} role="row" style={`grid-template-columns: ${gridTemplateColumns};`}>
               <span class="table-workspace__row-number" role="cell">{rowIndex + 1}</span>
               {#each row as cell, columnIndex}
-                <input class:table-workspace__cell--active={selectedCell.row === rowIndex && selectedCell.column === columnIndex} class:table-workspace__cell--edited={editedValue(rowIndex, columnIndex, cell) !== cell} class="table-workspace__cell" role="cell" value={editedValue(rowIndex, columnIndex, cell) ?? ''} title={String(cell ?? '')} on:focus={() => selectedCell = { row: rowIndex, column: columnIndex }} on:input={(event) => editCell(rowIndex, columnIndex, event.currentTarget.value)} on:contextmenu={(event) => openContextMenu(event, rowIndex, row)} />
+                <input
+                  class:table-workspace__cell--active={selectedCell.row === rowIndex && selectedCell.column === columnIndex}
+                  class:table-workspace__cell--edited={editedValue(rowIndex, columnIndex, cell) !== cell}
+                  class:table-workspace__cell--null={cell === null || cell === undefined}
+                  class:table-workspace__cell--empty={cell === ''}
+                  class="table-workspace__cell"
+                  role="cell"
+                  value={editedValue(rowIndex, columnIndex, cell) ?? ''}
+                  placeholder={cell === null || cell === undefined ? 'NULL' : cell === '' ? '∅' : ''}
+                  title={cell === null || cell === undefined ? 'NULL' : String(cell)}
+                  on:focus={() => selectedCell = { row: rowIndex, column: columnIndex }}
+                  on:input={(event) => editCell(rowIndex, columnIndex, event.currentTarget.value)}
+                  on:contextmenu={(event) => openContextMenu(event, rowIndex, row)}
+                />
               {/each}
             </div>
           {/each}
         {:else}
-          <div class="table-workspace__empty">{isLoading ? '正在加载表数据...' : '暂无结果，执行查询后显示数据'}</div>
+          <div class="table-workspace__empty">{isLoading ? '正在加载表数据...' : '暂无结果，运行查询后显示数据'}</div>
         {/if}
       </div>
     </main>
@@ -614,8 +642,8 @@
   .table-workspace__grid-head, .table-workspace__grid-row { display: grid; min-height: 32px; }
   .table-workspace__grid-head { position: sticky; top: 0; z-index: 2; background: var(--bg-secondary); border-bottom: 1px solid var(--border-primary); }
   .table-workspace__grid-row { border-bottom: 1px solid var(--border-primary); }
-  .table-workspace__grid-row:hover { background: color-mix(in srgb, #1586d1 5%, transparent); }
-  .table-workspace__grid-row--selected { background: color-mix(in srgb, #1586d1 8%, transparent); }
+  .table-workspace__grid-row:hover { background: var(--bg-hover); }
+  .table-workspace__grid-row--selected { background: var(--bg-active); }
   .table-workspace__row-number { position: sticky; left: 0; z-index: 1; padding: 8px 9px; text-align: right; color: var(--text-secondary); background: var(--bg-secondary); border-right: 1px solid var(--border-primary); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
   .table-workspace__grid-head .table-workspace__row-number { z-index: 3; }
   .table-workspace__column { position: relative; min-width: 0; min-height: 54px; border-right: 1px solid var(--border-primary); }
@@ -627,7 +655,13 @@
   .table-workspace__column-resizer { position: absolute; top: 0; right: -5px; z-index: 4; width: 9px; height: 100%; padding: 0; border: 0; background: transparent; cursor: col-resize; }
   .table-workspace__column-resizer:hover, .table-workspace__column-resizer:focus-visible { background: color-mix(in srgb, #1586d1 42%, transparent); outline: 0; }
   .table-workspace__cell { min-width: 0; overflow: hidden; padding: 8px 10px; border: 0; border-right: 1px solid var(--border-primary); background: transparent; color: var(--text-primary); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: cell; font-size: 12px; }
-  .table-workspace__cell--active { outline: 2px solid #1586d1; outline-offset: -2px; background: color-mix(in srgb, #1586d1 12%, transparent); }
+  .table-workspace__cell--active { outline: 2px solid var(--accent-primary); outline-offset: -2px; background: var(--bg-active); }
+  .table-workspace__cell--null::placeholder,
+  .table-workspace__cell--empty::placeholder {
+    color: var(--text-tertiary);
+    font-style: italic;
+    opacity: 0.7;
+  }
   .table-workspace__empty { min-height: 180px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); font-size: 13px; }
   .table-workspace__details { padding: 15px; border-left: 1px solid var(--border-primary); background: var(--bg-secondary); overflow-y: auto; }
   .table-workspace__details section + section { margin-top: 24px; }
@@ -678,9 +712,34 @@
   .table-workspace__pagination { display: flex; align-items: center; gap: 5px; }
   .table-workspace__pagination button, .table-workspace__pagination select { min-width: 26px; height: 24px; border: 1px solid #d9e0e4; border-radius: 3px; background: #fff; color: #31414d; font: inherit; }
   .table-workspace__pagination select { padding: 0 5px; }
-  .table-workspace__context-menu { position: fixed; z-index: 20; min-width: 146px; padding: 4px; border: 1px solid #cfd8dc; border-radius: 4px; background: #fff; box-shadow: 0 8px 20px rgb(29 41 53 / .16); }
-  .table-workspace__context-menu button { display: block; width: 100%; padding: 7px 9px; border: 0; background: transparent; color: #31414d; text-align: left; cursor: pointer; font-size: 12px; }
-  .table-workspace__context-menu button:hover:not(:disabled) { background: #eff6f5; color: #0e6674; }
+  .table-workspace__context-menu {
+    position: fixed;
+    z-index: 20;
+    min-width: 146px;
+    padding: 4px;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: var(--glass-bg-strong);
+    box-shadow: var(--shadow-lg), var(--shadow-glass);
+    backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(var(--glass-saturate));
+  }
+  .table-workspace__context-menu button {
+    display: block;
+    width: 100%;
+    padding: 7px 9px;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    font-size: 12px;
+    border-radius: 8px;
+  }
+  .table-workspace__context-menu button:hover:not(:disabled) {
+    background: var(--accent-subtle);
+    color: var(--ops-signal);
+  }
   .table-workspace__inspector { padding: 18px 16px; border-left-color: #d9e0e4; background: #f7f8f5; }
   .table-workspace__details h2 { margin-bottom: 10px; color: #31414d; font-size: 11px; letter-spacing: .04em; }
   .table-workspace__details section + section { margin-top: 28px; }

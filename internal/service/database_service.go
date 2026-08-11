@@ -257,7 +257,7 @@ func (ds *DatabaseService) ExecuteQuery(sessionID, query string) (*QueryResult, 
 		return nil, fmt.Errorf("database connection not available: %s", sessionID)
 	}
 
-	trimmed := strings.TrimSpace(query)
+	trimmed := sanitizeJDBCSQL(query)
 	if trimmed == "" {
 		return nil, fmt.Errorf("query is empty")
 	}
@@ -698,6 +698,21 @@ func (ds *DatabaseService) ListSessions() []string {
 		sessions = append(sessions, id)
 	}
 	return sessions
+}
+
+// CloseAllSessions closes every active database session.
+func (ds *DatabaseService) CloseAllSessions() error {
+	if ds == nil {
+		return nil
+	}
+	ids := ds.ListSessions()
+	var errs []error
+	for _, id := range ids {
+		if err := ds.CloseDatabase(id); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func isQueryReturningRows(query string) bool {

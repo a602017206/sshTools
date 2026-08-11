@@ -12,6 +12,8 @@ export function CancelTransfer(arg1:string):Promise<void>;
 
 export function ChangeDirectory(arg1:string,arg2:string):Promise<void>;
 
+export function ClearBackgroundImage():Promise<void>;
+
 export function CloseDatabase(arg1:string):Promise<void>;
 
 export function CloseNativeDatabase(arg1:string):Promise<void>;
@@ -67,6 +69,8 @@ export function ExportConnectionsByIDsWithPassphrase(arg1:Array<string>,arg2:str
 export function FormatJSON(arg1:string):Promise<string>;
 
 export function GenerateUUIDv4():Promise<string>;
+
+export function GetBackgroundImageDataURL():Promise<string>;
 
 export function GetConnection(arg1:string):Promise<config.ConnectionConfig>;
 
@@ -171,6 +175,8 @@ export function SaveBinaryFile(arg1:string,arg2:string):Promise<string>;
 export function SavePassword(arg1:string,arg2:string):Promise<void>;
 
 export function SearchDirectories(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<Array<ssh.SearchResult>>;
+
+export function SelectBackgroundImage():Promise<service.BackgroundImageResult>;
 
 export function SelectDownloadDirectory():Promise<string>;
 

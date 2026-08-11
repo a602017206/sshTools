@@ -225,6 +225,22 @@ func buildJDBCServices(root string, agentJar []byte, deps jdbcServiceDependencie
 }
 
 func (a *App) shutdown(context.Context) {
+	// 先关闭业务连接，再停 JDBC agent / 本地子进程，避免残留连接与孤儿进程。
+	if a.databaseService != nil {
+		if err := a.databaseService.CloseAllSessions(); err != nil {
+			fmt.Printf("Failed to close database sessions: %v\n", err)
+		}
+	}
+	if a.nativeDatabaseService != nil {
+		if err := a.nativeDatabaseService.CloseAll(); err != nil {
+			fmt.Printf("Failed to close native database sessions: %v\n", err)
+		}
+	}
+	if a.sessionService != nil {
+		if err := a.sessionService.CloseAllSessions(); err != nil {
+			fmt.Printf("Failed to close shell sessions: %v\n", err)
+		}
+	}
 	if a.jdbcAgentSupervisor != nil {
 		if err := a.jdbcAgentSupervisor.Close(); err != nil {
 			fmt.Printf("Failed to close JDBC agent: %v\n", err)
@@ -505,6 +521,36 @@ func (a *App) GetSettings() config.AppSettings {
 // UpdateSettings updates application settings
 func (a *App) UpdateSettings(updates map[string]interface{}) error {
 	return a.settingsService.UpdateSettings(updates)
+}
+
+// SelectBackgroundImage opens a file dialog and installs the chosen wallpaper.
+func (a *App) SelectBackgroundImage() (*service.BackgroundImageResult, error) {
+	if a.ctx == nil {
+		return nil, fmt.Errorf("应用上下文未初始化")
+	}
+	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择背景图片",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "图片", Pattern: "*.jpg;*.jpeg;*.png;*.webp;*.gif"},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(filePath) == "" {
+		return nil, nil
+	}
+	return a.settingsService.InstallBackgroundImage(filePath)
+}
+
+// ClearBackgroundImage removes the custom wallpaper.
+func (a *App) ClearBackgroundImage() error {
+	return a.settingsService.ClearBackgroundImage()
+}
+
+// GetBackgroundImageDataURL returns the current wallpaper as a data URL.
+func (a *App) GetBackgroundImageDataURL() (string, error) {
+	return a.settingsService.GetBackgroundImageDataURL()
 }
 
 // GetMonitoringData retrieves monitoring data for a session

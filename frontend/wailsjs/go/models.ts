@@ -31,6 +31,10 @@ export namespace config {
 	    compact_mode: boolean;
 	    reduced_motion: boolean;
 	    sidebar_width: number;
+	    background_image_enabled: boolean;
+	    background_image_path: string;
+	    background_image_fit: string;
+	    background_image_opacity: number;
 	    jdbc_runtime_mode: string;
 	    jdbc_system_java_path: string;
 	    monitor_collapsed: boolean;
@@ -61,6 +65,10 @@ export namespace config {
 	        this.compact_mode = source["compact_mode"];
 	        this.reduced_motion = source["reduced_motion"];
 	        this.sidebar_width = source["sidebar_width"];
+	        this.background_image_enabled = source["background_image_enabled"];
+	        this.background_image_path = source["background_image_path"];
+	        this.background_image_fit = source["background_image_fit"];
+	        this.background_image_opacity = source["background_image_opacity"];
 	        this.jdbc_runtime_mode = source["jdbc_runtime_mode"];
 	        this.jdbc_system_java_path = source["jdbc_system_java_path"];
 	        this.monitor_collapsed = source["monitor_collapsed"];
@@ -272,6 +280,24 @@ export namespace config {
 
 export namespace service {
 	
+	export class BackgroundImageResult {
+	    path: string;
+	    data_url: string;
+	    fit: string;
+	    opacity: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BackgroundImageResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.data_url = source["data_url"];
+	        this.fit = source["fit"];
+	        this.opacity = source["opacity"];
+	    }
+	}
 	export class DriverView {
 	    id: string;
 	    name: string;

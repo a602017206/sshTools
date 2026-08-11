@@ -70,15 +70,20 @@ public class QueryServiceImpl extends HealthServiceImpl {
             return;
         }
 
-        try (Statement statement = registry.get(request.getSessionId()).createStatement()) {
-            boolean hasResultSet = statement.execute(request.getSql());
-            QueryResult.Builder result = QueryResult.newBuilder();
-            if (hasResultSet) {
-                appendRows(statement.getResultSet(), result);
-            } else {
-                result.setAffected(statement.getUpdateCount());
-            }
-            responseObserver.onNext(result.build());
+        try {
+            QueryResult result = registry.withConnection(request.getSessionId(), connection -> {
+                try (Statement statement = connection.createStatement()) {
+                    boolean hasResultSet = statement.execute(request.getSql());
+                    QueryResult.Builder builder = QueryResult.newBuilder();
+                    if (hasResultSet) {
+                        appendRows(statement.getResultSet(), builder);
+                    } else {
+                        builder.setAffected(statement.getUpdateCount());
+                    }
+                    return builder.build();
+                }
+            });
+            responseObserver.onNext(result);
             responseObserver.onCompleted();
         } catch (Exception e) {
             responseObserver.onError(Status.fromThrowable(e)

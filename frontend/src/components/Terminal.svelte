@@ -30,14 +30,14 @@
   let zmodemDownloadSavedPath = null;
   let zmodemTransferModal = null;
   let handleAppearanceUpdated = null;
-  // 从 themeStore 获取初始主题值
+  // 从 themeStore 获取初始主题值（壳层明暗）；终端视口始终深色，对齐玻璃拟态高保真稿
   let currentTheme = get(themeStore);
 
-  // 深色主题配置
-  const darkTheme = {
+  // 控制台视口主题：明暗 UI 下均保持深色可读区
+  const consoleTheme = {
     background: '#050914',
     foreground: '#d8e1ef',
-    cursor: '#60a5fa',
+    cursor: '#39d5e8',
     black: '#000000',
     red: '#cd3131',
     green: '#0dbc79',
@@ -53,42 +53,16 @@
     brightBlue: '#3b8eea',
     brightMagenta: '#d670d6',
     brightCyan: '#29b8db',
-    selectionBackground: 'rgba(96, 165, 250, 0.28)',
+    selectionBackground: 'rgba(57, 213, 232, 0.28)',
     selectionForeground: undefined,
-    selectionInactiveBackground: 'rgba(96, 165, 250, 0.14)',
+    selectionInactiveBackground: 'rgba(57, 213, 232, 0.14)',
   };
 
-  // 浅色主题配置
-  const lightTheme = {
-    background: '#fbfdff',
-    foreground: '#1f2937',
-    cursor: '#2563eb',
-    black: '#000000',
-    red: '#cd3131',
-    green: '#00bc00',
-    yellow: '#949800',
-    blue: '#0451a5',
-    magenta: '#bc05bc',
-    cyan: '#0598bc',
-    white: '#555555',
-    brightBlack: '#666666',
-    brightRed: '#cd3131',
-    brightGreen: '#14ce14',
-    brightYellow: '#b5ba00',
-    brightBlue: '#0451a5',
-    brightMagenta: '#bc05bc',
-    brightCyan: '#0598bc',
-    brightWhite: '#a5a5a5',
-    selectionBackground: 'rgba(37, 99, 235, 0.16)',
-    selectionForeground: undefined,
-    selectionInactiveBackground: 'rgba(37, 99, 235, 0.08)',
-  };
-
-  // 订阅主题变化
+  // 订阅主题变化（字体等仍可跟随；颜色固定控制台主题）
   const unsubscribe = themeStore.subscribe(state => {
     currentTheme = state;
     if (terminal) {
-      terminal.options.theme = currentTheme === 'light' ? lightTheme : darkTheme;
+      terminal.options.theme = consoleTheme;
     }
   });
 
@@ -127,7 +101,7 @@
       cursorBlink: true,
       fontSize: typography.fontSize,
       fontFamily: typography.fontFamily,
-      theme: currentTheme === 'light' ? lightTheme : darkTheme,
+      theme: consoleTheme,
       allowProposedApi: true,
       scrollback: 1000,
       convertEol: true, // 启用自动换行转换，确保 \n 转换为 \r\n，光标回到行首
@@ -693,7 +667,7 @@
   }
 </script>
 
-<div class="terminal-container" bind:this={terminalElement}>
+<div class="terminal-container ops-terminal-canvas" bind:this={terminalElement}>
   <!-- xterm 终端将在这里渲染 -->
 </div>
 
@@ -767,8 +741,11 @@
   .terminal-container {
     width: 100%;
     height: 100%;
-    background-color: var(--bg-primary);
-    transition: background-color 0.2s ease;
+    background-color: var(--ops-terminal-bg);
+  }
+
+  .terminal-container.ops-terminal-canvas {
+    position: relative;
   }
 
   :global(.xterm) {

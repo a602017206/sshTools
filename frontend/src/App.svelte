@@ -2,21 +2,24 @@
   import { onMount } from 'svelte';
   import AssetList from './components/AssetList.svelte';
   import TerminalPanel from './components/TerminalPanel.svelte';
-  import FileManager from './components/FileManager.svelte';
-  import ServerMonitor from './components/ServerMonitor.svelte';
   import DevToolsPanel from './components/DevToolsPanel.svelte';
   import AddAssetDialog from './components/AddAssetDialog.svelte';
   import AboutDialog from './components/AboutDialog.svelte';
   import GlobalSettingsDialog from './components/GlobalSettingsDialog.svelte';
   import InputDialog from './components/ui/InputDialog.svelte';
   import ConfirmDialog from './components/ui/ConfirmDialog.svelte';
-  import { assetsStore, connectionsStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme } from './stores.js';
+  import { assetsStore, connectionsStore, activeSessionIdStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme } from './stores.js';
   import { uploadStore, activeTransfers, completedTransfers } from './stores/uploadStore.js';
   import { formatFileSize, formatSpeed, getTransferPercentage } from './stores/uploadStore.js';
   import { CancelTransfer } from '../wailsjs/go/main/App.js';
   import { applyAppearanceSettings, getDefaultAppSettings, resolveTheme } from './settings/appearance.js';
   import { isNativeDatabaseType } from './lib/nativeDatabaseTypes.js';
   import { buildJDBCConnectionOptions } from './lib/jdbcConnectionOptions.js';
+  import WorkspaceNavigation from './components/WorkspaceNavigation.svelte';
+  import SessionToolDock from './components/SessionToolDock.svelte';
+  import DatabaseWorkspaceEmpty from './components/DatabaseWorkspaceEmpty.svelte';
+  import { modeForAsset, resolveMode, resolveSshToolTab } from './lib/workspaceTabs.js';
+  import { formatConnectionError } from './lib/formatConnectionError.js';
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
@@ -26,6 +29,8 @@
   let isRightPanelCollapsed = true;
   let editingAsset = null;
   let terminalPanelRef;
+  let activeMode = 'ssh';
+  let sshToolTab = 'files';
 
   let showDbAuthInput = false;
   let dbAuthInputTitle = '';
@@ -42,16 +47,29 @@
   let dbSavePasswordMessage = '';
   let dbSavePasswordType = 'warning';
   let resolveDbSavePasswordConfirm = null;
+  let showDbErrorDialog = false;
+  let dbErrorTitle = '数据库连接失败';
+  let dbErrorMessage = '';
   let appSettings = getDefaultAppSettings();
   let settingsDraftSnapshot = null;
 
   $: connectionsArray = $connectionsStore ? Array.from($connectionsStore.values()) : [];
-  $: hasActiveServerSession = connectionsArray.some(session => session?.connection?.type === 'ssh');
+  $: sshSessions = connectionsArray.filter((session) => session?.type !== 'database');
+  $: databaseSessions = connectionsArray.filter((session) => session?.type === 'database');
+  $: hasDatabaseSession = databaseSessions.length > 0;
+  $: connectedSshSessions = sshSessions.filter((session) => session?.connected);
+  $: hasActiveServerSession = connectedSshSessions.length > 0;
+  $: boundSshSession =
+    connectedSshSessions.find((session) => session.sessionId === $activeSessionIdStore) ||
+    connectedSshSessions[connectedSshSessions.length - 1] ||
+    null;
+  $: boundSessionName = boundSshSession?.connection?.name || boundSshSession?.tabName || '';
+  $: showSessionDock = activeMode === 'ssh';
   $: themeClass = $themeStore === 'dark' ? 'dark' : '';
   $: isDarkTheme = $themeStore === 'dark';
   $: themeToggleTitle = isDarkTheme ? '切换到亮色模式' : '切换到暗色模式';
 
-  $: if (!hasActiveServerSession) {
+  $: if (!hasActiveServerSession && activeMode === 'ssh') {
     isRightPanelCollapsed = true;
   }
 
@@ -93,7 +111,11 @@
       terminal_font_size: settings.terminal_font_size,
       compact_mode: settings.compact_mode,
       reduced_motion: settings.reduced_motion,
-      sidebar_width: $uiStore.sidebarWidth
+      sidebar_width: $uiStore.sidebarWidth,
+      background_image_enabled: Boolean(settings.background_image_enabled),
+      background_image_path: settings.background_image_path || '',
+      background_image_fit: settings.background_image_fit === 'contain' ? 'contain' : 'cover',
+      background_image_opacity: Number(settings.background_image_opacity) || 35
     };
 
     try {
@@ -119,6 +141,14 @@
         ...settings,
         theme_mode: settings?.theme_mode || (settings?.use_system_theme ? 'system' : settings?.theme || 'dark')
       };
+      if (merged.background_image_enabled && merged.background_image_path && typeof window.wailsBindings.GetBackgroundImageDataURL === 'function') {
+        try {
+          merged.background_image_data_url = await window.wailsBindings.GetBackgroundImageDataURL() || '';
+        } catch (error) {
+          console.warn('Failed to load background image:', error);
+          merged.background_image_data_url = '';
+        }
+      }
       applyAndSyncSettings(merged);
       if (merged.sidebar_width) {
         setSidebarWidth(merged.sidebar_width);
@@ -181,6 +211,43 @@
     isDevToolsOpen = !isDevToolsOpen;
   }
 
+  function ensureSshSessionActive() {
+    if (!boundSshSession) return;
+    const current = $connectionsStore?.get?.($activeSessionIdStore);
+    if (!current || current.type === 'database') {
+      activeSessionIdStore.set(boundSshSession.sessionId);
+    }
+  }
+
+  function selectMode(mode) {
+    activeMode = resolveMode(mode);
+    if (activeMode === 'database') {
+      isRightPanelCollapsed = true;
+      return;
+    }
+    ensureSshSessionActive();
+    if (hasActiveServerSession) {
+      isRightPanelCollapsed = false;
+    }
+  }
+
+  function selectSshToolTab(tab) {
+    sshToolTab = resolveSshToolTab(tab);
+    if (activeMode === 'ssh') {
+      ensureSshSessionActive();
+      isRightPanelCollapsed = false;
+    }
+  }
+
+  function openAddConnection() {
+    editingAsset = null;
+    isAddDialogOpen = true;
+  }
+
+  function focusResourceTree() {
+    isSidebarCollapsed = false;
+  }
+
   function toggleSidebar() {
     if (isAddDialogOpen) return;
     isSidebarCollapsed = !isSidebarCollapsed;
@@ -202,8 +269,13 @@
 
   function handleSidebarResize(e) {
     if (!isResizingSidebar) return;
-    const newWidth = Math.max(200, Math.min(500, e.clientX));
+    const newWidth = Math.max(200, Math.min(420, e.clientX));
     setSidebarWidth(newWidth);
+  }
+
+  function resetSidebarWidth() {
+    if (isAddDialogOpen) return;
+    setSidebarWidth(260);
   }
 
   function stopSidebarResize() {
@@ -270,17 +342,17 @@
 
   // 连接处理 - 检查类型并路由到对应面板
   function handleConnect(asset) {
+    activeMode = modeForAsset(asset);
+
     if (asset.type === 'database') {
       isRightPanelCollapsed = true;
       handleDatabaseConnect({ asset, openPanel: true });
       return;
     }
 
-    if (asset.type === 'ssh') {
-      isRightPanelCollapsed = true;
-    } else {
-      isRightPanelCollapsed = true;
-    }
+    activeMode = 'ssh';
+    isRightPanelCollapsed = false;
+    sshToolTab = 'files';
 
     if (terminalPanelRef && typeof terminalPanelRef.handleConnect === 'function') {
       terminalPanelRef.handleConnect(asset);
@@ -291,6 +363,9 @@
   }
 
   function openDatabaseListPanel(asset, sessionId) {
+    activeMode = 'database';
+    isRightPanelCollapsed = true;
+
     if (terminalPanelRef && typeof terminalPanelRef.openDatabaseSession === 'function') {
       terminalPanelRef.openDatabaseSession({ asset, sessionId });
       return;
@@ -308,14 +383,16 @@
       return;
     }
 
+    activeMode = 'database';
+    isRightPanelCollapsed = true;
+
     if (asset.dbConnected && asset.dbSessionId && openPanel) {
       openDatabaseListPanel(asset, asset.dbSessionId);
       return;
     }
 
     if (!window.wailsBindings) {
-      console.error('Wails bindings not loaded');
-      alert('Wails 绑定未加载');
+      showDatabaseError('Wails 绑定未加载，请使用 wails dev 运行', '无法连接');
       return;
     }
 
@@ -413,8 +490,7 @@
         openDatabaseListPanel(asset, sessionId);
       }
     } catch (error) {
-      console.error('Database connection failed:', error);
-      alert(`数据库连接失败: ${error.message || error}`);
+      showDatabaseError(error);
     }
   }
 
@@ -472,6 +548,17 @@
       resolveDbSavePasswordConfirm(false);
       resolveDbSavePasswordConfirm = null;
     }
+  }
+
+  function showDatabaseError(error, title = '数据库连接失败') {
+    console.error(title, error);
+    dbErrorTitle = title;
+    dbErrorMessage = formatConnectionError(error, '连接失败，请检查主机、端口、凭据或驱动配置');
+    showDbErrorDialog = true;
+  }
+
+  function dismissDatabaseError() {
+    showDbErrorDialog = false;
   }
 
   async function handleAddAsset(connectionData) {
@@ -669,7 +756,11 @@
       </div>
     </div>
 
-    <div class="ml-auto flex items-center gap-2">
+    <div class="ml-8 min-w-0 flex-1 flex justify-center">
+      <WorkspaceNavigation {activeMode} on:select={(event) => selectMode(event.detail)} />
+    </div>
+
+    <div class="ml-4 flex items-center gap-2">
       <div class="relative">
         <button
           on:click={() => uploadStore.togglePanel()}
@@ -732,14 +823,14 @@
     </div>
   </header>
 
-  <!-- 主内容区域 -->
+  <!-- 主内容：SSH / 数据库共用壳，TerminalPanel 常驻 -->
   <div class="flex-1 flex overflow-hidden min-h-0 relative">
-    <!-- 左侧展开按钮（折叠时显示） -->
     {#if isSidebarCollapsed}
     <button
       on:click={toggleSidebar}
       disabled={isAddDialogOpen}
-      class="absolute left-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-12 rounded-r-lg transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 hover:opacity-100 {$themeStore === 'dark' ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700' : 'bg-white hover:bg-gray-100 text-gray-600 border border-gray-200'}"
+      class="ops-flyout absolute left-0 top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-12 rounded-r-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed opacity-0 hover:opacity-100"
+      style="color: var(--text-secondary);"
       title="展开资产列表"
     >
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -748,32 +839,28 @@
     </button>
     {/if}
 
-    <!-- 左侧：资产列表 -->
     <div
-      class="flex-shrink-0 transition-all duration-200 ops-sidebar border-r overflow-hidden"
+      class="flex-shrink-0 transition-all duration-200 ops-float-panel overflow-hidden"
       class:collapsed={isSidebarCollapsed}
-      style="width: {isSidebarCollapsed ? '0' : sidebarWidth}px; min-width: {isSidebarCollapsed ? '0' : sidebarWidth}px;"
+      style="width: {isSidebarCollapsed ? '0' : sidebarWidth}px; min-width: {isSidebarCollapsed ? '0' : sidebarWidth}px; margin: {isSidebarCollapsed ? '0' : '10px 0 10px 10px'};"
     >
       <AssetList
         onConnect={handleConnect}
-        onAddClick={() => {
-          editingAsset = null;
-          isAddDialogOpen = true;
-        }}
+        onAddClick={openAddConnection}
         onEdit={handleEditAsset}
       />
     </div>
 
-    <!-- 侧边栏调整手柄 -->
     {#if !isSidebarCollapsed}
     <div
-      class="resize-handle-horizontal flex-shrink-0 relative group"
+      class="resize-handle-horizontal ops-split-handle ops-split-handle-col flex-shrink-0 relative group"
       role="separator"
       aria-hidden="true"
-      style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
+      style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
       on:mousedown={startSidebarResize}
+      on:dblclick={resetSidebarWidth}
+      title="拖拽调整宽度，双击复位 260px"
     >
-      <div class="h-full w-full rounded"></div>
       <button
         on:click={toggleSidebar}
         disabled={isAddDialogOpen}
@@ -787,86 +874,85 @@
     </div>
     {/if}
 
-    <!-- 中间：终端面板 -->
-    <div class="flex-1 min-w-0 min-h-0 flex flex-col" style="background: var(--bg-primary);">
-      <TerminalPanel bind:this={terminalPanelRef} />
-    </div>
-
-    <!-- 右侧面板调整手柄 -->
-    {#if !isRightPanelCollapsed}
-    <div
-      class="resize-handle-horizontal flex-shrink-0 relative group"
-      role="separator"
-      aria-hidden="true"
-      style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
-      on:mousedown={startRightPanelResize}
-    >
-      <div class="h-full w-full rounded"></div>
-      <button
-        on:click={toggleRightPanel}
-        disabled={isAddDialogOpen}
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ops-icon-button flex items-center justify-center w-7 h-7 rounded-md transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100"
-        title="折叠右侧面板"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-        </svg>
-      </button>
-    </div>
-    {/if}
-
-    <!-- 右侧：文件管理和服务器监控 -->
-    <div
-      data-right-panel="true"
-      class="flex-shrink-0 flex flex-col overflow-hidden ops-panel border-l shadow-sm"
-      class:collapsed={isRightPanelCollapsed}
-      style="width: {isRightPanelCollapsed ? '0' : rightPanelWidth}px; min-width: {isRightPanelCollapsed ? '0' : '300px'}; max-width: 600px;"
-    >
-      <!-- 文件管理 -->
-        <div class="overflow-hidden" style="height: {fileManagerHeight}%; min-height: 0;">
-          <FileManager />
+    <div class="flex-1 min-w-0 min-h-0 flex flex-col ops-main-stage relative" style="padding: 10px 8px;">
+      <TerminalPanel bind:this={terminalPanelRef} {activeMode} />
+      {#if activeMode === 'database' && !hasDatabaseSession}
+        <div class="absolute inset-0 z-10 db-empty-overlay">
+          <DatabaseWorkspaceEmpty
+            onCreateConnection={openAddConnection}
+            onFocusSidebar={focusResourceTree}
+          />
         </div>
-      <!-- 文件管理/监控调整手柄 -->
-        <div
-          class="resize-handle-vertical flex-shrink-0 relative"
-          role="separator"
-          aria-hidden="true"
-          style="cursor: {isAddDialogOpen ? 'default' : 'row-resize'}; width: 100%; padding: 2px 0; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
-          on:mousedown={startFileManagerResize}
+      {/if}
+    </div>
+
+    {#if showSessionDock}
+      {#if !isRightPanelCollapsed}
+      <div
+        class="resize-handle-horizontal flex-shrink-0 relative group"
+        role="separator"
+        aria-hidden="true"
+        style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
+        on:mousedown={startRightPanelResize}
+      >
+        <div class="h-full w-full rounded"></div>
+        <button
+          on:click={toggleRightPanel}
+          disabled={isAddDialogOpen}
+          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ops-icon-button flex items-center justify-center w-7 h-7 rounded-md transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed opacity-0 group-hover:opacity-100"
+          title="折叠会话工具"
         >
-          <div class="w-full h-full rounded"></div>
-        </div>
-      <!-- 服务器监控 -->
-        <div class="overflow-hidden" style="height: {100 - fileManagerHeight}%; min-height: 0;">
-          <ServerMonitor />
-        </div>
-    </div>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+          </svg>
+        </button>
+      </div>
+      {/if}
 
-    <!-- 右侧工具轨（折叠时显示） -->
-    {#if isRightPanelCollapsed}
-    <div class="ops-rail flex-shrink-0 flex flex-col items-center py-2 gap-2">
-      <button
-        on:click={toggleRightPanel}
-        disabled={isAddDialogOpen || !hasActiveServerSession}
-        class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-        title="SFTP / 监控"
+      <div
+        data-right-panel="true"
+        class="flex-shrink-0 flex flex-col overflow-hidden ops-float-panel"
+        class:collapsed={isRightPanelCollapsed}
+        style="width: {isRightPanelCollapsed ? '0' : rightPanelWidth}px; min-width: {isRightPanelCollapsed ? '0' : '300px'}; max-width: 600px; margin: {isRightPanelCollapsed ? '0' : '10px 10px 10px 0'};"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h5l2 2h11v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"></path>
-        </svg>
-      </button>
-      <button
-        on:click={toggleRightPanel}
-        disabled={isAddDialogOpen || !hasActiveServerSession}
-        class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-        title="服务器监控"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19V5m4 14v-7m4 7V8m4 11v-4m4 4V9"></path>
-        </svg>
-      </button>
-      <div class="mt-auto text-[10px] rotate-90 whitespace-nowrap ops-muted">TOOLS</div>
-    </div>
+        {#if !isRightPanelCollapsed}
+          <SessionToolDock
+            activeTab={sshToolTab}
+            boundSessionName={boundSessionName}
+            hasBoundSession={Boolean(boundSshSession)}
+            onSelectTab={selectSshToolTab}
+            onConnectHint={focusResourceTree}
+          />
+        {/if}
+      </div>
+
+      {#if isRightPanelCollapsed}
+      <div class="ops-rail flex-shrink-0 flex flex-col items-center py-2 gap-2">
+        <button
+          on:click={() => selectSshToolTab('files')}
+          disabled={isAddDialogOpen}
+          class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          title="文件"
+          aria-label="打开文件工具"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h5l2 2h11v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"></path>
+          </svg>
+        </button>
+        <button
+          on:click={() => selectSshToolTab('performance')}
+          disabled={isAddDialogOpen}
+          class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          title="性能"
+          aria-label="打开性能工具"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19V5m4 14v-7m4 7V8m4 11v-4m4 4V9"></path>
+          </svg>
+        </button>
+        <div class="mt-auto text-[10px] rotate-90 whitespace-nowrap ops-muted">TOOLS</div>
+      </div>
+      {/if}
     {/if}
   </div>
 
@@ -920,16 +1006,27 @@
     onCancel={handleDbSavePasswordCancel}
   />
 
+  <ConfirmDialog
+    bind:isOpen={showDbErrorDialog}
+    title={dbErrorTitle}
+    message={dbErrorMessage}
+    type="warning"
+    confirmText="知道了"
+    cancelText="关闭"
+    onConfirm={dismissDatabaseError}
+    onCancel={dismissDatabaseError}
+  />
+
   {#if $uploadStore.isPanelOpen}
     <div
-      class="fixed top-14 right-0 z-50 w-96 {$themeStore === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'} border-l shadow-xl flex flex-col"
-      style="height: calc(100vh - 3.5rem);">
-      <div class="p-4 border-b {$themeStore === 'dark' ? 'border-gray-700' : 'border-gray-200'}">
+      class="ops-flyout fixed top-14 right-0 z-50 w-96 border-l flex flex-col"
+      style="height: calc(100vh - 3.5rem); color: var(--text-primary);">
+      <div class="p-4 border-b" style="border-color: var(--glass-border);">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-sm">上传任务</h3>
           <button
             on:click={() => uploadStore.setPanelOpen(false)}
-            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            class="ops-icon-button p-1 rounded transition-colors"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -937,20 +1034,22 @@
           </button>
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex gap-2 p-1 rounded-full" style="border: 1px solid var(--glass-border); background: var(--glass-bg);">
           <button
             on:click={() => uploadStore.setActiveTab('active')}
-            class="flex-1 py-1.5 px-3 text-xs font-medium rounded-lg transition-colors {$uploadStore.activeTab === 'active'
-              ? $themeStore === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white'
-              : $themeStore === 'dark' ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}"
+            class="flex-1 py-1.5 px-3 text-xs font-medium rounded-full transition-colors {$uploadStore.activeTab === 'active'
+              ? 'text-white'
+              : 'ops-muted'}"
+            style={$uploadStore.activeTab === 'active' ? 'background: var(--ops-signal);' : ''}
           >
              进行中 ({$activeTransfers.length})
           </button>
           <button
             on:click={() => uploadStore.setActiveTab('history')}
-            class="flex-1 py-1.5 px-3 text-xs font-medium rounded-lg transition-colors {$uploadStore.activeTab === 'history'
-              ? $themeStore === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white'
-              : $themeStore === 'dark' ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}"
+            class="flex-1 py-1.5 px-3 text-xs font-medium rounded-full transition-colors {$uploadStore.activeTab === 'history'
+              ? 'text-white'
+              : 'ops-muted'}"
+            style={$uploadStore.activeTab === 'history' ? 'background: var(--ops-signal);' : ''}
           >
              历史 ({$completedTransfers.length})
           </button>
@@ -958,7 +1057,7 @@
       </div>
 
        {#if $uploadStore.activeTab === 'active' && $activeTransfers.length === 0}
-        <div class="flex-1 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 gap-3">
+        <div class="flex-1 flex flex-col items-center justify-center ops-muted gap-3">
           <svg class="w-12 h-12 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
@@ -967,11 +1066,11 @@
        {:else if $uploadStore.activeTab === 'active'}
          <div class="flex-1 overflow-y-auto p-4 space-y-3">
            {#each $activeTransfers as transfer (transfer.id)}
-            <div class="rounded-lg {$themeStore === 'dark' ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'} border p-3">
+            <div class="rounded-xl border p-3" style="background: var(--glass-bg); border-color: var(--glass-border);">
               <div class="flex items-center justify-between mb-2">
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-medium truncate" title={transfer.filename}>{transfer.filename}</div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  <div class="text-xs ops-muted mt-0.5">
                     {formatFileSize(transfer.bytesSent)} / {formatFileSize(transfer.totalBytes)}
                     {#if transfer.speed}
                       • {formatSpeed(transfer.speed)}
@@ -979,7 +1078,7 @@
                   </div>
                 </div>
                 <div class="flex items-center gap-2 ml-3">
-                  <span class="text-xs font-medium text-blue-600 dark:text-blue-400">
+                  <span class="text-xs font-medium" style="color: var(--ops-signal);">
                     {Math.round(getTransferPercentage(transfer))}%
                   </span>
                   <button
@@ -996,17 +1095,17 @@
                   </button>
                 </div>
               </div>
-              <div class="h-2 {$themeStore === 'dark' ? 'bg-gray-600' : 'bg-gray-200'} rounded-full overflow-hidden">
+              <div class="h-2 rounded-full overflow-hidden" style="background: color-mix(in srgb, var(--glass-bg) 60%, #94a3b8);">
                 <div
-                  class="h-full bg-blue-500 transition-all duration-300"
-                  style={`width: ${Math.min(100, Math.max(0, getTransferPercentage(transfer)))}%`}
+                  class="h-full transition-all duration-300"
+                  style={`width: ${Math.min(100, Math.max(0, getTransferPercentage(transfer)))}%; background: var(--ops-signal);`}
                 ></div>
               </div>
             </div>
           {/each}
         </div>
        {:else if $uploadStore.activeTab === 'history' && $completedTransfers.length === 0}
-        <div class="flex-1 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 gap-3">
+        <div class="flex-1 flex flex-col items-center justify-center ops-muted gap-3">
           <svg class="w-12 h-12 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -1014,27 +1113,28 @@
         </div>
        {:else if $uploadStore.activeTab === 'history'}
          <div class="flex-1 flex flex-col">
-           <div class="p-3 border-b {$themeStore === 'dark' ? 'border-gray-700' : 'border-gray-200'}">
+           <div class="p-3 border-b" style="border-color: var(--glass-border);">
              <button
                on:click={() => uploadStore.clearCompleted()}
-               class="w-full py-2 px-3 text-xs font-medium rounded-lg transition-colors {$themeStore === 'dark' ? 'hover:bg-red-900/30 text-red-400' : 'hover:bg-red-50 text-red-600'}"
+               class="w-full py-2 px-3 text-xs font-medium rounded-lg transition-colors text-red-600 dark:text-red-400"
+               style="background: color-mix(in srgb, var(--ops-alert) 8%, transparent);"
              >
                清空历史记录
              </button>
            </div>
            <div class="flex-1 overflow-y-auto p-4 space-y-3">
              {#each $completedTransfers as transfer (transfer.id)}
-              <div class="rounded-lg {$themeStore === 'dark' ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'} border p-3">
+              <div class="rounded-xl border p-3" style="background: var(--glass-bg); border-color: var(--glass-border);">
                 <div class="flex items-center justify-between">
                   <div class="flex-1 min-w-0">
                     <div class="text-sm font-medium truncate" title={transfer.filename}>{transfer.filename}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-2">
+                    <div class="text-xs ops-muted mt-0.5 flex items-center gap-2">
                       {#if transfer.status === 'completed'}
                         <span class="text-green-500">完成</span>
                       {:else if transfer.status === 'failed'}
                         <span class="text-red-500">失败</span>
                       {:else if transfer.status === 'cancelled'}
-                        <span class="text-gray-500">已取消</span>
+                        <span>已取消</span>
                       {/if}
                       <span>•</span>
                       <span>{formatFileSize(transfer.totalBytes)}</span>
@@ -1047,7 +1147,7 @@
                   </div>
                   <button
                     on:click={() => uploadStore.removeTransfer(transfer.id)}
-                    class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 transition-colors ml-3"
+                    class="ops-icon-button p-1.5 rounded transition-colors ml-3"
                     title="删除记录"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1074,6 +1174,13 @@
 
   :global(html) {
     height: 100%;
+  }
+
+  .db-empty-overlay {
+    /* 压低背后实心面板观感，露出壳层氛围色 */
+    background: color-mix(in srgb, var(--bg-primary) 18%, transparent);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
   }
 
   .resize-handle-horizontal {

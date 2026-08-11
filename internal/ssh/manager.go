@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -179,6 +180,18 @@ func (sm *SessionManager) ResizeSession(sessionID string, cols, rows int) error 
 func (sm *SessionManager) CloseSession(sessionID string) error {
 	_, err := sm.closeSession(sessionID, true)
 	return err
+}
+
+// CloseAllSessions closes every managed SSH/local session.
+func (sm *SessionManager) CloseAllSessions() error {
+	ids := sm.ListSessions()
+	var errs []error
+	for _, id := range ids {
+		if err := sm.CloseSession(id); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (sm *SessionManager) closeSession(sessionID string, requestedByClient bool) (bool, error) {
