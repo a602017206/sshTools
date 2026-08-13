@@ -3,6 +3,7 @@
   import AssetList from './components/AssetList.svelte';
   import TerminalPanel from './components/TerminalPanel.svelte';
   import DevToolsPanel from './components/DevToolsPanel.svelte';
+  import UploadTaskDialog from './components/UploadTaskDialog.svelte';
   import AddAssetDialog from './components/AddAssetDialog.svelte';
   import AboutDialog from './components/AboutDialog.svelte';
   import GlobalSettingsDialog from './components/GlobalSettingsDialog.svelte';
@@ -20,6 +21,7 @@
   import DatabaseWorkspaceEmpty from './components/DatabaseWorkspaceEmpty.svelte';
   import { modeForAsset, resolveMode, resolveSshToolTab } from './lib/workspaceTabs.js';
   import { formatConnectionError } from './lib/formatConnectionError.js';
+  import { createClonedConnectionFormData } from './lib/connectionFormData.js';
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
@@ -28,6 +30,8 @@
   let isSidebarCollapsed = false;
   let isRightPanelCollapsed = true;
   let editingAsset = null;
+  let cloningAsset = null;
+  let connectionDialogRequestVersion = 0;
   let terminalPanelRef;
   let activeMode = 'ssh';
   let sshToolTab = 'files';
@@ -241,6 +245,8 @@
 
   function openAddConnection() {
     editingAsset = null;
+    cloningAsset = null;
+    connectionDialogRequestVersion += 1;
     isAddDialogOpen = true;
   }
 
@@ -596,7 +602,26 @@
   }
 
   function handleEditAsset(asset) {
+    cloningAsset = null;
     editingAsset = asset;
+    connectionDialogRequestVersion += 1;
+    isAddDialogOpen = true;
+  }
+
+  async function handleCloneAsset(asset) {
+    editingAsset = null;
+    let credentials = {};
+    try {
+      const { HasPassword, GetPassword } = window.wailsBindings || {};
+      if (typeof HasPassword === 'function' && typeof GetPassword === 'function' && await HasPassword(asset.id)) {
+        credentials = { password: await GetPassword(asset.id), savePassword: true };
+      }
+    } catch (error) {
+      console.warn('Failed to load password for cloned connection:', error);
+    }
+    // 生成独立预填数据，避免后续编辑意外修改资产树；已保存密码会写入新连接的独立凭据记录。
+    cloningAsset = createClonedConnectionFormData(asset, new Date(), credentials);
+    connectionDialogRequestVersion += 1;
     isAddDialogOpen = true;
   }
 
@@ -848,6 +873,7 @@
         onConnect={handleConnect}
         onAddClick={openAddConnection}
         onEdit={handleEditAsset}
+        onClone={handleCloneAsset}
       />
     </div>
 
@@ -957,12 +983,16 @@
   </div>
 
   <!-- 对话框 -->
-  <AddAssetDialog
-    bind:isOpen={isAddDialogOpen}
-    bind:editingAsset={editingAsset}
-    onAdd={handleAddAsset}
-    onUpdate={handleUpdateAsset}
-  />
+  {#key connectionDialogRequestVersion}
+    <AddAssetDialog
+      bind:isOpen={isAddDialogOpen}
+      bind:editingAsset={editingAsset}
+      bind:cloningAsset={cloningAsset}
+      dialogRequestVersion={connectionDialogRequestVersion}
+      onAdd={handleAddAsset}
+      onUpdate={handleUpdateAsset}
+    />
+  {/key}
 
   <DevToolsPanel bind:isOpen={isDevToolsOpen} {themeStore} />
 
@@ -1017,10 +1047,11 @@
     onCancel={dismissDatabaseError}
   />
 
-  {#if $uploadStore.isPanelOpen}
-    <div
-      class="ops-flyout fixed top-14 right-0 z-50 w-96 border-l flex flex-col"
-      style="height: calc(100vh - 3.5rem); color: var(--text-primary);">
+  <UploadTaskDialog />
+  <!-- 已迁移到 UploadTaskDialog。 -->
+  {#if false}
+    <div>
+      <div>
       <div class="p-4 border-b" style="border-color: var(--glass-border);">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-sm">上传任务</h3>
@@ -1160,6 +1191,7 @@
           </div>
         </div>
       {/if}
+      </div>
     </div>
   {/if}
 </div>

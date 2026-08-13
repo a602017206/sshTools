@@ -5,6 +5,8 @@
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import '@xterm/xterm/css/xterm.css';
   import { themeStore } from '../stores.js';
+  import { ClipboardGetText, ClipboardSetText } from '../../wailsjs/runtime/runtime.js';
+  import { getTerminalShortcutAction } from '../lib/terminalShortcuts.js';
   import { get } from 'svelte/store';
 
   export let sessionId = null;
@@ -94,6 +96,56 @@
     fitAddon?.fit();
   }
 
+  async function copyToClipboard(text) {
+    try {
+      await ClipboardSetText(text);
+      return;
+    } catch (error) {
+      console.warn('Wails clipboard copy failed, falling back to browser clipboard:', error);
+    }
+
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    throw new Error('Clipboard API is unavailable');
+  }
+
+  async function readClipboardText() {
+    try {
+      return await ClipboardGetText();
+    } catch (error) {
+      console.warn('Wails clipboard paste failed, falling back to browser clipboard:', error);
+    }
+
+    if (navigator.clipboard?.readText) {
+      return navigator.clipboard.readText();
+    }
+
+    throw new Error('Clipboard API is unavailable');
+  }
+
+  function copySelection() {
+    copyToClipboard(terminal.getSelection()).catch(error => {
+      console.error('Failed to copy terminal selection:', error);
+    });
+  }
+
+  function pasteText(text) {
+    if (text && onData && sessionId) {
+      onData(sessionId, text);
+    }
+  }
+
+  function pasteFromClipboard() {
+    readClipboardText()
+      .then(pasteText)
+      .catch(error => {
+        console.error('Failed to read clipboard:', error);
+      });
+  }
+
   onMount(async () => {
     const typography = readTerminalTypography();
 
@@ -117,55 +169,28 @@
 
     fitAddon.fit();
 
-    // 自定义键事件处理器
+    // 常见复制、粘贴快捷键。无选区的 Ctrl+C 保持发送中断信号的终端语义。
     terminal.attachCustomKeyEventHandler((event) => {
-      // macOS: Cmd+C 复制选中内容
-      if (event.metaKey && event.key.toLowerCase() === 'c' && !event.shiftKey && !event.ctrlKey) {
-        if (terminal.hasSelection()) {
-          const selection = terminal.getSelection();
-          navigator.clipboard.writeText(selection).catch(err => {
-            console.error('Failed to copy:', err);
-          });
-          return false; // 阻止发送 ^C 到终端
-        }
-        return true; // 无选中时，让 xterm.js 发送中断信号
-      }
-      // Windows/Linux: Ctrl+C 复制选中内容
-      if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'c' && !event.shiftKey) {
-        if (terminal.hasSelection()) {
-          const selection = terminal.getSelection();
-          navigator.clipboard.writeText(selection).catch(err => {
-            console.error('Failed to copy:', err);
-          });
-          return false; // 阻止发送 ^C 到终端
-        }
-        return true; // 无选中时，让 xterm.js 发送中断信号
-      }
-      // macOS: Cmd+V 粘贴
-      if (event.metaKey && event.key.toLowerCase() === 'v' && !event.shiftKey && !event.ctrlKey) {
+      const action = getTerminalShortcutAction(event, terminal.hasSelection());
+      if (action === 'copy') {
         event.preventDefault();
-        navigator.clipboard.readText().then(text => {
-          if (text && onData && sessionId) {
-            onData(sessionId, text); // 通过 onData 发送到 SSH 会话
-          }
-        }).catch(err => {
-          console.error('Failed to read clipboard:', err);
-        });
-        return false; // 阻止默认行为
+        copySelection();
+        return false;
       }
-      // Windows/Linux: Ctrl+V 粘贴
-      if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'v' && !event.shiftKey) {
+      if (action === 'paste') {
         event.preventDefault();
-        navigator.clipboard.readText().then(text => {
-          if (text && onData && sessionId) {
-            onData(sessionId, text); // 通过 onData 发送到 SSH 会话
-          }
-        }).catch(err => {
-          console.error('Failed to read clipboard:', err);
-        });
-        return false; // 阻止默认行为
+        pasteFromClipboard();
+        return false;
       }
-      return true; // 其他键交给 xterm.js 处理
+      return true;
+    });
+
+    terminalElement.addEventListener('paste', (event) => {
+      const text = event.clipboardData?.getData('text/plain');
+      if (text) {
+        event.preventDefault();
+        pasteText(text);
+      }
     });
 
     // 动态导入 zmodem.js

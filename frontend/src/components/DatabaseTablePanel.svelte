@@ -1,5 +1,5 @@
 <script>
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import {
     buildQualifiedTableName as buildQualifiedTableSQL,
     buildTableBrowseSQL,
@@ -11,6 +11,7 @@
   import { buildGridTemplateColumns, clampColumnWidth, getInitialColumnWidth } from '../lib/tableGridColumns.js';
   import { buildDeleteSQL, buildInsertSQL, buildUpdateSQL } from '../lib/tableDataMutations.js';
   import { formatConnectionError } from '../lib/formatConnectionError.js';
+  import { getRowContextMenuPosition, shouldCloseRowContextMenu } from '../lib/databaseRowContextMenu.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
 
   export let sessionId = null;
@@ -44,6 +45,8 @@
   let contextMenu = null;
   let isMutating = false;
   let pendingDelete = null;
+  let contextMenuElement;
+  let contextMenuPortal;
 
   const historyLimit = 50;
 
@@ -274,8 +277,29 @@
 
   function openContextMenu(event, rowIndex, row) {
     event.preventDefault();
-    contextMenu = { x: event.clientX, y: event.clientY, rowIndex, row };
+    const { x, y } = getRowContextMenuPosition(event.currentTarget.getBoundingClientRect());
+    contextMenu = { x, y, rowIndex, row };
+    tick().then(() => contextMenuElement?.focus());
   }
+
+  function closeContextMenuOnPointerDown(event) {
+    if (contextMenu && shouldCloseRowContextMenu({ menuContainsTarget: contextMenuElement?.contains(event.target) })) {
+      contextMenu = null;
+    }
+  }
+
+  function mountContextMenuPortal(node) {
+    if (typeof document === 'undefined') return {};
+    contextMenuPortal = document.createElement('div');
+    document.body.appendChild(contextMenuPortal);
+    contextMenuPortal.appendChild(node);
+    return { destroy() { contextMenuPortal?.remove(); contextMenuPortal = null; } };
+  }
+
+  onMount(() => {
+    window.addEventListener('pointerdown', closeContextMenuOnPointerDown, true);
+    return () => window.removeEventListener('pointerdown', closeContextMenuOnPointerDown, true);
+  });
 
   function mutationInput(row, changes = {}) {
     return { databaseType, table: titleName, columns: resultData.columns, row, primaryKeys: primaryKeys(), changes };
@@ -566,7 +590,7 @@
   </footer>
 
   {#if contextMenu}
-    <div class="table-workspace__context-menu" style={`left:${contextMenu.x}px; top:${contextMenu.y}px;`} role="menu"><button type="button" on:click={() => copyText(contextMenu.row.join('\t'))}>复制行</button><button type="button" on:click={() => copyText(buildInsertSQL(mutationInput(contextMenu.row)))}>复制为 INSERT</button><button type="button" disabled={isMutating} on:click={() => requestDelete(contextMenu.row)}>删除记录</button></div>
+    <div bind:this={contextMenuElement} use:mountContextMenuPortal class="table-workspace__context-menu" style={`left:${contextMenu.x}px; top:${contextMenu.y}px;`} role="menu" tabindex="-1"><button type="button" on:click={() => copyText(contextMenu.row.join('\t'))}>复制行</button><button type="button" on:click={() => copyText(buildInsertSQL(mutationInput(contextMenu.row)))}>复制为 INSERT</button><button type="button" disabled={isMutating} on:click={() => requestDelete(contextMenu.row)}>删除记录</button></div>
   {/if}
 
   <ConfirmDialog

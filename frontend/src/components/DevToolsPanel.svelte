@@ -1,5 +1,5 @@
 <script>
-  import { onMount, tick } from 'svelte';
+  import Dialog from './ui/Dialog.svelte';
   import JsonFormatter from './JsonFormatter.svelte';
   import Base64Tool from './Base64Tool.svelte';
   import HashTool from './HashTool.svelte';
@@ -11,7 +11,6 @@
   export let themeStore;
 
   let activeToolId = null;
-  let dialogElement;
 
   const tools = [
     { id: 'json', name: 'JSON 格式化', icon: '📄', color: 'text-purple-500' },
@@ -22,12 +21,6 @@
     { id: 'uuid', name: 'UUID 生成', icon: '🆔', color: 'text-indigo-500' },
   ];
 
-  function handleBackdropClick(event) {
-    if (event.target === event.currentTarget) {
-      isOpen = false;
-    }
-  }
-
   function selectTool(toolId) {
     activeToolId = toolId;
   }
@@ -36,36 +29,10 @@
     return tools.find(t => t.id === activeToolId);
   }
 
-  function handleKeyDown(event) {
-    if (event.key === 'Escape' && isOpen) {
-      event.preventDefault();
-      isOpen = false;
-    }
-  }
-
-  // Focus the dialog when it opens
-  $: if (isOpen) {
-    tick().then(() => {
-      if (dialogElement) {
-        dialogElement.focus();
-      }
-    });
-  }
 </script>
 
-{#if isOpen}
-  <div
-    bind:this={dialogElement}
-    class="fixed inset-0 z-50 flex items-start justify-center pt-14 md:pt-16"
-    on:click={handleBackdropClick}
-    on:keydown={handleKeyDown}
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-  >
-    <div class="absolute inset-0 bg-gradient-to-br from-slate-900/40 via-slate-800/20 to-slate-700/10 dark:from-black/70 dark:via-black/55 dark:to-slate-900/40 backdrop-blur-md transition-opacity" />
-
-    <div class="relative w-full max-w-5xl bg-white/92 dark:bg-slate-900/85 rounded-2xl shadow-[0_20px_70px_-30px_rgba(15,23,42,0.8)] m-4 max-h-[85vh] overflow-hidden flex border border-slate-200/70 dark:border-slate-700/60 ring-1 ring-slate-200/60 dark:ring-slate-700/40">
+<Dialog bind:isOpen={isOpen} onClose={() => isOpen = false} title="开发工具" size="xl">
+    <div class="w-full h-[min(720px,calc(100vh-10rem))] bg-white/92 dark:bg-slate-900/85 rounded-xl overflow-hidden flex border border-slate-200/70 dark:border-slate-700/60">
       <div class="w-72 bg-gradient-to-b from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-900/80 dark:to-slate-950 border-r border-slate-200/70 dark:border-slate-800/80 p-5 flex flex-col">
         <div class="flex items-center justify-between mb-6">
           <div>
@@ -150,8 +117,7 @@
           {/if}
         </div>
       </div>
-  </div>
-{/if}
+</Dialog>
 
 <style>
   :global(.scrollbar-thin)::-webkit-scrollbar {

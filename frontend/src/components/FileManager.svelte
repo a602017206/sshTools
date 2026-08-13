@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
-  import { EventsOn } from '../../wailsjs/runtime/runtime.js';
+  import { EventsOn, OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime.js';
   import {
     ListFiles,
     UploadFiles,
@@ -19,6 +19,9 @@
   import { uploadStore, formatFileSize, formatSpeed, getTransferPercentage } from '../stores/uploadStore.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
+  import FileTypeIcon from './icons/FileTypeIcon.svelte';
+  import { formatFileModified } from '../lib/fileType.js';
+  import { canUploadDroppedFiles, normalizeDroppedFilePaths } from '../lib/fileDropUpload.js';
 
   // Svelte action to focus element on mount
   function focus(node) {
@@ -69,6 +72,8 @@
   let progressUnsubscribers = [];
 
   // Context menu state
+  let fileManagerEl;
+  let suppressListClick = false;
   let contextMenu = {
     open: false,
     x: 0,
@@ -94,6 +99,7 @@
   let renameDialogTitle = '';
   let renameDefaultName = '';
   let pendingRenameFile = null;
+  let isFileDropRegistered = false;
 
   // Get current session object
   $: currentSession = $activeSessionIdStore ? $connectionsStore.get($activeSessionIdStore) : null;
@@ -298,17 +304,33 @@
 
     try {
       const localPaths = await SelectUploadFiles();
-      if (!localPaths || localPaths.length === 0) return;
-
-      const transferIDs = await UploadFiles($activeSessionIdStore, localPaths, currentPath);
-      transferIDs.forEach((id) => subscribeToTransfer(id, 'upload'));
-
-      // Refresh directory after a short delay
-      setTimeout(() => loadDirectory(currentPath), 2000);
+      await uploadLocalPaths(localPaths);
     } catch (err) {
       console.error('Upload failed:', err);
       error = err.message || '上传失败';
     }
+  }
+
+  async function uploadLocalPaths(localPaths) {
+    const paths = normalizeDroppedFilePaths(localPaths);
+    if (!canUploadDroppedFiles({
+      sessionId: $activeSessionIdStore,
+      connected: isSessionConnected,
+      isLocal: isLocalSession
+    }) || paths.length === 0) {
+      return;
+    }
+
+    const transferIDs = await UploadFiles($activeSessionIdStore, paths, currentPath);
+    transferIDs.forEach((id) => subscribeToTransfer(id, 'upload'));
+    setTimeout(() => loadDirectory(currentPath), 2000);
+  }
+
+  function handleFileDrop(_x, _y, localPaths) {
+    uploadLocalPaths(localPaths).catch((err) => {
+      console.error('Dropped file upload failed:', err);
+      error = err.message || '拖放上传失败';
+    });
   }
 
   async function handleDownload(file) {
@@ -344,18 +366,60 @@
   function handleContextMenu(event, file) {
     if (file?.is_parent) return;
     event.preventDefault();
+    event.stopPropagation();
     handleSelectFile(file);
+    suppressListClick = true;
+
+    const root = fileManagerEl?.getBoundingClientRect();
+    const menuWidth = 168;
+    const menuHeight = file?.is_dir ? 148 : 176;
+    let x = event.clientX;
+    let y = event.clientY;
+    if (root) {
+      x = event.clientX - root.left;
+      y = event.clientY - root.top;
+      x = Math.max(8, Math.min(x, root.width - menuWidth - 8));
+      y = Math.max(8, Math.min(y, root.height - menuHeight - 8));
+    }
+
     contextMenu = {
       open: true,
-      x: event.clientX,
-      y: event.clientY,
+      x,
+      y,
       file,
     };
   }
 
   function closeContextMenu() {
     if (!contextMenu.open) return;
-    contextMenu = { ...contextMenu, open: false };
+    contextMenu = { ...contextMenu, open: false, file: null };
+  }
+
+  function handleListClick() {
+    if (suppressListClick) {
+      suppressListClick = false;
+      return;
+    }
+    closeContextMenu();
+  }
+
+  async function handleContextOpen() {
+    const file = contextMenu.file;
+    closeContextMenu();
+    if (file?.is_dir) {
+      navigateTo(file.path, true);
+    }
+  }
+
+  async function handleContextCopyPath() {
+    const file = contextMenu.file;
+    closeContextMenu();
+    if (!file?.path) return;
+    try {
+      await navigator.clipboard.writeText(file.path);
+    } catch (err) {
+      console.error('Copy path failed:', err);
+    }
   }
 
   async function handleDeleteSelection() {
@@ -735,8 +799,20 @@
     sessionPaths = nextPaths;
   }
 
+  function handleDocumentPointer(event) {
+    if (!contextMenu.open) return;
+    if (event.button === 2) return;
+    if (event.target?.closest?.('.file-manager__menu')) return;
+    closeContextMenu();
+  }
+
   onMount(() => {
-    // No need for event listeners - we use reactive store subscription
+    document.addEventListener('mousedown', handleDocumentPointer, true);
+    if (window.runtime?.OnFileDrop) {
+      OnFileDrop(handleFileDrop, true);
+      isFileDropRegistered = true;
+    }
+    return () => document.removeEventListener('mousedown', handleDocumentPointer, true);
   });
 
   onDestroy(() => {
@@ -746,10 +822,17 @@
     if (dirSearchAbortController) {
       dirSearchAbortController.abort();
     }
+    if (isFileDropRegistered) {
+      OnFileDropOff();
+    }
   });
 </script>
 
-<div class="file-manager h-full flex flex-col">
+<div
+  class="file-manager h-full flex flex-col relative"
+  bind:this={fileManagerEl}
+  style={`--wails-drop-target: ${canUseFileManager ? 'drop' : 'none'};`}
+>
   <!-- 头部工具栏 -->
   <div class="file-manager__toolbar p-3">
     <div class="flex items-center justify-between mb-2">
@@ -1014,7 +1097,11 @@
   <!-- 文件列表 -->
   <div
     class="flex-1 overflow-y-auto scrollbar-thin text-xs"
-    on:click={closeContextMenu}
+    on:click={handleListClick}
+    on:contextmenu={(event) => {
+      event.preventDefault();
+      if (!event.target.closest?.('[data-file-row]')) closeContextMenu();
+    }}
   >
     {#if isLoading}
       <div class="flex flex-col items-center justify-center h-40 text-gray-500 dark:text-gray-400 gap-2">
@@ -1054,6 +1141,7 @@
      {:else}
       {#each displayFiles as file, index (file.path)}
         <div
+          data-file-row="true"
           class="group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors mx-2 my-0.5 rounded-lg {file.is_parent ? 'text-gray-500 dark:text-gray-400 italic' : ''} {selectedFiles.has(file.path) && !file.is_parent ? 'file-manager__row--selected' : 'file-manager__row'}"
           on:click={() => (file.is_parent ? handleParentClick(file) : handleItemClick(file))}
           on:dblclick={() => {
@@ -1066,40 +1154,37 @@
           on:contextmenu={(event) => handleContextMenu(event, file)}
         >
           {#if file.is_parent}
-            <svg class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
+            <FileTypeIcon {file} size={18} />
             <div class="flex-1 min-w-0">
               <div class="text-gray-600 dark:text-gray-300">{file.name}</div>
               <div class="text-gray-400 dark:text-gray-500 text-[10px]">返回上一层</div>
             </div>
           {:else if file.is_dir}
-            {#if expandedDirs.has(file.path)}
-              <svg class="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            {:else}
-              <svg class="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button
+              type="button"
+              class="file-manager__chevron"
+              title="进入目录"
+              on:click|stopPropagation={() => navigateTo(file.path, true)}
+            >
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
               </svg>
-            {/if}
-            <svg class="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-            </svg>
+            </button>
+            <FileTypeIcon {file} size={18} />
             <div class="flex-1 min-w-0">
               <div class="text-gray-900 dark:text-white font-medium truncate">{file.name}</div>
             </div>
           {:else}
-            <div class="w-3"></div>
-            <svg class="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
+            <div class="w-3 flex-shrink-0"></div>
+            <FileTypeIcon {file} size={18} />
             <div class="flex-1 min-w-0">
               <div class="text-gray-900 dark:text-white font-medium truncate">{file.name}</div>
               <div class="text-gray-500 dark:text-gray-400 flex items-center gap-2">
                 <span>{formatFileSize(file.size)}</span>
-                <span>•</span>
-                <span>{file.modified}</span>
+                {#if formatFileModified(file)}
+                  <span>•</span>
+                  <span>{formatFileModified(file)}</span>
+                {/if}
               </div>
             </div>
             <span class="text-gray-400 dark:text-gray-500 font-mono text-[10px]">{file.mode}</span>
@@ -1111,28 +1196,20 @@
 
   {#if contextMenu.open}
     <div
-      class="ops-flyout fixed z-50 rounded-xl text-xs py-1 min-w-[140px]"
+      class="file-manager__menu ops-flyout absolute z-[80] rounded-xl text-xs py-1 min-w-[160px]"
       style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
+      on:mousedown|stopPropagation
+      on:click|stopPropagation
     >
-      <button
-        class="w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700"
-        on:click={handleContextDownload}
-        disabled={contextMenu.file?.is_dir}
-      >
-        下载
-      </button>
-      <button
-        class="w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700"
-        on:click={handleContextRename}
-      >
-        重命名
-      </button>
-      <button
-        class="w-full text-left px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400"
-        on:click={handleContextDelete}
-      >
-        删除
-      </button>
+      {#if contextMenu.file?.is_dir}
+        <button class="file-manager__menu-item" type="button" on:click={handleContextOpen}>打开</button>
+      {:else}
+        <button class="file-manager__menu-item" type="button" on:click={handleContextDownload}>下载</button>
+      {/if}
+      <button class="file-manager__menu-item" type="button" on:click={handleContextRename}>重命名</button>
+      <button class="file-manager__menu-item" type="button" on:click={handleContextCopyPath}>复制路径</button>
+      <div class="file-manager__menu-sep"></div>
+      <button class="file-manager__menu-item is-danger" type="button" on:click={handleContextDelete}>删除</button>
     </div>
   {/if}
 
@@ -1418,6 +1495,64 @@
     background: transparent;
     color: var(--text-primary);
     min-height: 0;
+    overflow: hidden;
+  }
+  :global(.file-manager.wails-drop-target-active)::after {
+    content: '松开以上传到当前目录';
+    position: absolute;
+    inset: 8px;
+    z-index: 70;
+    display: grid;
+    place-items: center;
+    border: 2px dashed var(--ops-signal);
+    border-radius: 12px;
+    color: var(--ops-signal);
+    font-size: 13px;
+    font-weight: 600;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--glass-bg-strong) 88%, transparent);
+    backdrop-filter: blur(2px);
+  }
+  .file-manager__chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--text-tertiary);
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .file-manager__chevron:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+  }
+  .file-manager__menu {
+    pointer-events: auto;
+  }
+  .file-manager__menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 7px 12px;
+    color: var(--text-primary);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+  }
+  .file-manager__menu-item:hover {
+    background: var(--bg-hover);
+  }
+  .file-manager__menu-item.is-danger {
+    color: var(--ops-alert);
+  }
+  .file-manager__menu-item.is-danger:hover {
+    background: color-mix(in srgb, var(--ops-alert) 12%, transparent);
+  }
+  .file-manager__menu-sep {
+    height: 1px;
+    margin: 4px 8px;
+    background: var(--border-secondary);
   }
   .file-manager__toolbar {
     border-bottom: 1px solid var(--glass-border);

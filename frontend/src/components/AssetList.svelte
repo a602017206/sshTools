@@ -5,11 +5,13 @@
   import InputDialog from './ui/InputDialog.svelte';
   import DatabaseSidebarTree from './DatabaseSidebarTree.svelte';
   import { onMount } from 'svelte';
+  import { shouldConnectAsset } from '../lib/assetActivation.js';
 
   export let onConnect;
   export let onAddClick;
   export let onDelete;
   export let onEdit;
+  export let onClone;
 
   let searchTerm = '';
   let expandedGroups = new Set(['生产环境', '开发环境']);
@@ -93,12 +95,16 @@
   }
 
   function openDbContextMenu(asset, event) {
-    if (asset.type !== 'database') return;
     event.preventDefault();
     event.stopPropagation();
     dbContextMenuAsset = asset;
     dbContextMenuPosition = { x: event.clientX, y: event.clientY };
     showDbContextMenu = true;
+  }
+
+  function handleClone(asset) {
+    showDbContextMenu = false;
+    onClone?.(asset);
   }
 
   async function handleDisconnectDatabase() {
@@ -716,7 +722,7 @@
             {#each groupAssets as asset (asset.id)}
               <div>
                 <div
-                  on:click={() => onConnect(asset)}
+                  on:dblclick={() => onConnect(asset)}
                   on:contextmenu={(event) => openDbContextMenu(asset, event)}
                   class="ops-asset-row group relative flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer transition-all"
                   class:is-active={asset.id === activeAssetId}
@@ -724,7 +730,7 @@
                   tabindex="0"
                   title={`${asset.username}@${asset.host}:${asset.port}`}
                   on:keydown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
+                    if (shouldConnectAsset(event)) {
                       event.preventDefault();
                       onConnect(asset);
                     }
@@ -764,6 +770,7 @@
                   </div>
                   <div class="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
                     <button
+                      type="button"
                       class="p-1 hover:bg-green-100 dark:hover:bg-green-800 rounded"
                       on:click|stopPropagation={() => onConnect(asset)}
                       title="连接"
@@ -815,13 +822,25 @@
     <button
       type="button"
       class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-      on:click={handleDisconnectDatabase}
+      on:click={() => handleClone(dbContextMenuAsset)}
     >
-      <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+      <svg class="w-4 h-4 accent-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2Zm4-6h2v2h-2v-2Zm0-4h2v2h-2V11Z" />
       </svg>
-      <span>断开</span>
+      <span>克隆连接</span>
     </button>
+    {#if dbContextMenuAsset.type === 'database'}
+      <button
+        type="button"
+        class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+        on:click={handleDisconnectDatabase}
+      >
+        <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+        <span>断开</span>
+      </button>
+    {/if}
   </div>
 {/if}
 

@@ -3,11 +3,17 @@
   import { assetsStore } from '../stores.js';
   import { buildJDBCConnectionOptions } from '../lib/jdbcConnectionOptions.js';
   import { databaseTypeRequiresUsername, isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
+  import { createBlankConnectionFormData } from '../lib/connectionFormData.js';
+  import { shouldApplyClone } from '../lib/cloneDialogState.js';
+  import { shouldResetBlankConnectionForm } from '../lib/connectionDialogRequest.js';
+  import { shouldApplyEditConnectionResult, shouldLoadEditConnection } from '../lib/editConnectionLoadState.js';
 
   export let isOpen = false;
   export let onAdd = () => {};
   export let onUpdate = () => {};
   export let editingAsset = null;
+  export let cloningAsset = null;
+  export let dialogRequestVersion = 0;
 
   let assetType = 'ssh';
   let authType = 'password';
@@ -18,7 +24,9 @@
   let showPassphrase = false;
   let editingAssetLoaded = false; // Flag to prevent reloading data
   let wasOpen = false; // Track previous open state
-  let lastEditingAssetId = null;
+  let appliedCloningAsset = null;
+  let resetEditingAssetId = null;
+  let appliedDialogRequestVersion = 0;
   const labelClass = 'block text-xs font-medium ops-field-label mb-1';
   const inputClass = 'w-full px-3 py-1.5 ops-input border rounded-md text-xs focus:outline-none focus:ring-2 transition-all';
   const passwordInputClass = `${inputClass} pr-10`;
@@ -51,23 +59,7 @@
   let jdbcDrivers = [];
   let jdbcDriversLoaded = false;
 
-  let formData = {
-    id: '',
-    name: '',
-    host: '',
-    port: '',
-    username: '',
-    password: '',
-    savePassword: false,
-    keyPath: '',
-    passphrase: '',
-    group: '',
-    dbType: 'mysql',
-    driverProfileID: '',
-    database: '',
-    oracleConnectionMode: 'service',
-    sqlServerInstanceName: '',
-  };
+  let formData = createBlankConnectionFormData();
 
   // Extract all unique groups from existing assets
   $: allGroups = $assetsStore.reduce((groups, asset) => {
@@ -297,25 +289,9 @@
   }
 
   function resetForm() {
-    assetType = 'ssh'; // Reset asset type before computing defaults
-    authType = 'password'; // Reset auth type
-    formData = {
-      id: '',
-      name: '',
-      host: '',
-      port: getDefaultPortFor('ssh', 'mysql'),
-      username: '',
-      password: '',
-      savePassword: false,
-      keyPath: '',
-      passphrase: '',
-      group: '',
-      dbType: 'mysql',
-      driverProfileID: '',
-      database: '',
-      oracleConnectionMode: 'service',
-      sqlServerInstanceName: '',
-    };
+    assetType = 'ssh';
+    authType = 'password';
+    formData = createBlankConnectionFormData();
     testResult = '';
     showPassword = false;
     showPassphrase = false;
@@ -324,32 +300,55 @@
     selectedGroupIndex = -1;
     jdbcDriversLoaded = false;
     editingAssetLoaded = false; // Reset the loaded flag
+    resetEditingAssetId = null;
+  }
+
+  function applyCloningAsset() {
+    if (!cloningAsset) return;
+    formData = { ...createBlankConnectionFormData(), ...cloningAsset, id: '', passphrase: '' };
+    assetType = cloningAsset.type || 'ssh';
+    authType = cloningAsset.authType || 'password';
+    groupSearchTerm = formData.group;
+    testResult = '';
+    appliedCloningAsset = cloningAsset;
   }
 
   $: if (wasOpen && !isOpen) {
-    // Dialog was just closed, reset the form
+    resetForm();
+    editingAsset = null;
+    cloningAsset = null;
+    appliedCloningAsset = null;
+  }
+
+  $: if (!wasOpen && isOpen && !cloningAsset) {
+    if (editingAsset) {
+      editingAssetLoaded = false;
+    } else {
+      resetForm();
+    }
+  }
+
+  // 每次点击“新建”都带有新的请求序号，不能依赖弹窗是否刚关闭来判断是否需要清空表单。
+  $: if (shouldResetBlankConnectionForm({
+    isOpen,
+    requestVersion: dialogRequestVersion,
+    appliedRequestVersion: appliedDialogRequestVersion,
+    editingAsset,
+    cloningAsset,
+  })) {
     resetForm();
   }
+
+  $: if (isOpen && dialogRequestVersion !== appliedDialogRequestVersion) {
+    appliedDialogRequestVersion = dialogRequestVersion;
+  }
+
+  // 克隆请求可能在弹窗开启后才通过绑定传入，不能只依赖打开瞬间的状态。
+  $: if (shouldApplyClone({ isOpen, cloningAsset, appliedCloningAsset })) {
+    applyCloningAsset();
+  }
+
   $: wasOpen = isOpen;
-
-  $: if (isOpen && !editingAsset && !formData.id) {
-    // New connection: only set port if form is empty
-    if (!formData.port) {
-      formData.port = getDefaultPort();
-    }
-  }
-
-  $: if (isOpen) {
-    const currentEditingAssetId = editingAsset?.id || null;
-    if (currentEditingAssetId !== lastEditingAssetId) {
-      if (!currentEditingAssetId) {
-        resetForm();
-      } else {
-        editingAssetLoaded = false;
-      }
-      lastEditingAssetId = currentEditingAssetId;
-    }
-  }
 
   function getDefaultPortFor(type, dbType) {
     switch (type) {
@@ -400,11 +399,12 @@
 
   // Load connection data when editing
   async function loadConnectionData() {
-    if (!editingAsset || !isOpen || editingAssetLoaded) return;
+    if (!shouldLoadEditConnection({ isOpen, targetId: editingAsset?.id, loaded: editingAssetLoaded })) return;
+    const requestedId = editingAsset.id;
 
     try {
-      const conn = await window.wailsBindings.GetConnection(editingAsset.id);
-      if (conn) {
+      const conn = await window.wailsBindings.GetConnection(requestedId);
+      if (conn && shouldApplyEditConnectionResult({ isOpen, requestedId, activeId: editingAsset?.id })) {
         formData = {
           id: conn.id,
           name: conn.name || '',
@@ -429,10 +429,12 @@
         // Load password if saved
         try {
           const hasPassword = await window.wailsBindings.HasPassword(conn.id);
-          if (hasPassword) {
+          if (hasPassword && shouldApplyEditConnectionResult({ isOpen, requestedId, activeId: editingAsset?.id })) {
             formData.savePassword = true;
             const password = await window.wailsBindings.GetPassword(conn.id);
-            formData.password = password || '';
+            if (shouldApplyEditConnectionResult({ isOpen, requestedId, activeId: editingAsset?.id })) {
+              formData.password = password || '';
+            }
           }
         } catch (error) {
           console.warn('Failed to load password:', error);
@@ -451,15 +453,13 @@
     loadJDBCDrivers();
   }
 
-  // Reset the loaded flag when editingAsset changes or dialog closes
-  $: if (editingAsset && formData.id !== editingAsset.id) {
-    // editingAsset has changed to a different one, reload data
+  // 编辑对象切换后强制清空旧表单，并为新对象重新加载。
+  $: if (editingAsset && formData.id !== editingAsset.id && resetEditingAssetId !== editingAsset.id) {
+    resetForm();
+    resetEditingAssetId = editingAsset.id;
     editingAssetLoaded = false;
-  }
-
-  $: if (!wasOpen && isOpen && editingAsset) {
-    // Dialog just opened with editingAsset, ensure we load data
-    editingAssetLoaded = false;
+    // 在同一轮状态更新中启动新目标加载，避免首次点击只显示空白表单。
+    loadConnectionData();
   }
 
   // Group selector handlers
@@ -796,6 +796,9 @@
             id="connection-username"
             required={requiresDatabaseUsername}
             bind:value={formData.username}
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck={false}
             placeholder="root"
             class={inputClass}
           />
