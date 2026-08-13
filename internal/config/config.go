@@ -50,6 +50,10 @@ type AppSettings struct {
 	JDBCRuntimeMode        string `json:"jdbc_runtime_mode"`
 	JDBCSystemJavaPath     string `json:"jdbc_system_java_path"`
 
+	CopilotProvider string `json:"copilot_provider"`
+	CopilotBaseURL  string `json:"copilot_base_url"`
+	CopilotModel    string `json:"copilot_model"`
+
 	// Monitor panel settings
 	MonitorCollapsed       bool `json:"monitor_collapsed"`
 	MonitorWidth           int  `json:"monitor_width"`
@@ -99,6 +103,7 @@ func DefaultSettings() AppSettings {
 		FileManagerShowHidden:  false,
 		FileManagerSortBy:      "name",
 		FileManagerSortOrder:   "asc",
+		CopilotProvider:        "openai_compatible",
 	}
 }
 
@@ -354,6 +359,16 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 	if fileManagerSortOrder, ok := updates["file_manager_sort_order"].(string); ok {
 		cm.config.Settings.FileManagerSortOrder = fileManagerSortOrder
+	}
+
+	if copilotProvider, ok := updates["copilot_provider"].(string); ok {
+		cm.config.Settings.CopilotProvider = copilotProvider
+	}
+	if copilotBaseURL, ok := updates["copilot_base_url"].(string); ok {
+		cm.config.Settings.CopilotBaseURL = copilotBaseURL
+	}
+	if copilotModel, ok := updates["copilot_model"].(string); ok {
+		cm.config.Settings.CopilotModel = copilotModel
 	}
 
 	// File manager per-connection settings

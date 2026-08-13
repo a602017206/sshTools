@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -89,6 +90,34 @@ func TestConfigManagerRejectsInvalidJDBCRuntimeMode(t *testing.T) {
 	}
 	if err := cm.UpdateJDBCRuntimeSettings("system", ""); err == nil {
 		t.Fatal("expected empty system Java path error")
+	}
+}
+
+func TestUpdateSettingsPersistsCopilotFieldsWithoutAPIKey(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	cm := newDiskTestConfigManager(configPath)
+	if err := cm.UpdateSettings(map[string]interface{}{
+		"copilot_provider": "openai_compatible",
+		"copilot_base_url": "https://api.deepseek.com/v1",
+		"copilot_model":    "deepseek-chat",
+		"copilot_api_key":  "sk-secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "sk-secret") || strings.Contains(string(raw), "copilot_api_key") {
+		t.Fatalf("api key leaked into config.json: %s", raw)
+	}
+	reloaded := newDiskTestConfigManager(configPath)
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	s := reloaded.GetSettings()
+	if s.CopilotBaseURL != "https://api.deepseek.com/v1" || s.CopilotModel != "deepseek-chat" {
+		t.Fatalf("unexpected copilot settings: %+v", s)
 	}
 }
 
