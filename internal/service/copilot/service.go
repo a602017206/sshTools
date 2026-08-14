@@ -36,6 +36,7 @@ type ChatRequest struct {
 	SessionID     string
 	Mode          string // ssh | database
 	Message       string
+	Model         string
 	History       []Message
 	EditorContent string
 	TerminalTail  string
@@ -53,14 +54,17 @@ type ChatResponse struct {
 	ToolNotes []string  `json:"tool_notes"`
 }
 
+type sessionGate struct {
+	mu       sync.Mutex
+	inflight map[string]context.CancelFunc
+}
+
 // Service orchestrates provider chat, read-only tools, and per-session isolation.
 type Service struct {
 	provider Provider
 	schema   SchemaReader
 	commands CommandRunner
-
-	mu       sync.Mutex
-	inflight map[string]context.CancelFunc
+	gate     *sessionGate
 }
 
 func NewService(provider Provider, schema SchemaReader, commands CommandRunner) *Service {
@@ -68,24 +72,40 @@ func NewService(provider Provider, schema SchemaReader, commands CommandRunner) 
 		provider: provider,
 		schema:   schema,
 		commands: commands,
-		inflight: make(map[string]context.CancelFunc),
+		gate:     &sessionGate{inflight: make(map[string]context.CancelFunc)},
+	}
+}
+
+// WithProvider returns a shallow copy that shares schema, commands, and in-flight sessions.
+func (s *Service) WithProvider(p Provider) *Service {
+	if s == nil {
+		return &Service{
+			provider: p,
+			gate:     &sessionGate{inflight: make(map[string]context.CancelFunc)},
+		}
+	}
+	return &Service{
+		provider: p,
+		schema:   s.schema,
+		commands: s.commands,
+		gate:     s.gate,
 	}
 }
 
 func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	s.mu.Lock()
-	if _, busy := s.inflight[req.SessionID]; busy {
-		s.mu.Unlock()
+	s.gate.mu.Lock()
+	if _, busy := s.gate.inflight[req.SessionID]; busy {
+		s.gate.mu.Unlock()
 		cancel()
 		return nil, fmt.Errorf("已有生成进行中")
 	}
-	s.inflight[req.SessionID] = cancel
-	s.mu.Unlock()
+	s.gate.inflight[req.SessionID] = cancel
+	s.gate.mu.Unlock()
 	defer func() {
-		s.mu.Lock()
-		delete(s.inflight, req.SessionID)
-		s.mu.Unlock()
+		s.gate.mu.Lock()
+		delete(s.gate.inflight, req.SessionID)
+		s.gate.mu.Unlock()
 		cancel()
 	}()
 
@@ -97,7 +117,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, err
 	var notes []string
 	var last Message
 	for round := 0; ; round++ {
-		msg, err := s.provider.Chat(ctx, "", messages, tools)
+		msg, err := s.provider.Chat(ctx, req.Model, messages, tools)
 		if err != nil {
 			return nil, err
 		}
@@ -137,9 +157,12 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, err
 }
 
 func (s *Service) Cancel(sessionID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if c, ok := s.inflight[sessionID]; ok {
+	if s == nil || s.gate == nil {
+		return
+	}
+	s.gate.mu.Lock()
+	defer s.gate.mu.Unlock()
+	if c, ok := s.gate.inflight[sessionID]; ok {
 		c()
 	}
 }

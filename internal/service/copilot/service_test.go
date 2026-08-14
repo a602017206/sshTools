@@ -20,6 +20,7 @@ type fakeProvider struct {
 }
 
 type providerCall struct {
+	model    string
 	messages []Message
 	tools    []ToolSpec
 }
@@ -28,6 +29,7 @@ func (p *fakeProvider) Chat(ctx context.Context, model string, messages []Messag
 	p.mu.Lock()
 	n := len(p.calls)
 	p.calls = append(p.calls, providerCall{
+		model:    model,
 		messages: append([]Message(nil), messages...),
 		tools:    append([]ToolSpec(nil), tools...),
 	})
@@ -434,5 +436,28 @@ func TestServiceTruncatesToolResults(t *testing.T) {
 	}
 	if provider.callCount() < 2 {
 		t.Fatal("expected a second provider round with truncated tool result")
+	}
+}
+
+func TestServiceChatPassesModel(t *testing.T) {
+	provider := &fakeProvider{}
+	svc := NewService(provider, &fakeSchema{}, &fakeCommands{})
+	_, err := svc.Chat(context.Background(), ChatRequest{
+		SessionID: "model-1",
+		Mode:      "database",
+		Message:   "hi",
+		Model:     "deepseek-chat",
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if provider.callCount() < 1 {
+		t.Fatal("expected provider.Chat to be called")
+	}
+	provider.mu.Lock()
+	got := provider.calls[0].model
+	provider.mu.Unlock()
+	if got != "deepseek-chat" {
+		t.Fatalf("provider model = %q, want deepseek-chat", got)
 	}
 }

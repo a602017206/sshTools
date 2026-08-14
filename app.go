@@ -10,14 +10,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/service"
+	"AHaSSHTools/internal/service/copilot"
 	"AHaSSHTools/internal/ssh"
 	"AHaSSHTools/internal/store"
 
@@ -51,6 +54,15 @@ type App struct {
 	jdbcFileDialogs       jdbcFileDialogs
 	jdbcRuntimeSettings   jdbcRuntimeSettingsStore
 	configManager         *config.ConfigManager
+	credentialStore       *store.CredentialStore
+	copilotService        *copilot.Service
+	copilotMetaMu         sync.Mutex
+	copilotMeta           map[string]copilotSessionMeta
+}
+
+type copilotSessionMeta struct {
+	host string
+	user string
 }
 
 type jdbcRuntimeSettingsStore interface {
@@ -85,7 +97,10 @@ func (wailsJDBCFileDialogs) SelectJavaExecutable(ctx context.Context) (string, e
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{jdbcFileDialogs: wailsJDBCFileDialogs{}}
+	return &App{
+		jdbcFileDialogs: wailsJDBCFileDialogs{},
+		copilotMeta:     make(map[string]copilotSessionMeta),
+	}
 }
 
 // startup is called when the app starts. The context is saved
@@ -104,6 +119,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// Initialize credential store
 	credentialStore := store.NewCredentialStore()
+	a.credentialStore = credentialStore
 
 	// Initialize managers
 	sessionManager := ssh.NewSessionManager()
@@ -135,6 +151,10 @@ func (a *App) startup(ctx context.Context) {
 		service.NativeDatabaseTypeNeo4j:         service.NewDefaultNeo4jNativeProvider(),
 		service.NativeDatabaseTypeKafka:         service.NewDefaultKafkaNativeProvider(),
 	})
+	if a.copilotMeta == nil {
+		a.copilotMeta = make(map[string]copilotSessionMeta)
+	}
+	a.copilotService = copilot.NewService(nil, a.databaseService, a.sessionService)
 }
 
 func (a *App) initJDBCServices(agentJar []byte) error {
@@ -310,6 +330,7 @@ func (a *App) ConnectSSH(sessionID, host string, port int, user, authType, authV
 
 	if err == nil {
 		fmt.Printf("SSH session started: %s (%s@%s:%d)\n", sessionID, user, host, port)
+		a.rememberCopilotSession(sessionID, host, user)
 		a.setupCWDTracking(sessionID)
 	}
 	return err
@@ -357,6 +378,10 @@ func (a *App) ResizeSSH(sessionID string, cols, rows int) error {
 
 // CloseSSH closes an SSH session
 func (a *App) CloseSSH(sessionID string) error {
+	if a.copilotService != nil {
+		a.copilotService.Cancel(sessionID)
+	}
+	a.clearCopilotSession(sessionID)
 	err := a.sessionService.CloseSession(sessionID)
 	if err != nil {
 		return err
@@ -521,6 +546,135 @@ func (a *App) GetSettings() config.AppSettings {
 // UpdateSettings updates application settings
 func (a *App) UpdateSettings(updates map[string]interface{}) error {
 	return a.settingsService.UpdateSettings(updates)
+}
+
+func (a *App) CopilotChat(req copilot.ChatRequest) (*copilot.ChatResponse, error) {
+	if a.copilotService == nil {
+		return nil, fmt.Errorf("copilot 未初始化")
+	}
+
+	var settings config.AppSettings
+	if a.settingsService != nil {
+		settings = a.settingsService.GetSettings()
+	}
+
+	apiKey := ""
+	if a.credentialStore != nil {
+		if stored, err := a.credentialStore.Get(copilot.APIKeyCredentialID); err == nil {
+			apiKey = stored
+		}
+	}
+	if err := copilot.ValidateConfig(settings.CopilotBaseURL, apiKey); err != nil {
+		return nil, err
+	}
+
+	a.fillCopilotRequest(&req)
+	req.Model = settings.CopilotModel
+
+	provider := copilot.NewOpenAICompatible(settings.CopilotBaseURL, apiKey, &http.Client{Timeout: 60 * time.Second})
+	parent := context.Background()
+	if a.ctx != nil {
+		parent = a.ctx
+	}
+	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
+	defer cancel()
+	return a.copilotService.WithProvider(provider).Chat(ctx, req)
+}
+
+func (a *App) CopilotClassify(kind, content string) copilot.Result {
+	return copilot.Classify(kind, content)
+}
+
+func (a *App) HasCopilotAPIKey() bool {
+	if a.credentialStore == nil {
+		return false
+	}
+	return a.credentialStore.Has(copilot.APIKeyCredentialID)
+}
+
+func (a *App) SetCopilotAPIKey(apiKey string) error {
+	if a.credentialStore == nil {
+		return fmt.Errorf("凭据存储未初始化")
+	}
+	return a.credentialStore.Store(copilot.APIKeyCredentialID, apiKey)
+}
+
+func (a *App) ClearCopilotAPIKey() error {
+	if a.credentialStore == nil {
+		return fmt.Errorf("凭据存储未初始化")
+	}
+	return a.credentialStore.Delete(copilot.APIKeyCredentialID)
+}
+
+func (a *App) fillCopilotRequest(req *copilot.ChatRequest) {
+	if req == nil {
+		return
+	}
+	if a.databaseService != nil {
+		if sess, err := a.databaseService.GetSession(req.SessionID); err == nil && sess != nil {
+			req.Host = sess.Config.Host
+			req.User = sess.Config.User
+			req.DBType = sess.Config.DBType
+			req.Database = sess.Config.Database
+		}
+	}
+	if (req.Host == "" || req.User == "") && a.connectionService != nil {
+		if conn, err := a.connectionService.GetConnection(req.SessionID); err == nil {
+			if req.Host == "" {
+				req.Host = conn.Host
+			}
+			if req.User == "" {
+				req.User = conn.User
+			}
+		}
+	}
+	if meta, ok := a.lookupCopilotSession(req.SessionID); ok {
+		if req.Host == "" {
+			req.Host = meta.host
+		}
+		if req.User == "" {
+			req.User = meta.user
+		}
+	}
+	if req.WorkingDir == "" && a.sftpService != nil {
+		if cwd, err := a.sftpService.GetCurrentPath(req.SessionID); err == nil {
+			req.WorkingDir = cwd
+		}
+	}
+}
+
+func (a *App) rememberCopilotSession(sessionID, host, user string) {
+	if a == nil || sessionID == "" {
+		return
+	}
+	a.copilotMetaMu.Lock()
+	defer a.copilotMetaMu.Unlock()
+	if a.copilotMeta == nil {
+		a.copilotMeta = make(map[string]copilotSessionMeta)
+	}
+	a.copilotMeta[sessionID] = copilotSessionMeta{host: host, user: user}
+}
+
+func (a *App) lookupCopilotSession(sessionID string) (copilotSessionMeta, bool) {
+	if a == nil {
+		return copilotSessionMeta{}, false
+	}
+	a.copilotMetaMu.Lock()
+	defer a.copilotMetaMu.Unlock()
+	if a.copilotMeta == nil {
+		return copilotSessionMeta{}, false
+	}
+	meta, ok := a.copilotMeta[sessionID]
+	return meta, ok
+}
+
+func (a *App) clearCopilotSession(sessionID string) {
+	if a == nil {
+		return
+	}
+	a.copilotMetaMu.Lock()
+	defer a.copilotMetaMu.Unlock()
+	delete(a.copilotMeta, sessionID)
 }
 
 // SelectBackgroundImage opens a file dialog and installs the chosen wallpaper.
@@ -1499,6 +1653,10 @@ func (a *App) GetTableSchemaInSchema(sessionID, database, schema, table string) 
 }
 
 func (a *App) CloseDatabase(sessionID string) error {
+	if a.copilotService != nil {
+		a.copilotService.Cancel(sessionID)
+	}
+	a.clearCopilotSession(sessionID)
 	return a.databaseService.CloseDatabase(sessionID)
 }
 
