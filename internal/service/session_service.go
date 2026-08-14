@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"time"
 
 	"AHaSSHTools/internal/ssh"
 )
@@ -105,6 +106,11 @@ func (s *SessionService) CloseAllSessions() error {
 // ListSessions returns all active session IDs
 func (s *SessionService) ListSessions() []string {
 	return s.sessionManager.ListSessions()
+}
+
+// ExecuteCommand runs a command on the session connection without using the user PTY.
+func (s *SessionService) ExecuteCommand(sessionID, cmd string, timeout time.Duration) (string, string, error) {
+	return s.sessionManager.ExecuteCommand(sessionID, cmd, timeout)
 }
 
 // GetSFTPClient gets or creates an SFTP client for a session
