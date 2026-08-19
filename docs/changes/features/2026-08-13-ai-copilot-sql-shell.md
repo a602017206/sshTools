@@ -51,6 +51,6 @@ cd frontend && npm run build
 
 - **手工回归未执行**：规格第 9 节四条手工回归（数据库自然语言→填入→执行→结果在面板；SSH 自然语言→填入终端不换行→执行后命令在 PTY；`DROP TABLE`/`rm -rf` 必须确认且取消后无执行；未配 Key、错误模型名、JDBC agent 不可用时提示可读）**未在 `wails dev` 中实际运行**，本次 SDD 仅完成自动化测试与前端构建。规格第 10 节验收项同样需在真实连接的 MySQL/PostgreSQL/Oracle/金仓与 SSH 会话中手工确认，尚未执行。
 - `frontend/wailsjs` 的 Copilot 绑定在 `wails dev` 时再生；在此之前前端通过 `window.go.main.App` 兜底，未在桌面运行时验证过绑定完整性。
-- Task 1–7 review 期间登记的若干 Minor（如 `ParseArtifact` 取首个 `{` 可能误抽、`\bdd\b`/`\brm\b` 词边界假阳性、`SetCopilotAPIKey("")` 仍 `Has=true`、生成中未禁用「填入」、SSH 模式收到 sql artifact 静默 no-op、`confirmDanger` 并发覆写、peek→confirm→execute 期间活跃面板可能切换等）未在本任务修复，留待最终评审或后续迭代。
+- Task 1–7 review 期间登记的若干 Minor（如 `ParseArtifact` 取首个 `{` 可能误抽、`\bdd\b`/`\brm\b` 词边界假阳性、生成中未禁用「填入」、SSH 模式收到 sql artifact 静默 no-op、`confirmDanger` 并发覆写、peek→confirm→execute 期间活跃面板可能切换等）未在本任务修复，留待最终评审或后续迭代。已修项：空 peek 误报「已执行」、MaxToolRounds 触顶无最终产物、`SetCopilotAPIKey("")` 仍 `Has=true`。
 - 本地 Ollama Provider 仅预留接口，第一版未接通，无法验证本地模型路径。
 - 对话历史仅存内存，关会话即丢；多窗口或异常退出时未做持久化兜底。
