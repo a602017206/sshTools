@@ -769,7 +769,9 @@
 
     try {
       const wails = await import('../wailsjs/go/main/App.js');
-      window.wailsBindings = wails;
+      // 优先 Wails 运行时注入对象（含全部 Go 导出，包括尚未生成的 Copilot 系列），
+      // 再回退到生成的绑定模块，确保设置页等其它调用点也能拿到 Copilot 方法。
+      window.wailsBindings = window.go?.main?.App || wails;
       window.dispatchEvent(new CustomEvent('wails-bindings-loaded', {
         detail: Object.keys(wails.default || wails).join(', ')
       }));

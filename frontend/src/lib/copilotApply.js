@@ -1,5 +1,6 @@
 export const COPILOT_APPLY_SQL = 'copilot:apply-sql';
 export const COPILOT_EXECUTE_SQL = 'copilot:execute-sql';
+export const COPILOT_PEEK_SQL = 'copilot:peek-sql';
 
 export function applySqlEvent(sessionId, content) {
   return new CustomEvent(COPILOT_APPLY_SQL, { detail: { sessionId, content } });
@@ -7,6 +8,10 @@ export function applySqlEvent(sessionId, content) {
 
 export function executeSqlEvent(sessionId, handled) {
   return new CustomEvent(COPILOT_EXECUTE_SQL, { detail: { sessionId, handled } });
+}
+
+export function peekSqlEvent(sessionId, out) {
+  return new CustomEvent(COPILOT_PEEK_SQL, { detail: { sessionId, out } });
 }
 
 export function shellExecutePayload(content) {

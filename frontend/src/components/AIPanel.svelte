@@ -5,6 +5,7 @@
   import {
     applySqlEvent,
     executeSqlEvent,
+    peekSqlEvent,
     shellExecutePayload
   } from '../lib/copilotApply.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
@@ -36,7 +37,9 @@
   }
 
   function getBindings() {
-    return window.wailsBindings || window.go?.main?.App || {};
+    // 优先 Wails 运行时注入对象（含全部 Go 导出方法，包括尚未生成的 Copilot 系列），
+    // 再回退到生成的绑定模块，最后空对象，避免运行时回退不可达。
+    return window.go?.main?.App || window.wailsBindings || {};
   }
 
   async function refreshHasApiKey() {
@@ -196,51 +199,80 @@
   async function classifyAndConfirm(kind, content) {
     const api = getBindings();
     if (typeof api.CopilotClassify !== 'function') {
-      return true;
+      // 绑定缺失：写操作一律二次确认，fail-closed，不静默放行。
+      return confirmDanger('无法完成操作分类，请手动确认后再执行。');
     }
-    const result = await api.CopilotClassify(kind, content);
-    const destructive = Boolean(result?.Destructive ?? result?.destructive);
-    if (!destructive) return true;
-    return confirmDanger(result?.Reason || result?.reason || '');
+    try {
+      const result = await api.CopilotClassify(kind, content);
+      const destructive = Boolean(result?.Destructive ?? result?.destructive);
+      if (!destructive) return true;
+      return confirmDanger(result?.Reason || result?.reason || '');
+    } catch (error) {
+      // 分类抛错：fail-closed，弹危险确认，用户取消则不执行。
+      return confirmDanger('操作分类失败，请手动确认后再执行。');
+    }
   }
 
   async function executeArtifact(artifact) {
     if (!artifact?.content || !backendSessionId || generating) return;
     const kind = copilotMode === 'database' || artifact.type === 'sql' ? 'sql' : 'shell';
-    const confirmed = await classifyAndConfirm(kind, artifact.content);
-    if (!confirmed) return;
 
     try {
       if (kind === 'sql') {
-        window.dispatchEvent(applySqlEvent(backendSessionId, artifact.content));
+        // 先 peek：有打开的查询/表面板时，由面板同步回填当前编辑器 query。
+        const peek = { found: false, query: '' };
+        window.dispatchEvent(peekSqlEvent(backendSessionId, peek));
         await tick();
-        const handled = { value: false };
-        window.dispatchEvent(executeSqlEvent(backendSessionId, handled));
-        await tick();
-        if (!handled.value) {
-          const api = getBindings();
-          if (typeof api.ExecuteDatabaseQuery !== 'function') {
-            throw new Error('数据库执行不可用');
-          }
-          const sql = String(artifact.content).trim().replace(/;+\s*$/g, '');
-          const raw = await api.ExecuteDatabaseQuery(backendSessionId, sql);
-          let summary = '已执行';
-          try {
-            const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-            const rows = data?.rows?.length ?? data?.rowCount;
-            if (typeof rows === 'number') {
-              summary = `已执行，返回 ${rows} 行`;
+
+        if (peek.found) {
+          // 有打开的查询/表面板：分类将要执行的 SQL（当前编辑器 query，可能已被用户改过）。
+          // 不先覆写编辑器，由面板 executeQuery() 跑当前 query。
+          const targetSql = peek.query || artifact.content;
+          const confirmed = await classifyAndConfirm('sql', targetSql);
+          if (!confirmed) return;
+          const handled = { value: false };
+          window.dispatchEvent(executeSqlEvent(backendSessionId, handled));
+          await tick();
+          if (!handled.value) {
+            // 面板未认领执行（理论上 peek.found 即会认领），回退直接执行同一内容。
+            const api = getBindings();
+            if (typeof api.ExecuteDatabaseQuery !== 'function') {
+              throw new Error('数据库执行不可用');
             }
-          } catch {
-            summary = '已执行';
+            const sql = String(targetSql).trim().replace(/;+\s*$/g, '');
+            await api.ExecuteDatabaseQuery(backendSessionId, sql);
           }
-          copilotStore.appendMessage(sessionId, { role: 'assistant', content: summary });
+          copilotStore.appendMessage(sessionId, { role: 'assistant', content: '已执行，结果见数据库面板。' });
           return;
         }
-        copilotStore.appendMessage(sessionId, { role: 'assistant', content: '已执行，结果见数据库面板。' });
+
+        // 无打开的查询面板：分类 artifact.content，确认后先填入再执行同一内容。
+        const confirmed = await classifyAndConfirm('sql', artifact.content);
+        if (!confirmed) return;
+        window.dispatchEvent(applySqlEvent(backendSessionId, artifact.content));
+        await tick();
+        const api = getBindings();
+        if (typeof api.ExecuteDatabaseQuery !== 'function') {
+          throw new Error('数据库执行不可用');
+        }
+        const sql = String(artifact.content).trim().replace(/;+\s*$/g, '');
+        const raw = await api.ExecuteDatabaseQuery(backendSessionId, sql);
+        let summary = '已执行';
+        try {
+          const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          const rows = data?.rows?.length ?? data?.rowCount;
+          if (typeof rows === 'number') {
+            summary = `已执行，返回 ${rows} 行`;
+          }
+        } catch {
+          summary = '已执行';
+        }
+        copilotStore.appendMessage(sessionId, { role: 'assistant', content: summary });
         return;
       }
 
+      const confirmed = await classifyAndConfirm('shell', artifact.content);
+      if (!confirmed) return;
       const payload = shellExecutePayload(artifact.content);
       if (typeof onInsertShell === 'function') {
         onInsertShell(backendSessionId, payload);

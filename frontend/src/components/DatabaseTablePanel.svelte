@@ -1,7 +1,7 @@
 <script>
   import { onDestroy, onMount, tick } from 'svelte';
   import { connectionsStore, activeSessionIdStore } from '../stores.js';
-  import { COPILOT_APPLY_SQL, COPILOT_EXECUTE_SQL } from '../lib/copilotApply.js';
+  import { COPILOT_APPLY_SQL, COPILOT_EXECUTE_SQL, COPILOT_PEEK_SQL } from '../lib/copilotApply.js';
   import {
     buildQualifiedTableName as buildQualifiedTableSQL,
     buildTableBrowseSQL,
@@ -376,6 +376,15 @@
       activeMode = 'sql';
     };
 
+    // peek/execute 用捕获阶段，确保表面板在 DatabasePanel 之前同步认领。
+    const handlePeekSql = (event) => {
+      if (!event?.detail || event.detail.sessionId !== sessionId) return;
+      if (!isActiveCopilotTarget()) return;
+      // 在任何 await 之前同步置位，调用方据此判断面板已认领。
+      event.detail.out.found = true;
+      event.detail.out.query = String(query ?? '');
+    };
+
     const handleExecuteSql = async (event) => {
       if (!event?.detail || event.detail.sessionId !== sessionId) return;
       if (!isActiveCopilotTarget()) return;
@@ -384,7 +393,8 @@
     };
 
     window.addEventListener(COPILOT_APPLY_SQL, handleApplySql);
-    window.addEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql);
+    window.addEventListener(COPILOT_PEEK_SQL, handlePeekSql, true);
+    window.addEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql, true);
 
     // JDBC Connection 非线程安全：必须先完成元数据再跑查询，避免 Oracle 等驱动并发挂死超时。
     await loadColumnMetadata();
@@ -396,7 +406,8 @@
 
     return () => {
       window.removeEventListener(COPILOT_APPLY_SQL, handleApplySql);
-      window.removeEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql);
+      window.removeEventListener(COPILOT_PEEK_SQL, handlePeekSql, true);
+      window.removeEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql, true);
     };
   });
 

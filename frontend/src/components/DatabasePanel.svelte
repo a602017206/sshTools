@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { buildQualifiedTableName, buildTableBrowseSQL } from '../lib/tableQueryBuilder.js';
   import { formatConnectionError } from '../lib/formatConnectionError.js';
-  import { COPILOT_APPLY_SQL, COPILOT_EXECUTE_SQL } from '../lib/copilotApply.js';
+  import { COPILOT_APPLY_SQL, COPILOT_EXECUTE_SQL, COPILOT_PEEK_SQL } from '../lib/copilotApply.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -34,13 +34,23 @@
       query = String(event.detail.content ?? '');
     };
 
+    // 查询面板作为回退目标：表面板已在捕获阶段认领时，peek/execute 这里直接 return。
+    const handlePeekSql = (event) => {
+      if (!event?.detail || event.detail.sessionId !== sessionId) return;
+      if (event.detail.out?.found) return;
+      event.detail.out.found = true;
+      event.detail.out.query = String(query ?? '');
+    };
+
     const handleExecuteSql = async (event) => {
       if (!event?.detail || event.detail.sessionId !== sessionId) return;
+      if (event.detail.handled?.value) return;
       if (event.detail.handled) event.detail.handled.value = true;
       await executeQuery();
     };
 
     window.addEventListener(COPILOT_APPLY_SQL, handleApplySql);
+    window.addEventListener(COPILOT_PEEK_SQL, handlePeekSql);
     window.addEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql);
 
     if (sessionId) {
@@ -59,6 +69,7 @@
 
     return () => {
       window.removeEventListener(COPILOT_APPLY_SQL, handleApplySql);
+      window.removeEventListener(COPILOT_PEEK_SQL, handlePeekSql);
       window.removeEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql);
       window.removeEventListener('database:table-select', handleTableSelect);
     };
