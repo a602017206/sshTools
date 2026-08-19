@@ -311,6 +311,9 @@ export function getDefaultAppSettings() {
     background_image_path: '',
     background_image_fit: 'cover',
     background_image_opacity: 35,
-    background_image_data_url: ''
+    background_image_data_url: '',
+    copilot_provider: 'openai_compatible',
+    copilot_base_url: '',
+    copilot_model: ''
   };
 }

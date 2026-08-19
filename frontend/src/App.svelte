@@ -119,7 +119,10 @@
       background_image_enabled: Boolean(settings.background_image_enabled),
       background_image_path: settings.background_image_path || '',
       background_image_fit: settings.background_image_fit === 'contain' ? 'contain' : 'cover',
-      background_image_opacity: Number(settings.background_image_opacity) || 35
+      background_image_opacity: Number(settings.background_image_opacity) || 35,
+      copilot_provider: settings.copilot_provider || 'openai_compatible',
+      copilot_base_url: settings.copilot_base_url || '',
+      copilot_model: settings.copilot_model || ''
     };
 
     try {
@@ -164,9 +167,24 @@
   }
 
   async function handleSaveGlobalSettings(nextSettings) {
-    applyAndSyncSettings(nextSettings);
+    const apiKey = typeof nextSettings?.copilot_api_key === 'string'
+      ? nextSettings.copilot_api_key.trim()
+      : '';
+    const settingsWithoutKey = { ...nextSettings };
+    delete settingsWithoutKey.copilot_api_key;
+
+    applyAndSyncSettings(settingsWithoutKey);
     settingsDraftSnapshot = null;
     isGlobalSettingsOpen = false;
+
+    if (apiKey && window.wailsBindings && typeof window.wailsBindings.SetCopilotAPIKey === 'function') {
+      try {
+        await window.wailsBindings.SetCopilotAPIKey(apiKey);
+      } catch (error) {
+        console.error('Failed to save copilot API key:', error);
+      }
+    }
+
     await persistAppSettings(appSettings);
   }
 

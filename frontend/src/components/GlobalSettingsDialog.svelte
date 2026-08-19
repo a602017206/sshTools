@@ -12,26 +12,78 @@
   let draft = getDefaultAppSettings();
   let initializedForOpen = false;
   let activeSection = 'appearance';
+  let copilotApiKey = '';
+  let hasCopilotAPIKey = false;
+  let copilotKeyBusy = false;
+  let copilotKeyError = '';
 
   $: if (isOpen && !initializedForOpen) {
     draft = normalizeDraft({ ...getDefaultAppSettings(), ...value });
+    copilotApiKey = '';
+    copilotKeyError = '';
     initializedForOpen = true;
+    refreshHasCopilotAPIKey();
   }
 
   $: if (!isOpen && initializedForOpen) {
     initializedForOpen = false;
+    copilotApiKey = '';
+    copilotKeyError = '';
   }
 
   function normalizeDraft(settings) {
+    const rest = { ...(settings || {}) };
+    delete rest.copilot_api_key;
     return {
-      ...settings,
-      font_size: Number(settings.font_size) || 14,
-      terminal_font_size: Number(settings.terminal_font_size) || 14
+      ...rest,
+      font_size: Number(rest.font_size) || 14,
+      terminal_font_size: Number(rest.terminal_font_size) || 14,
+      copilot_provider: rest.copilot_provider || 'openai_compatible',
+      copilot_base_url: rest.copilot_base_url || '',
+      copilot_model: rest.copilot_model || ''
     };
   }
 
   function handleSave() {
-    onSave(normalizeDraft(draft));
+    const next = normalizeDraft(draft);
+    const key = String(copilotApiKey || '').trim();
+    if (key) {
+      next.copilot_api_key = key;
+    }
+    onSave(next);
+  }
+
+  async function refreshHasCopilotAPIKey() {
+    const api = window.wailsBindings || {};
+    if (typeof api.HasCopilotAPIKey !== 'function') {
+      hasCopilotAPIKey = false;
+      return;
+    }
+    try {
+      hasCopilotAPIKey = Boolean(await api.HasCopilotAPIKey());
+    } catch (error) {
+      console.error('Failed to check copilot API key:', error);
+      hasCopilotAPIKey = false;
+    }
+  }
+
+  async function handleClearCopilotAPIKey() {
+    const api = window.wailsBindings || {};
+    if (typeof api.ClearCopilotAPIKey !== 'function') {
+      return;
+    }
+    copilotKeyBusy = true;
+    copilotKeyError = '';
+    try {
+      await api.ClearCopilotAPIKey();
+      copilotApiKey = '';
+      await refreshHasCopilotAPIKey();
+    } catch (error) {
+      console.error('Failed to clear copilot API key:', error);
+      copilotKeyError = '清除密钥失败';
+    } finally {
+      copilotKeyBusy = false;
+    }
   }
 
   function getEffectiveMode() {
@@ -128,6 +180,14 @@
       >
         <span>数据库驱动</span>
         <small>JRE、驱动、agent</small>
+      </button>
+      <button
+        type="button"
+        class:active={activeSection === 'copilot'}
+        on:click={() => (activeSection = 'copilot')}
+      >
+        <span>AI Copilot</span>
+        <small>接口、模型、密钥</small>
       </button>
     </nav>
 
@@ -297,6 +357,70 @@
       </div>
     </div>
   </div>
+      {:else if activeSection === 'copilot'}
+        <div class="space-y-6">
+          <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/70 dark:bg-slate-900/50 space-y-4">
+            <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">AI Copilot</div>
+
+            <label class="space-y-2 block">
+              <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">Base URL</div>
+              <input
+                type="text"
+                bind:value={draft.copilot_base_url}
+                placeholder="https://api.deepseek.com/v1"
+                autocomplete="off"
+                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
+              />
+            </label>
+
+            <label class="space-y-2 block">
+              <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">模型名称</div>
+              <input
+                type="text"
+                bind:value={draft.copilot_model}
+                placeholder="deepseek-chat"
+                autocomplete="off"
+                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
+              />
+              <p class="text-xs text-slate-500 dark:text-slate-400">模型名称请按服务商官方文档填写，例如 deepseek-chat</p>
+            </label>
+
+            <label class="space-y-2 block">
+              <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">API Key</div>
+              <input
+                type="password"
+                bind:value={copilotApiKey}
+                placeholder="留空则保留已保存的密钥"
+                autocomplete="off"
+                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
+              />
+            </label>
+
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-slate-500 dark:text-slate-400">
+                {hasCopilotAPIKey ? '已保存密钥' : '尚未保存密钥'}
+              </span>
+              <button
+                type="button"
+                class="px-3 py-2 text-xs rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-50"
+                disabled={!hasCopilotAPIKey || copilotKeyBusy}
+                on:click={handleClearCopilotAPIKey}
+              >
+                清除密钥
+              </button>
+            </div>
+            {#if copilotKeyError}
+              <p class="text-xs text-red-500">{copilotKeyError}</p>
+            {/if}
+          </div>
+
+          <div class="flex items-center justify-end pt-2">
+            <div class="flex gap-2">
+              <button type="button" on:click={onCancel} class="px-3 py-2 text-xs rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">取消</button>
+              <button type="button" on:click={handleSave} class="px-3 py-2 text-xs rounded-lg text-white" style="background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));">保存设置</button>
+            </div>
+          </div>
+        </div>
       {:else}
         <JDBCDriverManager />
       {/if}
@@ -362,7 +486,7 @@
 
     .settings-nav {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
     }
   }
