@@ -537,9 +537,6 @@
     });
 
     copilotStore.clearSession(sessionId);
-    if (session?.dbSessionId) {
-      copilotStore.clearSession(session.dbSessionId);
-    }
 
     // 切换到另一个会话
     const remainingSessions = Array.from($connectionsStore.keys());
