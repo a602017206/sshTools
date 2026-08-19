@@ -1,8 +1,10 @@
 # AI Copilot（SQL / Shell）设计规格
 
-> 状态：设计已确认，实现计划已写  
-> 关联设计摘要：`docs/designs/2026-08-13-ai-copilot-sql-shell.md`  
-> 实现计划：`docs/plans/2026-08-13-ai-copilot-sql-shell.md`  
+> 状态：已落地（Tasks 1–7 完成并 review clean；自动化测试通过；规格第 9 节手工回归尚未在 `wails dev` 中执行）
+> 关联设计摘要：`docs/designs/2026-08-13-ai-copilot-sql-shell.md`
+> 实现计划：`docs/plans/2026-08-13-ai-copilot-sql-shell.md`
+> 实现说明：`docs/development/2026-08-13-ai-copilot-sql-shell.md`
+> 变更记录：`docs/changes/features/2026-08-13-ai-copilot-sql-shell.md`
 > 日期：2026-08-13
 
 ## 1. 背景
