@@ -11,6 +11,7 @@
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
   import { isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
   import { resolveMode, sessionMatchesMode } from '../lib/workspaceTabs.js';
+  import { copilotStore } from '../stores/copilot.js';
 
   export let activeMode = 'ssh';
 
@@ -61,6 +62,11 @@
       }
     }
   }
+  export function insertCopilotText(sessionId, text) {
+    if (!sessionId || text == null) return;
+    handleTerminalData(sessionId, String(text));
+  }
+
   function buildDbListSession(asset, sessionId) {
     const isNativeDatabase = isNativeDatabaseType(asset?.metadata?.db_type);
     return {
@@ -521,11 +527,19 @@
         const relatedPanels = Array.from(conns.entries())
           .filter(([_, value]) => value?.type === 'database' && value?.dbSessionId === sessionId)
           .map(([key]) => key);
-        relatedPanels.forEach(key => conns.delete(key));
+        relatedPanels.forEach(key => {
+          copilotStore.clearSession(key);
+          conns.delete(key);
+        });
       }
 
       return conns;
     });
+
+    copilotStore.clearSession(sessionId);
+    if (session?.dbSessionId) {
+      copilotStore.clearSession(session.dbSessionId);
+    }
 
     // 切换到另一个会话
     const remainingSessions = Array.from($connectionsStore.keys());

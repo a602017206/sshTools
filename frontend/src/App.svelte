@@ -18,10 +18,12 @@
   import { buildJDBCConnectionOptions } from './lib/jdbcConnectionOptions.js';
   import WorkspaceNavigation from './components/WorkspaceNavigation.svelte';
   import SessionToolDock from './components/SessionToolDock.svelte';
+  import AIPanel from './components/AIPanel.svelte';
   import DatabaseWorkspaceEmpty from './components/DatabaseWorkspaceEmpty.svelte';
   import { modeForAsset, resolveMode, resolveSshToolTab } from './lib/workspaceTabs.js';
   import { formatConnectionError } from './lib/formatConnectionError.js';
   import { createClonedConnectionFormData } from './lib/connectionFormData.js';
+  import { copilotStore } from './stores/copilot.js';
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
@@ -69,6 +71,14 @@
     null;
   $: boundSessionName = boundSshSession?.connection?.name || boundSshSession?.tabName || '';
   $: showSessionDock = activeMode === 'ssh';
+  $: isCopilotOpen = $copilotStore.open;
+  $: copilotWidth = $copilotStore.width;
+  $: copilotSession = connectionsArray.find((session) => {
+    if (!session || session.sessionId !== $activeSessionIdStore) return false;
+    return activeMode === 'database' ? session.type === 'database' : session.type !== 'database';
+  }) || null;
+  $: copilotHasSession = Boolean(copilotSession);
+  $: copilotSessionId = copilotSession?.sessionId || null;
   $: themeClass = $themeStore === 'dark' ? 'dark' : '';
   $: isDarkTheme = $themeStore === 'dark';
   $: themeToggleTitle = isDarkTheme ? '切换到亮色模式' : '切换到暗色模式';
@@ -86,6 +96,7 @@
   let isResizingSidebar = false;
   let isResizingRightPanel = false;
   let isResizingFileManager = false;
+  let isResizingCopilot = false;
 
   function applyAndSyncSettings(nextSettings) {
     const resolvedTheme = resolveTheme(nextSettings.theme_mode, nextSettings.theme);
@@ -332,6 +343,28 @@
     isResizingRightPanel = false;
     document.removeEventListener('mousemove', handleRightPanelResize);
     document.removeEventListener('mouseup', stopRightPanelResize);
+  }
+
+  function startCopilotResize(e) {
+    e.preventDefault();
+    if (isAddDialogOpen || !isCopilotOpen) return;
+    isResizingCopilot = true;
+    document.addEventListener('mousemove', handleCopilotResize);
+    document.addEventListener('mouseup', stopCopilotResize);
+  }
+
+  function handleCopilotResize(e) {
+    if (!isResizingCopilot) return;
+    const dockWidth = showSessionDock && !isRightPanelCollapsed ? rightPanelWidth : 0;
+    const railWidth = showSessionDock && isRightPanelCollapsed ? 40 : 0;
+    const newWidth = Math.max(280, Math.min(520, window.innerWidth - e.clientX - dockWidth - railWidth - 24));
+    copilotStore.setWidth(newWidth);
+  }
+
+  function stopCopilotResize() {
+    isResizingCopilot = false;
+    document.removeEventListener('mousemove', handleCopilotResize);
+    document.removeEventListener('mouseup', stopCopilotResize);
   }
 
   // File manager resize handlers
@@ -845,6 +878,19 @@
       </button>
 
       <button
+        on:click={() => copilotStore.toggle()}
+        disabled={isAddDialogOpen}
+        class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        class:ops-icon-button--active={isCopilotOpen}
+        title="AI Copilot"
+        aria-label="AI Copilot"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l1.2 3.6L17 8l-3.8 1.4L12 13l-1.2-3.6L7 8l3.8-1.4L12 3zM19 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2zM5 15l.6 1.6L7.2 17 5.6 17.6 5 19.2l-.6-1.6L2.8 17l1.6-.4L5 15z"></path>
+        </svg>
+      </button>
+
+      <button
         on:click={openGlobalSettings}
         disabled={isAddDialogOpen}
         class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -931,6 +977,38 @@
             onFocusSidebar={focusResourceTree}
           />
         </div>
+      {/if}
+    </div>
+
+    {#if isCopilotOpen}
+      <div
+        class="resize-handle-horizontal flex-shrink-0 relative group"
+        role="separator"
+        aria-hidden="true"
+        style="cursor: {isAddDialogOpen ? 'default' : 'col-resize'}; height: 100%; padding: 0 2px; pointer-events: {isAddDialogOpen ? 'none' : 'auto'};"
+        on:mousedown={startCopilotResize}
+      >
+        <div class="h-full w-full rounded"></div>
+      </div>
+    {/if}
+
+    <div
+      class="flex-shrink-0 flex flex-col overflow-hidden ops-float-panel"
+      class:collapsed={!isCopilotOpen}
+      style="width: {isCopilotOpen ? copilotWidth : 0}px; min-width: {isCopilotOpen ? '280px' : '0'}; max-width: 520px; margin: {isCopilotOpen ? '10px 8px 10px 0' : '0'};"
+    >
+      {#if isCopilotOpen}
+        <AIPanel
+          sessionId={copilotSessionId}
+          mode={activeMode === 'database' ? 'database' : 'ssh'}
+          hasSession={copilotHasSession}
+          onOpenSettings={openGlobalSettings}
+          onInsertShell={(id, text) => {
+            if (terminalPanelRef && typeof terminalPanelRef.insertCopilotText === 'function') {
+              terminalPanelRef.insertCopilotText(id, text);
+            }
+          }}
+        />
       {/if}
     </div>
 

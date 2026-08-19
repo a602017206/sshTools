@@ -1,5 +1,7 @@
 <script>
   import { onDestroy, onMount, tick } from 'svelte';
+  import { connectionsStore, activeSessionIdStore } from '../stores.js';
+  import { COPILOT_APPLY_SQL, COPILOT_EXECUTE_SQL } from '../lib/copilotApply.js';
   import {
     buildQualifiedTableName as buildQualifiedTableSQL,
     buildTableBrowseSQL,
@@ -351,7 +353,39 @@
     activeMode = 'sql';
   }
 
+  function isActiveCopilotTarget() {
+    const active = $connectionsStore?.get?.($activeSessionIdStore);
+    if (!active) return false;
+    const backendId = active.dbSessionId || active.sessionId;
+    if (backendId !== sessionId) return false;
+    if (active.panelType === 'database-query') {
+      return !tableName;
+    }
+    if (active.panelType === 'database-table') {
+      return active.tableName === tableName
+        && active.databaseName === databaseName
+        && String(active.schemaName || '') === String(schemaName || '');
+    }
+    return true;
+  }
+
   onMount(async () => {
+    const handleApplySql = (event) => {
+      if (!event?.detail || event.detail.sessionId !== sessionId) return;
+      query = String(event.detail.content ?? '');
+      activeMode = 'sql';
+    };
+
+    const handleExecuteSql = async (event) => {
+      if (!event?.detail || event.detail.sessionId !== sessionId) return;
+      if (!isActiveCopilotTarget()) return;
+      if (event.detail.handled) event.detail.handled.value = true;
+      await executeQuery();
+    };
+
+    window.addEventListener(COPILOT_APPLY_SQL, handleApplySql);
+    window.addEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql);
+
     // JDBC Connection 非线程安全：必须先完成元数据再跑查询，避免 Oracle 等驱动并发挂死超时。
     await loadColumnMetadata();
     if (tableName) await runDefaultQuery();
@@ -359,6 +393,11 @@
       query = initialQuery;
       activeMode = 'sql';
     }
+
+    return () => {
+      window.removeEventListener(COPILOT_APPLY_SQL, handleApplySql);
+      window.removeEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql);
+    };
   });
 
   onDestroy(stopColumnResize);

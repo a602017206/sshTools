@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { buildQualifiedTableName, buildTableBrowseSQL } from '../lib/tableQueryBuilder.js';
   import { formatConnectionError } from '../lib/formatConnectionError.js';
+  import { COPILOT_APPLY_SQL, COPILOT_EXECUTE_SQL } from '../lib/copilotApply.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -28,8 +29,23 @@
   $: errorActions = getErrorActions(errorCode);
 
   onMount(async () => {
-    if (!sessionId) return;
-    await loadTables();
+    const handleApplySql = (event) => {
+      if (!event?.detail || event.detail.sessionId !== sessionId) return;
+      query = String(event.detail.content ?? '');
+    };
+
+    const handleExecuteSql = async (event) => {
+      if (!event?.detail || event.detail.sessionId !== sessionId) return;
+      if (event.detail.handled) event.detail.handled.value = true;
+      await executeQuery();
+    };
+
+    window.addEventListener(COPILOT_APPLY_SQL, handleApplySql);
+    window.addEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql);
+
+    if (sessionId) {
+      await loadTables();
+    }
 
     const handleTableSelect = (event) => {
       if (!event?.detail || event.detail.sessionId !== sessionId) return;
@@ -42,6 +58,8 @@
     window.addEventListener('database:table-select', handleTableSelect);
 
     return () => {
+      window.removeEventListener(COPILOT_APPLY_SQL, handleApplySql);
+      window.removeEventListener(COPILOT_EXECUTE_SQL, handleExecuteSql);
       window.removeEventListener('database:table-select', handleTableSelect);
     };
   });
