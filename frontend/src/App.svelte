@@ -173,17 +173,21 @@
     const settingsWithoutKey = { ...nextSettings };
     delete settingsWithoutKey.copilot_api_key;
 
-    applyAndSyncSettings(settingsWithoutKey);
-    settingsDraftSnapshot = null;
-    isGlobalSettingsOpen = false;
-
     if (apiKey && window.wailsBindings && typeof window.wailsBindings.SetCopilotAPIKey === 'function') {
       try {
         await window.wailsBindings.SetCopilotAPIKey(apiKey);
       } catch (error) {
         console.error('Failed to save copilot API key:', error);
+        dbErrorTitle = '设置保存失败';
+        dbErrorMessage = '密钥保存失败，请重试。其它设置尚未保存。';
+        showDbErrorDialog = true;
+        return;
       }
     }
+
+    applyAndSyncSettings(settingsWithoutKey);
+    settingsDraftSnapshot = null;
+    isGlobalSettingsOpen = false;
 
     await persistAppSettings(appSettings);
   }
