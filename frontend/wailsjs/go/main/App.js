@@ -22,6 +22,10 @@ export function ClearBackgroundImage() {
   return window['go']['main']['App']['ClearBackgroundImage']();
 }
 
+export function ClearCopilotAPIKey() {
+  return window['go']['main']['App']['ClearCopilotAPIKey']();
+}
+
 export function CloseDatabase(arg1) {
   return window['go']['main']['App']['CloseDatabase'](arg1);
 }
@@ -56,6 +60,14 @@ export function ConnectNativeDatabase(arg1, arg2, arg3, arg4, arg5, arg6, arg7) 
 
 export function ConnectSSH(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
   return window['go']['main']['App']['ConnectSSH'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+}
+
+export function CopilotChat(arg1) {
+  return window['go']['main']['App']['CopilotChat'](arg1);
+}
+
+export function CopilotClassify(arg1, arg2) {
+  return window['go']['main']['App']['CopilotClassify'](arg1, arg2);
 }
 
 export function CreateDirectory(arg1, arg2) {
@@ -216,6 +228,10 @@ export function GetVersion() {
 
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
+}
+
+export function HasCopilotAPIKey() {
+  return window['go']['main']['App']['HasCopilotAPIKey']();
 }
 
 export function HasPassword(arg1) {
@@ -392,6 +408,10 @@ export function SendSSHData(arg1, arg2) {
 
 export function SendSSHDataBinary(arg1, arg2) {
   return window['go']['main']['App']['SendSSHDataBinary'](arg1, arg2);
+}
+
+export function SetCopilotAPIKey(arg1) {
+  return window['go']['main']['App']['SetCopilotAPIKey'](arg1);
 }
 
 export function SetJDBCRuntimeMode(arg1, arg2) {

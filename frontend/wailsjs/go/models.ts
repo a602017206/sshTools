@@ -37,6 +37,9 @@ export namespace config {
 	    background_image_opacity: number;
 	    jdbc_runtime_mode: string;
 	    jdbc_system_java_path: string;
+	    copilot_provider: string;
+	    copilot_base_url: string;
+	    copilot_model: string;
 	    monitor_collapsed: boolean;
 	    monitor_width: number;
 	    monitor_refresh_interval: number;
@@ -71,6 +74,9 @@ export namespace config {
 	        this.background_image_opacity = source["background_image_opacity"];
 	        this.jdbc_runtime_mode = source["jdbc_runtime_mode"];
 	        this.jdbc_system_java_path = source["jdbc_system_java_path"];
+	        this.copilot_provider = source["copilot_provider"];
+	        this.copilot_base_url = source["copilot_base_url"];
+	        this.copilot_model = source["copilot_model"];
 	        this.monitor_collapsed = source["monitor_collapsed"];
 	        this.monitor_width = source["monitor_width"];
 	        this.monitor_refresh_interval = source["monitor_refresh_interval"];
@@ -274,6 +280,182 @@ export namespace config {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace copilot {
+	
+	export class Artifact {
+	    type: string;
+	    content: string;
+	    summary: string;
+	    destructive: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Artifact(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.content = source["content"];
+	        this.summary = source["summary"];
+	        this.destructive = source["destructive"];
+	    }
+	}
+	export class ToolCall {
+	    id: string;
+	    name: string;
+	    arguments: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ToolCall(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.arguments = source["arguments"];
+	    }
+	}
+	export class Message {
+	    role: string;
+	    content?: string;
+	    tool_call_id?: string;
+	    tool_calls?: ToolCall[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Message(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.tool_call_id = source["tool_call_id"];
+	        this.tool_calls = this.convertValues(source["tool_calls"], ToolCall);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ChatRequest {
+	    SessionID: string;
+	    Mode: string;
+	    Message: string;
+	    Model: string;
+	    History: Message[];
+	    EditorContent: string;
+	    TerminalTail: string;
+	    Host: string;
+	    User: string;
+	    DBType: string;
+	    Database: string;
+	    WorkingDir: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChatRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.SessionID = source["SessionID"];
+	        this.Mode = source["Mode"];
+	        this.Message = source["Message"];
+	        this.Model = source["Model"];
+	        this.History = this.convertValues(source["History"], Message);
+	        this.EditorContent = source["EditorContent"];
+	        this.TerminalTail = source["TerminalTail"];
+	        this.Host = source["Host"];
+	        this.User = source["User"];
+	        this.DBType = source["DBType"];
+	        this.Database = source["Database"];
+	        this.WorkingDir = source["WorkingDir"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ChatResponse {
+	    reply: string;
+	    artifact?: Artifact;
+	    tool_notes: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ChatResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.reply = source["reply"];
+	        this.artifact = this.convertValues(source["artifact"], Artifact);
+	        this.tool_notes = source["tool_notes"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class Result {
+	    Destructive: boolean;
+	    Reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Destructive = source["Destructive"];
+	        this.Reason = source["Reason"];
+	    }
 	}
 
 }

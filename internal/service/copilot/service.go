@@ -116,13 +116,13 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, err
 
 	var notes []string
 	var last Message
-	for round := 0; ; round++ {
+	for round := 0; round < MaxToolRounds; round++ {
 		msg, err := s.provider.Chat(ctx, req.Model, messages, tools)
 		if err != nil {
 			return nil, err
 		}
 		last = msg
-		if len(msg.ToolCalls) == 0 || round >= MaxToolRounds {
+		if len(msg.ToolCalls) == 0 {
 			break
 		}
 		messages = append(messages, msg)
@@ -138,6 +138,16 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, err
 				Content:    result,
 			})
 		}
+	}
+
+	// 触顶后仍带 tool_calls：再请求一次不带工具的 Chat，让模型基于已有工具结果产出最终产物。
+	if len(last.ToolCalls) > 0 {
+		messages = append(messages, last)
+		finalMsg, err := s.provider.Chat(ctx, req.Model, messages, nil)
+		if err != nil {
+			return nil, err
+		}
+		last = finalMsg
 	}
 
 	reply := last.Content

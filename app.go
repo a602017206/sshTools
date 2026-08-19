@@ -596,6 +596,10 @@ func (a *App) SetCopilotAPIKey(apiKey string) error {
 	if a.credentialStore == nil {
 		return fmt.Errorf("凭据存储未初始化")
 	}
+	if strings.TrimSpace(apiKey) == "" {
+		// 空串视为清除：避免 HasCopilotAPIKey 误报 true，且与 ValidateConfig 行为一致。
+		return a.credentialStore.Delete(copilot.APIKeyCredentialID)
+	}
 	return a.credentialStore.Store(copilot.APIKeyCredentialID, apiKey)
 }
 

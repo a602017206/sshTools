@@ -5,6 +5,7 @@ import {
   applySqlEvent,
   executeSqlEvent,
   peekSqlEvent,
+  shouldUsePanelPath,
   COPILOT_APPLY_SQL,
   COPILOT_EXECUTE_SQL,
   COPILOT_PEEK_SQL
@@ -39,4 +40,23 @@ test('peek sql event exposes out for synchronous claim', () => {
   event.detail.out.query = 'SELECT 2';
   assert.equal(out.found, true);
   assert.equal(out.query, 'SELECT 2');
+});
+
+test('shouldUsePanelPath requires both found and non-empty query', () => {
+  assert.equal(shouldUsePanelPath({ found: false, query: '' }), false);
+  assert.equal(shouldUsePanelPath({ found: true, query: '' }), false);
+  assert.equal(shouldUsePanelPath({ found: true, query: '   ' }), false);
+  assert.equal(shouldUsePanelPath({ found: false, query: 'SELECT 1' }), false);
+  assert.equal(shouldUsePanelPath({ found: true, query: 'SELECT 1' }), true);
+  // 空 peek / null 防御
+  assert.equal(shouldUsePanelPath(null), false);
+  assert.equal(shouldUsePanelPath(undefined), false);
+  assert.equal(shouldUsePanelPath({}), false);
+});
+
+// 回归：peek.found 但 query 为空时不得走面板路径，否则面板 executeQuery 静默 return
+// 却仍被报告为「已执行」。该用例锁定修复意图。
+test('empty editor peek must not take panel path (no false success)', () => {
+  const peek = { found: true, query: '' };
+  assert.equal(shouldUsePanelPath(peek), false);
 });

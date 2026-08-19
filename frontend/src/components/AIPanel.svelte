@@ -6,6 +6,7 @@
     applySqlEvent,
     executeSqlEvent,
     peekSqlEvent,
+    shouldUsePanelPath,
     shellExecutePayload
   } from '../lib/copilotApply.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
@@ -224,10 +225,10 @@
         window.dispatchEvent(peekSqlEvent(backendSessionId, peek));
         await tick();
 
-        if (peek.found) {
-          // 有打开的查询/表面板：分类将要执行的 SQL（当前编辑器 query，可能已被用户改过）。
+        if (shouldUsePanelPath(peek)) {
+          // 有打开的查询/表面板且编辑器非空：分类将要执行的 SQL（当前编辑器 query，可能已被用户改过）。
           // 不先覆写编辑器，由面板 executeQuery() 跑当前 query。
-          const targetSql = peek.query || artifact.content;
+          const targetSql = peek.query;
           const confirmed = await classifyAndConfirm('sql', targetSql);
           if (!confirmed) return;
           const handled = { value: false };
@@ -246,7 +247,7 @@
           return;
         }
 
-        // 无打开的查询面板：分类 artifact.content，确认后先填入再执行同一内容。
+        // 无打开的查询面板（或编辑器为空）：分类 artifact.content，确认后先填入再执行同一内容。
         const confirmed = await classifyAndConfirm('sql', artifact.content);
         if (!confirmed) return;
         window.dispatchEvent(applySqlEvent(backendSessionId, artifact.content));
