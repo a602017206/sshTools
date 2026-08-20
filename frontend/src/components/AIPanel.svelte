@@ -28,6 +28,7 @@
   let resolveDangerConfirm = null;
 
   $: messages = ($copilotStore.messagesBySession?.[sessionId] || []);
+  $: terminalTail = $copilotStore.terminalTailsBySession?.[sessionId] || '';
   $: backendSessionId = resolveBackendSessionId(sessionId, $connectionsStore);
   $: copilotMode = mode === 'database' ? 'database' : 'ssh';
 
@@ -130,7 +131,7 @@
         Message: text,
         History: history,
         EditorContent: '',
-        TerminalTail: ''
+        TerminalTail: terminalTail
       });
       const normalized = normalizeChatResponse(response);
       copilotStore.appendMessage(sessionId, {
