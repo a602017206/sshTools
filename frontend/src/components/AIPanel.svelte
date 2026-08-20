@@ -10,6 +10,7 @@
     shellExecutePayload
   } from '../lib/copilotApply.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
+  import { buildChatHistory } from '../lib/copilotContext.js';
 
   export let sessionId = null;
   export let mode = 'ssh';
@@ -76,12 +77,13 @@
   }
 
   function historyForRequest() {
-    return messages
-      .filter((item) => item && (item.role === 'user' || item.role === 'assistant') && item.content)
-      .map((item) => ({
-        Role: item.role,
-        Content: String(item.content)
-      }));
+    return buildChatHistory(messages);
+  }
+
+  function startNewChat() {
+    if (generating || !sessionId) return;
+    copilotStore.clearSession(sessionId);
+    errorMessage = '';
   }
 
   function normalizeChatResponse(raw) {
@@ -301,6 +303,8 @@
       <p class="ai-panel__kicker">AI Copilot</p>
       <h2>{copilotMode === 'database' ? 'SQL 助手' : 'Shell 助手'}</h2>
     </div>
+    <div class="ai-panel__header-actions">
+    <button type="button" class="ai-panel__new-chat" disabled={generating || !sessionId} on:click={startNewChat}>新对话</button>
     <button
       type="button"
       class="ops-icon-button flex items-center justify-center w-7 h-7 rounded-md"
@@ -311,6 +315,7 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
       </svg>
     </button>
+    </div>
   </header>
 
   {#if !hasSession}
@@ -415,6 +420,10 @@
     font-size: 14px;
     font-weight: 650;
   }
+  .ai-panel__header-actions { display: flex; align-items: center; gap: 6px; }
+  .ai-panel__new-chat { border: 1px solid var(--glass-border); border-radius: 6px; background: transparent; color: var(--text-secondary); padding: 4px 7px; font-size: 11px; cursor: pointer; }
+  .ai-panel__new-chat:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-secondary); }
+  .ai-panel__new-chat:disabled { opacity: .5; cursor: not-allowed; }
 
   .ai-panel__empty,
   .ai-panel__thread {

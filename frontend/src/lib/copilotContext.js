@@ -11,3 +11,18 @@ export function appendTerminalTail(tails, sessionId, output, limit = DEFAULT_TER
 export function getTerminalTail(tails, sessionId) {
   return String((tails || {})[sessionId] || '');
 }
+
+export function buildChatHistory(messages, { maxTurns = 12, maxChars = 12000 } = {}) {
+  const relevant = (Array.isArray(messages) ? messages : [])
+    .filter((item) => item && (item.role === 'user' || item.role === 'assistant') && item.content)
+    .slice(-Math.max(1, Number(maxTurns) || 12));
+  const history = [];
+  let remaining = Math.max(1, Number(maxChars) || 12000);
+  for (let index = relevant.length - 1; index >= 0 && remaining > 0; index--) {
+    const item = relevant[index];
+    const content = String(item.content).slice(-remaining);
+    history.unshift({ Role: item.role, Content: content });
+    remaining -= content.length;
+  }
+  return history;
+}
