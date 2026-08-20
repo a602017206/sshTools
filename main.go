@@ -45,10 +45,11 @@ func main() {
 	}, quitApp)
 
 	err := wails.Run(&options.App{
-		Title:  "AHaSSHTools",
-		Width:  1024,
-		Height: 768,
-		Menu:   AppMenu,
+		Title:            "AHaSSHTools",
+		Width:            1024,
+		Height:           768,
+		WindowStartState: options.Maximised,
+		Menu:             AppMenu,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
