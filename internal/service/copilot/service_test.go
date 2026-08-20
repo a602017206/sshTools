@@ -241,6 +241,36 @@ func TestServiceSSHProbeRejectsUnsafeCommand(t *testing.T) {
 	}
 }
 
+func TestServiceSSHWorkingDirectoryToolUsesRequestDirectory(t *testing.T) {
+	cmds := &fakeCommands{}
+	provider := &fakeProvider{
+		handler: func(call int, ctx context.Context, messages []Message, tools []ToolSpec) (Message, error) {
+			if call == 0 {
+				if !hasTool(tools, "list_working_directory") {
+					t.Fatal("ssh mode must register list_working_directory")
+				}
+				return Message{Role: "assistant", ToolCalls: []ToolCall{{ID: "dir_1", Name: "list_working_directory", Arguments: "{}"}}}, nil
+			}
+			return Message{Role: "assistant", Content: `{"type":"shell","content":"./restart.sh","summary":"重启服务"}`}, nil
+		},
+	}
+
+	resp, err := NewService(provider, nil, cmds).Chat(context.Background(), ChatRequest{
+		SessionID: "ssh-1", Mode: "ssh", Message: "重启当前目录服务", WorkingDir: "/srv/app",
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if resp.Artifact == nil || resp.Artifact.Content != "./restart.sh" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+	cmds.mu.Lock()
+	defer cmds.mu.Unlock()
+	if got, want := cmds.calls, []string{"cd -- '/srv/app' && LC_ALL=C command ls -la --"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("commands = %#v, want %#v", got, want)
+	}
+}
+
 func TestServiceChatRequestHasNoPasswordAndRedactsTerminalTail(t *testing.T) {
 	rt := reflect.TypeOf(ChatRequest{})
 	for i := 0; i < rt.NumField(); i++ {

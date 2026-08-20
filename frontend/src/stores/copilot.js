@@ -1,9 +1,11 @@
 import { writable } from 'svelte/store';
+import { appendTerminalTail } from '../lib/copilotContext.js';
 
 const initialState = {
   open: false,
   width: 360,
-  messagesBySession: {}
+  messagesBySession: {},
+  terminalTailsBySession: {}
 };
 
 function createCopilotStore() {
@@ -45,13 +47,21 @@ function createCopilotStore() {
         }
       }));
     },
+    appendTerminalOutput(sessionId, output) {
+      if (!sessionId || !output) return;
+      update((state) => ({
+        ...state,
+        terminalTailsBySession: appendTerminalTail(state.terminalTailsBySession, sessionId, output)
+      }));
+    },
     clearSession(sessionId) {
       if (!sessionId) return;
       update((state) => {
-        if (!state.messagesBySession[sessionId]) return state;
-        const next = { ...state.messagesBySession };
-        delete next[sessionId];
-        return { ...state, messagesBySession: next };
+        const messagesBySession = { ...state.messagesBySession };
+        const terminalTailsBySession = { ...state.terminalTailsBySession };
+        delete messagesBySession[sessionId];
+        delete terminalTailsBySession[sessionId];
+        return { ...state, messagesBySession, terminalTailsBySession };
       });
     }
   };

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -40,6 +41,14 @@ type ManagedSession struct {
 	prevCwd  string
 	homeCwd  string
 	inputBuf string
+}
+
+func initialLocalWorkingDirectory() string {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return normalizeCwdPath(workingDir)
 }
 
 // NewSessionManager creates a new session manager
@@ -268,6 +277,9 @@ func (sm *SessionManager) ExecuteCommand(sessionID string, cmd string, timeout t
 
 	if !managed.Running {
 		return "", "", fmt.Errorf("session not running: %s", sessionID)
+	}
+	if managed.Type != SessionTypeSSH || managed.Session == nil {
+		return "", "", fmt.Errorf("仅支持 SSH 会话执行独立命令: %s", sessionID)
 	}
 
 	return managed.Session.ExecuteCommand(cmd, timeout)
@@ -708,6 +720,7 @@ func (sm *SessionManager) CreateLocalSession(sessionID string, shellType string)
 		Local:    localSession,
 		Type:     SessionTypeLocal,
 		Running:  false,
+		cwd:      initialLocalWorkingDirectory(),
 		stopChan: make(chan struct{}),
 	}
 

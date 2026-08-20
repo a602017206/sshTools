@@ -25,6 +25,7 @@
   let handleDatabaseTableStructureEvent = null;
   let databaseQuerySequence = 0;
   let databaseDesignerSequence = 0;
+  const terminalOutputDecoder = new TextDecoder();
 
   // Close confirmation dialog state
   let showCloseConfirm = false;
@@ -65,6 +66,11 @@
   export function insertCopilotText(sessionId, text) {
     if (!sessionId || text == null) return;
     handleTerminalData(sessionId, String(text));
+  }
+
+  function rememberTerminalOutput(sessionId, octets) {
+    if (!sessionId || !octets?.length) return;
+    copilotStore.appendTerminalOutput(sessionId, terminalOutputDecoder.decode(octets));
   }
 
   function buildDbListSession(asset, sessionId) {
@@ -766,6 +772,7 @@
         for (let i = 0; i < decodedData.length; i++) {
           octets[i] = decodedData.charCodeAt(i);
         }
+        rememberTerminalOutput(sessionId, octets);
         maybeUpdateCwdFromOutput(sessionId, octets, true);
         terminal.write(octets);
       }
@@ -775,7 +782,7 @@
   }
 
   function maybeUpdateCwdFromOutput(sessionId, octets, isLocal) {
-    if (!sessionId || !octets || octets.length === 0 || isLocal) {
+    if (!sessionId || !octets || octets.length === 0) {
       return;
     }
 
@@ -1049,6 +1056,7 @@
         for (let i = 0; i < decodedData.length; i++) {
           octets[i] = decodedData.charCodeAt(i);
         }
+        rememberTerminalOutput(sessionId, octets);
         maybeUpdateCwdFromOutput(sessionId, octets, false);
         terminal.write(octets);
       }

@@ -127,7 +127,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, err
 		}
 		messages = append(messages, msg)
 		for _, tc := range msg.ToolCalls {
-			result, note := s.runTool(req.Mode, req.SessionID, tc.Name, tc.Arguments)
+			result, note := s.runTool(req.Mode, req.SessionID, req.WorkingDir, tc.Name, tc.Arguments)
 			result = truncateToolResult(result)
 			if note != "" {
 				notes = append(notes, note)

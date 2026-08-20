@@ -1,6 +1,34 @@
 package ssh
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestInitialLocalWorkingDirectory(t *testing.T) {
+	want, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+
+	if got := initialLocalWorkingDirectory(); got != want {
+		t.Fatalf("initial cwd = %q, want %q", got, want)
+	}
+}
+
+func TestExecuteCommandRejectsLocalSession(t *testing.T) {
+	sm := NewSessionManager()
+	sm.sessions["local-agent"] = &ManagedSession{
+		ID: "local-agent", Type: SessionTypeLocal, Running: true, stopChan: make(chan struct{}),
+	}
+
+	_, _, err := sm.ExecuteCommand("local-agent", "pwd", time.Second)
+	if err == nil || !strings.Contains(err.Error(), "仅支持 SSH 会话") {
+		t.Fatalf("ExecuteCommand() error = %v, want local-session rejection", err)
+	}
+}
 
 func TestCloseExitedSessionCleansUpAndNotifiesOnce(t *testing.T) {
 	sm := NewSessionManager()

@@ -23,8 +23,10 @@ func schemaToolSpecs() []ToolSpec {
 
 func sshToolSpecs() []ToolSpec {
 	params := json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}`)
+	empty := json.RawMessage(`{"type":"object","properties":{}}`)
 	return []ToolSpec{
 		{Name: "ssh_probe", Description: "在独立会话执行只读探测命令", Parameters: params},
+		{Name: "list_working_directory", Description: "列出当前工作目录的文件与权限；仅用于识别启动、停止或重启脚本", Parameters: empty},
 	}
 }
 
@@ -52,11 +54,31 @@ func allowedTool(mode, name string) bool {
 	return false
 }
 
-func (s *Service) runTool(mode, sessionID, name, arguments string) (result, note string) {
+func (s *Service) runTool(mode, sessionID, workingDir, name, arguments string) (result, note string) {
 	if !allowedTool(mode, name) {
 		return "工具被拒绝", "工具被拒绝"
 	}
 	switch name {
+	case "list_working_directory":
+		if s.commands == nil {
+			return "command runner unavailable", "工具失败"
+		}
+		cmd, ok := WorkingDirectoryCommand(workingDir)
+		if !ok {
+			return "当前工作目录不可用", "工具失败"
+		}
+		stdout, stderr, err := s.commands.ExecuteCommand(sessionID, cmd, sshProbeTimeout)
+		if err != nil {
+			msg := err.Error()
+			if stderr != "" {
+				msg = stderr + "\n" + msg
+			}
+			return msg, "工具失败"
+		}
+		if stderr != "" {
+			return stdout + "\n" + stderr, ""
+		}
+		return stdout, ""
 	case "list_databases":
 		if s.schema == nil {
 			return "schema reader unavailable", "工具失败"
