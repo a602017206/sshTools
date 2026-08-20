@@ -97,9 +97,16 @@
   }
 
   async function copyToClipboard(text) {
-    try {
-      await ClipboardSetText(text);
+    if (!text) {
       return;
+    }
+
+    try {
+      const ok = await ClipboardSetText(text);
+      if (ok !== false) {
+        return;
+      }
+      console.warn('Wails clipboard copy returned false, falling back to browser clipboard');
     } catch (error) {
       console.warn('Wails clipboard copy failed, falling back to browser clipboard:', error);
     }
@@ -127,7 +134,11 @@
   }
 
   function copySelection() {
-    copyToClipboard(terminal.getSelection()).catch(error => {
+    const text = terminal?.getSelection?.() || '';
+    if (!text) {
+      return;
+    }
+    copyToClipboard(text).catch(error => {
       console.error('Failed to copy terminal selection:', error);
     });
   }
@@ -170,11 +181,18 @@
     fitAddon.fit();
 
     // 常见复制、粘贴快捷键。无选区的 Ctrl+C 保持发送中断信号的终端语义。
+    // macOS 原生 Edit 菜单会先处理 Cmd+C；复制路径不要 preventDefault，以便触发 copy 事件。
     terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== 'keydown') {
+        return true;
+      }
+
       const action = getTerminalShortcutAction(event, terminal.hasSelection());
       if (action === 'copy') {
-        event.preventDefault();
         copySelection();
+        return false;
+      }
+      if (action === 'noop') {
         return false;
       }
       if (action === 'paste') {
@@ -183,6 +201,19 @@
         return false;
       }
       return true;
+    });
+
+    // 承接浏览器 / macOS Edit 菜单的 copy 事件：xterm 选区不在 DOM selection 中。
+    terminalElement.addEventListener('copy', (event) => {
+      const text = terminal?.getSelection?.() || '';
+      if (!text) {
+        return;
+      }
+      event.clipboardData?.setData('text/plain', text);
+      event.preventDefault();
+      copyToClipboard(text).catch(error => {
+        console.error('Failed to copy terminal selection via copy event:', error);
+      });
     });
 
     terminalElement.addEventListener('paste', (event) => {
