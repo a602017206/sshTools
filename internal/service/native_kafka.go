@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
@@ -13,6 +16,7 @@ import (
 type KafkaNativeClient interface {
 	Ping(context.Context) error
 	ListTopics(context.Context) ([]string, error)
+	DescribeTopic(context.Context, string) (NativeResourceDetails, error)
 	Close() error
 }
 type KafkaNativeClientFactory interface {
@@ -64,6 +68,9 @@ func (*kafkaNativeSession) ListSecondaryResources(context.Context, string) ([]Na
 	return []NativeResource{}, nil
 }
 func (s *kafkaNativeSession) Close() error { return s.client.Close() }
+func (s *kafkaNativeSession) DescribeResource(ctx context.Context, _ string, name string) (NativeResourceDetails, error) {
+	return s.client.DescribeTopic(ctx, name)
+}
 
 type kafkaFranzClientFactory struct{}
 
@@ -99,5 +106,34 @@ func (c *kafkaFranzClient) ListTopics(ctx context.Context) ([]string, error) {
 		}
 	}
 	return topics, nil
+}
+func (c *kafkaFranzClient) DescribeTopic(ctx context.Context, name string) (NativeResourceDetails, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return NativeResourceDetails{}, fmt.Errorf("Kafka Topic 名称不能为空")
+	}
+	request := kmsg.NewPtrMetadataRequest()
+	request.Topics = append(request.Topics, kmsg.MetadataRequestTopic{Topic: &name})
+	response, err := c.client.Request(ctx, request)
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	metadata := response.(*kmsg.MetadataResponse)
+	if len(metadata.Topics) != 1 {
+		return NativeResourceDetails{}, fmt.Errorf("未找到 Kafka Topic: %s", name)
+	}
+	topic := metadata.Topics[0]
+	if topic.ErrorCode != 0 {
+		return NativeResourceDetails{}, fmt.Errorf("读取 Kafka Topic %s 失败: %s", name, kerr.ErrorForCode(topic.ErrorCode))
+	}
+	partitions := make([]map[string]any, 0, len(topic.Partitions))
+	for _, partition := range topic.Partitions {
+		partitions = append(partitions, map[string]any{"id": partition.Partition, "leader": partition.Leader, "replicas": partition.Replicas, "isr": partition.ISR})
+	}
+	content, err := json.Marshal(map[string]any{"partitions": partitions})
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	return NativeResourceDetails{Kind: NativeResourceKindCollection, Name: name, Summary: fmt.Sprintf("%d 个分区", len(partitions)), Content: string(content)}, nil
 }
 func (c *kafkaFranzClient) Close() error { c.client.Close(); return nil }

@@ -27,7 +27,9 @@ export function getTerminalShortcutAction(event, hasSelection) {
     return 'copy';
   }
 
-  if ((primaryModifier && isV) || (event.shiftKey && isInsert)) {
+  // Ctrl+V 是终端控制字符（例如 Vim 搜索中输入字面量），不能作为粘贴快捷键拦截。
+  // macOS 使用 Cmd+V；其他平台仍支持 Ctrl+Shift+V 和 Shift+Insert 粘贴。
+  if ((event.metaKey && isV) || (event.ctrlKey && event.shiftKey && isV) || (event.shiftKey && isInsert)) {
     return 'paste';
   }
 

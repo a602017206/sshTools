@@ -626,6 +626,24 @@ export namespace service {
 	        this.name = source["name"];
 	    }
 	}
+	export class NativeResourceDetails {
+	    kind: string;
+	    name: string;
+	    summary: string;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NativeResourceDetails(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.summary = source["summary"];
+	        this.content = source["content"];
+	    }
+	}
 	
 	export class TableDDL {
 	    table_name: string;

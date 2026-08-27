@@ -4,7 +4,8 @@ const workspaceByType = {
     resourceLabel: '逻辑库',
     childLabel: '键',
     description: '展开逻辑库可浏览其中的键；当前为只读浏览。',
-    canExpand: true
+    canExpand: true,
+    canDescribe: true
   },
   mongodb: {
     title: 'MongoDB 数据库',
@@ -17,8 +18,9 @@ const workspaceByType = {
     title: 'Elasticsearch 索引',
     resourceLabel: '索引',
     childLabel: '',
-    description: '当前可浏览索引；文档查询与编辑尚未提供。',
-    canExpand: false
+    description: '可查看索引的受限文档预览；不提供写入操作。',
+    canExpand: false,
+    canDescribe: true
   },
   memcached: {
     title: 'Memcached 统计',
@@ -59,8 +61,9 @@ const workspaceByType = {
     title: 'Kafka Topic',
     resourceLabel: 'Topic',
     childLabel: '',
-    description: '当前可浏览 Topic；消息消费与生产尚未提供。',
-    canExpand: false
+    description: '可查看 Topic 分区元数据；不消费或生产消息。',
+    canExpand: false,
+    canDescribe: true
   }
 };
 
@@ -69,7 +72,8 @@ const fallbackWorkspace = {
   resourceLabel: '资源',
   childLabel: '',
   description: '当前为只读资源浏览。',
-  canExpand: false
+  canExpand: false,
+  canDescribe: false
 };
 
 export function nativeDatabaseWorkspace(databaseType) {

@@ -52,16 +52,39 @@ func TestElasticsearchNativeProviderPropagatesHealthFailure(t *testing.T) {
 	}
 }
 
+func TestElasticsearchNativeSessionDescribesIndexWithDocumentPreview(t *testing.T) {
+	client := &fakeElasticsearchNativeClient{indexDetails: NativeResourceDetails{
+		Kind: NativeResourceKindIndex, Name: "products", Summary: "12 文档 · 8 KiB",
+		Content: `{"documents":[{"_id":"p-1","_source":{"name":"Keyboard"}}]}`,
+	}}
+	provider := NewElasticsearchNativeProvider(&fakeElasticsearchNativeClientFactory{client: client})
+	connected, err := provider.Connect(context.Background(), NativeDatabaseConfig{Type: NativeDatabaseTypeElasticsearch})
+	if err != nil {
+		t.Fatalf("connect Elasticsearch: %v", err)
+	}
+	details, err := connected.DescribeResource(context.Background(), "", "products")
+	if err != nil {
+		t.Fatalf("describe Elasticsearch index: %v", err)
+	}
+	if details.Name != "products" || details.Content == "" {
+		t.Fatalf("details = %#v", details)
+	}
+}
+
 type fakeElasticsearchNativeClient struct {
-	pingErr error
-	indices []string
-	closed  bool
+	pingErr      error
+	indices      []string
+	indexDetails NativeResourceDetails
+	closed       bool
 }
 
 func (c *fakeElasticsearchNativeClient) Ping(context.Context) error { return c.pingErr }
 
 func (c *fakeElasticsearchNativeClient) ListIndices(context.Context) ([]string, error) {
 	return c.indices, nil
+}
+func (c *fakeElasticsearchNativeClient) DescribeIndex(context.Context, string) (NativeResourceDetails, error) {
+	return c.indexDetails, nil
 }
 
 func (c *fakeElasticsearchNativeClient) Close() error {

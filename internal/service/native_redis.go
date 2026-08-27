@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -14,12 +16,14 @@ import (
 const (
 	redisScanPageSize = 200
 	redisScanKeyLimit = 1000
+	redisPreviewLimit = 4096
 )
 
 type RedisNativeClient interface {
 	Ping(context.Context) error
 	Keyspace(context.Context) (map[int]int, error)
 	Scan(context.Context, uint64, int, int64) ([]string, uint64, error)
+	DescribeKey(context.Context, string) (NativeResourceDetails, error)
 	Close() error
 }
 
@@ -137,6 +141,26 @@ func (s *redisNativeSession) Close() error {
 	return s.client.Close()
 }
 
+func (s *redisNativeSession) DescribeResource(ctx context.Context, parent, name string) (NativeResourceDetails, error) {
+	database, err := redisDatabaseNumber(parent)
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	client := s.client
+	closeClient := false
+	if database != s.database {
+		client, err = s.factory.New(s.config, database)
+		if err != nil {
+			return NativeResourceDetails{}, err
+		}
+		closeClient = true
+	}
+	if closeClient {
+		defer client.Close()
+	}
+	return client.DescribeKey(ctx, name)
+}
+
 func redisDatabaseNumber(value string) (int, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -206,4 +230,52 @@ func (c *redisGoClient) Scan(ctx context.Context, cursor uint64, count int, rema
 
 func (c *redisGoClient) Close() error {
 	return c.client.Close()
+}
+
+func (c *redisGoClient) DescribeKey(ctx context.Context, name string) (NativeResourceDetails, error) {
+	kind, err := c.client.Type(ctx, name).Result()
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	ttl, err := c.client.TTL(ctx, name).Result()
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	data := map[string]any{"type": kind, "ttlSeconds": ttlSeconds(ttl)}
+	if kind == "string" {
+		value, getErr := c.client.Get(ctx, name).Result()
+		if getErr != nil && getErr != redis.Nil {
+			return NativeResourceDetails{}, getErr
+		}
+		if len(value) > redisPreviewLimit {
+			value = value[:redisPreviewLimit]
+			data["truncated"] = true
+		}
+		data["value"] = value
+	}
+	content, err := json.Marshal(data)
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	return NativeResourceDetails{Kind: NativeResourceKindKey, Name: name, Summary: redisKeySummary(kind, ttl), Content: string(content)}, nil
+}
+
+func ttlSeconds(ttl time.Duration) int64 {
+	if ttl == -1 {
+		return -1
+	}
+	if ttl == -2 {
+		return -2
+	}
+	return int64(ttl.Seconds())
+}
+
+func redisKeySummary(kind string, ttl time.Duration) string {
+	if ttl == -1 {
+		return fmt.Sprintf("%s · 永不过期", kind)
+	}
+	if ttl == -2 {
+		return fmt.Sprintf("%s · 已不存在", kind)
+	}
+	return fmt.Sprintf("%s · %d 秒后过期", kind, ttlSeconds(ttl))
 }

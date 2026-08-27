@@ -36,15 +36,38 @@ func TestKafkaNativeProviderPropagatesConnectivityFailure(t *testing.T) {
 	}
 }
 
+func TestKafkaNativeSessionDescribesTopicPartitions(t *testing.T) {
+	client := &fakeKafkaNativeClient{topicDetails: NativeResourceDetails{
+		Kind: NativeResourceKindCollection, Name: "events", Summary: "3 个分区",
+		Content: `{"partitions":[{"id":0,"leader":1,"replicas":[1,2],"isr":[1,2]}]}`,
+	}}
+	provider := NewKafkaNativeProvider(&fakeKafkaNativeClientFactory{client: client})
+	connected, err := provider.Connect(context.Background(), NativeDatabaseConfig{Type: NativeDatabaseTypeKafka})
+	if err != nil {
+		t.Fatalf("connect Kafka: %v", err)
+	}
+	details, err := connected.DescribeResource(context.Background(), "", "events")
+	if err != nil {
+		t.Fatalf("describe Kafka topic: %v", err)
+	}
+	if details.Summary != "3 个分区" || details.Content == "" {
+		t.Fatalf("details = %#v", details)
+	}
+}
+
 type fakeKafkaNativeClient struct {
-	topics  []string
-	pingErr error
-	closed  bool
+	topics       []string
+	pingErr      error
+	closed       bool
+	topicDetails NativeResourceDetails
 }
 
 func (c *fakeKafkaNativeClient) Ping(context.Context) error                   { return c.pingErr }
 func (c *fakeKafkaNativeClient) ListTopics(context.Context) ([]string, error) { return c.topics, nil }
-func (c *fakeKafkaNativeClient) Close() error                                 { c.closed = true; return nil }
+func (c *fakeKafkaNativeClient) DescribeTopic(context.Context, string) (NativeResourceDetails, error) {
+	return c.topicDetails, nil
+}
+func (c *fakeKafkaNativeClient) Close() error { c.closed = true; return nil }
 
 type fakeKafkaNativeClientFactory struct{ client KafkaNativeClient }
 

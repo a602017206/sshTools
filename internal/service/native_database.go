@@ -48,6 +48,16 @@ type NativeResource struct {
 	Name string             `json:"name"`
 }
 
+// NativeResourceDetails is a bounded, read-only description of a native resource.
+// Content is JSON so providers can return their protocol-specific structured data
+// without leaking it into the common service contract.
+type NativeResourceDetails struct {
+	Kind    NativeResourceKind `json:"kind"`
+	Name    string             `json:"name"`
+	Summary string             `json:"summary"`
+	Content string             `json:"content"`
+}
+
 type NativeDatabaseProvider interface {
 	Test(context.Context, NativeDatabaseConfig) error
 	Connect(context.Context, NativeDatabaseConfig) (NativeDatabaseClient, error)
@@ -56,6 +66,7 @@ type NativeDatabaseProvider interface {
 type NativeDatabaseClient interface {
 	ListPrimaryResources(context.Context) ([]NativeResource, error)
 	ListSecondaryResources(context.Context, string) ([]NativeResource, error)
+	DescribeResource(context.Context, string, string) (NativeResourceDetails, error)
 	Close() error
 }
 
@@ -142,6 +153,18 @@ func (s *NativeDatabaseService) ListSecondaryResources(ctx context.Context, sess
 		return nil, fmt.Errorf("读取 %s 子资源失败: %w", nativeDatabaseTypeName(session.Config.Type), err)
 	}
 	return resources, nil
+}
+
+func (s *NativeDatabaseService) DescribeResource(ctx context.Context, sessionID, parent, name string) (NativeResourceDetails, error) {
+	session, err := s.session(sessionID)
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	details, err := session.client.DescribeResource(ctx, parent, name)
+	if err != nil {
+		return NativeResourceDetails{}, fmt.Errorf("读取 %s 资源详情失败: %w", nativeDatabaseTypeName(session.Config.Type), err)
+	}
+	return details, nil
 }
 
 func (s *NativeDatabaseService) Close(sessionID string) error {

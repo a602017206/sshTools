@@ -17,6 +17,7 @@ import (
 type ElasticsearchNativeClient interface {
 	Ping(context.Context) error
 	ListIndices(context.Context) ([]string, error)
+	DescribeIndex(context.Context, string) (NativeResourceDetails, error)
 	Close() error
 }
 
@@ -82,6 +83,10 @@ func (s *elasticsearchNativeSession) Close() error {
 	return s.client.Close()
 }
 
+func (s *elasticsearchNativeSession) DescribeResource(ctx context.Context, _ string, name string) (NativeResourceDetails, error) {
+	return s.client.DescribeIndex(ctx, name)
+}
+
 type elasticsearchGoClientFactory struct{}
 
 func (elasticsearchGoClientFactory) New(cfg NativeDatabaseConfig) (ElasticsearchNativeClient, error) {
@@ -145,6 +150,35 @@ func (c *elasticsearchGoClient) ListIndices(ctx context.Context) ([]string, erro
 func (c *elasticsearchGoClient) Close() error {
 	c.client.Close(context.Background())
 	return nil
+}
+
+func (c *elasticsearchGoClient) DescribeIndex(ctx context.Context, name string) (NativeResourceDetails, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return NativeResourceDetails{}, fmt.Errorf("Elasticsearch 索引名不能为空")
+	}
+	response, err := c.perform(ctx, http.MethodGet, "/"+url.PathEscape(name)+"/_search?size=20&track_total_hits=false")
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	defer response.Body.Close()
+	if err := elasticsearchResponseError(response); err != nil {
+		return NativeResourceDetails{}, err
+	}
+	var payload struct {
+		Hits struct {
+			Total json.RawMessage   `json:"total"`
+			Hits  []json.RawMessage `json:"hits"`
+		} `json:"hits"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return NativeResourceDetails{}, fmt.Errorf("解析 Elasticsearch 文档预览失败: %w", err)
+	}
+	content, err := json.Marshal(map[string]any{"total": json.RawMessage(payload.Hits.Total), "documents": payload.Hits.Hits})
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	return NativeResourceDetails{Kind: NativeResourceKindIndex, Name: name, Summary: fmt.Sprintf("%d 条文档预览", len(payload.Hits.Hits)), Content: string(content)}, nil
 }
 
 func (c *elasticsearchGoClient) perform(ctx context.Context, method, path string) (*http.Response, error) {

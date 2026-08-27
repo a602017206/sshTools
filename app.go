@@ -1381,6 +1381,16 @@ func (a *App) ListNativeDatabaseChildResources(sessionID, parent string) ([]serv
 	return a.nativeDatabaseService.ListSecondaryResources(ctx, sessionID, parent)
 }
 
+// DescribeNativeDatabaseResource returns a bounded, read-only resource preview.
+func (a *App) DescribeNativeDatabaseResource(sessionID, parent, name string) (service.NativeResourceDetails, error) {
+	if a.nativeDatabaseService == nil {
+		return service.NativeResourceDetails{}, fmt.Errorf("原生数据库服务尚未初始化")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.nativeDatabaseService.DescribeResource(ctx, sessionID, parent, name)
+}
+
 func (a *App) CloseNativeDatabase(sessionID string) error {
 	if a.nativeDatabaseService == nil {
 		return fmt.Errorf("原生数据库服务尚未初始化")

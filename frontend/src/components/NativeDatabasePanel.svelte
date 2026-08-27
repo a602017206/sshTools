@@ -9,7 +9,10 @@
   let childrenByParent = {};
   let expanded = new Set();
   let loading = false;
+  let loadingDetails = false;
   let errorMessage = '';
+  let selectedResource = null;
+  let details = null;
 
   $: databaseType = dbConfig?.metadata?.db_type || '';
   $: workspace = nativeDatabaseWorkspace(databaseType);
@@ -53,6 +56,25 @@
       errorMessage = `加载${workspace.childLabel || '子资源'}失败: ${error?.message || error || '未知错误'}`;
     }
   }
+
+  async function selectResource(resource, parent = '') {
+    if (!workspace.canDescribe || !resource?.name || !window.wailsBindings || !sessionId) return;
+    selectedResource = resource.name;
+    loadingDetails = true;
+    errorMessage = '';
+    try {
+      details = await window.wailsBindings.DescribeNativeDatabaseResource(sessionId, parent, resource.name);
+    } catch (error) {
+      details = null;
+      errorMessage = `加载资源详情失败: ${error?.message || error || '未知错误'}`;
+    } finally {
+      loadingDetails = false;
+    }
+  }
+
+  function formatDetails(content) {
+    try { return JSON.stringify(JSON.parse(content || '{}'), null, 2); } catch (_) { return content || '{}'; }
+  }
 </script>
 
 <section class="native-database-panel" aria-label={workspace.title}>
@@ -84,15 +106,15 @@
       {#each resources as resource}
         <li class:expanded={expanded.has(resource.name)}>
           {#if workspace.canExpand}
-            <button class="native-database-panel__resource" type="button" on:click={() => toggleResource(resource)} aria-expanded={expanded.has(resource.name)}>
+            <button class="native-database-panel__resource" type="button" on:click={() => { toggleResource(resource); selectResource(resource); }} aria-expanded={expanded.has(resource.name)}>
               <span class="native-database-panel__chevron">{expanded.has(resource.name) ? '⌄' : '›'}</span>
               <span>{resource.name}</span>
             </button>
           {:else}
-            <div class="native-database-panel__resource native-database-panel__resource--leaf">
+            <button class="native-database-panel__resource native-database-panel__resource--leaf" type="button" on:click={() => selectResource(resource)} disabled={!workspace.canDescribe}>
               <span class="native-database-panel__leaf-mark">•</span>
               <span>{resource.name}</span>
-            </div>
+            </button>
           {/if}
 
           {#if expanded.has(resource.name)}
@@ -101,7 +123,7 @@
                 <li class="native-database-panel__children-empty">该{workspace.resourceLabel}中没有可显示的{workspace.childLabel}。</li>
               {:else}
                 {#each childrenByParent[resource.name] || [] as child}
-                  <li class="native-database-panel__child"><span>↳</span>{child.name}</li>
+                  <li><button class="native-database-panel__child" type="button" on:click={() => selectResource(child, resource.name)}><span>↳</span>{child.name}</button></li>
                 {/each}
               {/if}
             </ul>
@@ -115,6 +137,17 @@
       <h4>对象信息</h4>
       <dl><div><dt>类型</dt><dd>{databaseType.toUpperCase() || 'NATIVE'}</dd></div><div><dt>资源</dt><dd>{workspace.resourceLabel}</dd></div><div><dt>数量</dt><dd>{resources.length}</dd></div></dl>
       <p>{workspace.description}</p>
+      {#if loadingDetails}
+        <p>正在读取对象详情…</p>
+      {:else if details}
+        <div class="native-database-panel__details">
+          <strong>{details.name || selectedResource}</strong>
+          <span>{details.summary}</span>
+          <pre>{formatDetails(details.content)}</pre>
+        </div>
+      {:else if workspace.canDescribe}
+        <p>选择一个{workspace.resourceLabel}以查看只读详情。</p>
+      {/if}
     </aside>
   </div>
 </section>
@@ -216,6 +249,7 @@
   .native-database-panel__child, .native-database-panel__children-empty { min-height: 29px; padding: 5px 12px; color: var(--text-secondary); font-size: 12px; }
   .native-database-panel__child { display: flex; gap: 8px; align-items: center; color: var(--text-primary); }
   .native-database-panel__child span { color: var(--text-tertiary); }
+  button.native-database-panel__child { width: 100%; border: 0; background: transparent; cursor: pointer; font: inherit; text-align: left; }
 
   @media (max-width: 600px) {
     .native-database-panel { padding: 14px; }
@@ -243,5 +277,9 @@
   .native-database-panel__inspector dt { color: #7b8791; font-size: 11px; }
   .native-database-panel__inspector dd { margin: 0; color: #31414d; font-size: 12px; }
   .native-database-panel__inspector p { margin-top: 26px; color: #6d7783; font-size: 12px; line-height: 1.6; }
+  .native-database-panel__details { display: grid; gap: 7px; margin-top: 18px; }
+  .native-database-panel__details strong { color: #31414d; font-size: 12px; overflow-wrap: anywhere; }
+  .native-database-panel__details span { color: #6d7783; font-size: 11px; }
+  .native-database-panel__details pre { max-width: 100%; max-height: 300px; margin: 0; overflow: auto; padding: 9px; border: 1px solid #d9e0e4; border-radius: 4px; background: #fff; color: #31414d; font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
   @media (max-width: 760px) { .native-database-panel__body { grid-template-columns: 1fr; } .native-database-panel__inspector { display: none; } }
 </style>

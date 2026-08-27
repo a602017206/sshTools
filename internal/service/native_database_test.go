@@ -140,6 +140,10 @@ func (c *fakeNativeDatabaseClient) ListSecondaryResources(_ context.Context, par
 	return c.secondary[parent], nil
 }
 
+func (*fakeNativeDatabaseClient) DescribeResource(context.Context, string, string) (NativeResourceDetails, error) {
+	return NativeResourceDetails{}, nil
+}
+
 func (c *fakeNativeDatabaseClient) Close() error {
 	c.closed = true
 	return nil

@@ -83,6 +83,27 @@ func TestRedisNativeProviderWrapsConnectionFailure(t *testing.T) {
 	}
 }
 
+func TestRedisNativeSessionDescribesKeyWithBoundedPreview(t *testing.T) {
+	client := &fakeRedisNativeClient{keyDetails: NativeResourceDetails{
+		Kind:    NativeResourceKindKey,
+		Name:    "cache:profile:42",
+		Summary: "string · 58 秒后过期",
+		Content: `{"type":"string","ttlSeconds":58,"value":"alice"}`,
+	}}
+	provider := NewRedisNativeProvider(&fakeRedisNativeClientFactory{clients: map[int]*fakeRedisNativeClient{0: client}})
+	connected, err := provider.Connect(context.Background(), NativeDatabaseConfig{Type: NativeDatabaseTypeRedis})
+	if err != nil {
+		t.Fatalf("connect Redis: %v", err)
+	}
+	details, err := connected.DescribeResource(context.Background(), "0", "cache:profile:42")
+	if err != nil {
+		t.Fatalf("describe Redis key: %v", err)
+	}
+	if details.Summary != "string · 58 秒后过期" || details.Content == "" {
+		t.Fatalf("details = %#v", details)
+	}
+}
+
 type redisScanPage struct {
 	keys   []string
 	cursor uint64
@@ -90,11 +111,16 @@ type redisScanPage struct {
 }
 
 type fakeRedisNativeClient struct {
-	pingErr   error
-	keyspace  map[int]int
-	pages     []redisScanPage
-	scanCalls int
-	closed    bool
+	pingErr    error
+	keyspace   map[int]int
+	pages      []redisScanPage
+	keyDetails NativeResourceDetails
+	scanCalls  int
+	closed     bool
+}
+
+func (c *fakeRedisNativeClient) DescribeKey(context.Context, string) (NativeResourceDetails, error) {
+	return c.keyDetails, nil
 }
 
 func (c *fakeRedisNativeClient) Ping(context.Context) error { return c.pingErr }
