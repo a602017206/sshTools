@@ -50,9 +50,11 @@ type AppSettings struct {
 	JDBCRuntimeMode        string `json:"jdbc_runtime_mode"`
 	JDBCSystemJavaPath     string `json:"jdbc_system_java_path"`
 
-	CopilotProvider string `json:"copilot_provider"`
-	CopilotBaseURL  string `json:"copilot_base_url"`
-	CopilotModel    string `json:"copilot_model"`
+	CopilotProvider           string `json:"copilot_provider"`
+	CopilotBaseURL            string `json:"copilot_base_url"`
+	CopilotModel              string `json:"copilot_model"`
+	CopilotMaxToolRounds      int    `json:"copilot_max_tool_rounds"`
+	CopilotMaxToolResultChars int    `json:"copilot_max_tool_result_chars"`
 
 	// Monitor panel settings
 	MonitorCollapsed       bool `json:"monitor_collapsed"`
@@ -104,6 +106,7 @@ func DefaultSettings() AppSettings {
 		FileManagerSortBy:      "name",
 		FileManagerSortOrder:   "asc",
 		CopilotProvider:        "openai_compatible",
+		CopilotMaxToolRounds:   4, CopilotMaxToolResultChars: 8000,
 	}
 }
 
@@ -369,6 +372,12 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 	if copilotModel, ok := updates["copilot_model"].(string); ok {
 		cm.config.Settings.CopilotModel = copilotModel
+	}
+	if v, ok := updates["copilot_max_tool_rounds"].(float64); ok {
+		cm.config.Settings.CopilotMaxToolRounds = int(v)
+	}
+	if v, ok := updates["copilot_max_tool_result_chars"].(float64); ok {
+		cm.config.Settings.CopilotMaxToolResultChars = int(v)
 	}
 
 	// File manager per-connection settings

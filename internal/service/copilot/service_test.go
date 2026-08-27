@@ -392,6 +392,13 @@ func TestChatRequestsFinalReplyAfterMaxToolRounds(t *testing.T) {
 	}
 }
 
+func TestRuntimeSettingsClampUnsafeValues(t *testing.T) {
+	got := NormalizeRuntimeSettings(RuntimeSettings{MaxToolRounds: 99, MaxToolResultChars: 99})
+	if got.MaxToolRounds != 8 || got.MaxToolResultChars != 1000 {
+		t.Fatalf("unexpected normalized settings: %+v", got)
+	}
+}
+
 func TestChatParsesArtifactWhenNoToolCalls(t *testing.T) {
 	provider := &fakeProvider{
 		handler: func(call int, ctx context.Context, messages []Message, tools []ToolSpec) (Message, error) {

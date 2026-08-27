@@ -38,11 +38,14 @@ func toolsForMode(mode string) []ToolSpec {
 }
 
 func truncateToolResult(s string) string {
-	if utf8.RuneCountInString(s) <= MaxToolResultChars {
+	return truncateToolResultTo(s, MaxToolResultChars)
+}
+func truncateToolResultTo(s string, max int) string {
+	if utf8.RuneCountInString(s) <= max {
 		return s
 	}
 	r := []rune(s)
-	return string(r[:MaxToolResultChars])
+	return string(r[:max])
 }
 
 func allowedTool(mode, name string) bool {

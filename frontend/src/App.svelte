@@ -134,7 +134,9 @@
       background_image_opacity: Number(settings.background_image_opacity) || 35,
       copilot_provider: settings.copilot_provider || 'openai_compatible',
       copilot_base_url: settings.copilot_base_url || '',
-      copilot_model: settings.copilot_model || ''
+      copilot_model: settings.copilot_model || '',
+      copilot_max_tool_rounds: Number(settings.copilot_max_tool_rounds) || 4,
+      copilot_max_tool_result_chars: Number(settings.copilot_max_tool_result_chars) || 8000
     };
 
     try {

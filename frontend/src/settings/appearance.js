@@ -314,6 +314,6 @@ export function getDefaultAppSettings() {
     background_image_data_url: '',
     copilot_provider: 'openai_compatible',
     copilot_base_url: '',
-    copilot_model: ''
+    copilot_model: '', copilot_max_tool_rounds: 4, copilot_max_tool_result_chars: 8000
   };
 }
