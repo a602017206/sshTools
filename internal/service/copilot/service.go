@@ -17,7 +17,25 @@ const (
 	maxReplyFallbackText = "未能在有限工具轮次内生成完整结果"
 )
 
-const systemPrompt = "你是 SQL/Shell 助手。最终回复必须输出产物 JSON：{\"type\":\"sql 或 shell\",\"content\":\"...\",\"summary\":\"...\",\"destructive\":false}。只使用提供的只读工具获取环境信息，不要索要密码。"
+const systemPrompt = `你是面向当前 SSH 或数据库会话的 AI 运维助手。先理解用户目标与会话上下文；存在只读工具时优先用工具验证，不要猜测目录中的脚本、表结构或运行环境。对于服务启动、停止、重启等请求，先检查当前工作目录中的候选脚本，并说明选择依据。工具失败或信息不足时，明确缺少什么信息并给出安全下一步。只生成用户可审阅的 SQL 或 Shell 产物，绝不自动执行；危险操作必须标记 destructive=true。不得索要、回显或推断密码、私钥、API Key、Token、DSN。最终回复必须输出 JSON：{"type":"sql 或 shell","content":"...","summary":"...","destructive":false}。`
+
+type RuntimeSettings struct{ MaxToolRounds, MaxToolResultChars int }
+
+func NormalizeRuntimeSettings(v RuntimeSettings) RuntimeSettings {
+	if v.MaxToolRounds < 1 {
+		v.MaxToolRounds = MaxToolRounds
+	}
+	if v.MaxToolRounds > 8 {
+		v.MaxToolRounds = 8
+	}
+	if v.MaxToolResultChars < 1000 {
+		v.MaxToolResultChars = 1000
+	}
+	if v.MaxToolResultChars > 20000 {
+		v.MaxToolResultChars = 20000
+	}
+	return v
+}
 
 // SchemaReader loads database metadata for copilot tools.
 type SchemaReader interface {
@@ -65,6 +83,7 @@ type Service struct {
 	schema   SchemaReader
 	commands CommandRunner
 	gate     *sessionGate
+	runtime  RuntimeSettings
 }
 
 func NewService(provider Provider, schema SchemaReader, commands CommandRunner) *Service {
@@ -73,6 +92,7 @@ func NewService(provider Provider, schema SchemaReader, commands CommandRunner) 
 		schema:   schema,
 		commands: commands,
 		gate:     &sessionGate{inflight: make(map[string]context.CancelFunc)},
+		runtime:  NormalizeRuntimeSettings(RuntimeSettings{MaxToolRounds: MaxToolRounds, MaxToolResultChars: MaxToolResultChars}),
 	}
 }
 
@@ -89,7 +109,14 @@ func (s *Service) WithProvider(p Provider) *Service {
 		schema:   s.schema,
 		commands: s.commands,
 		gate:     s.gate,
+		runtime:  s.runtime,
 	}
+}
+
+func (s *Service) WithRuntimeSettings(v RuntimeSettings) *Service {
+	clone := *s
+	clone.runtime = NormalizeRuntimeSettings(v)
+	return &clone
 }
 
 func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
@@ -116,7 +143,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, err
 
 	var notes []string
 	var last Message
-	for round := 0; round < MaxToolRounds; round++ {
+	for round := 0; round < s.runtime.MaxToolRounds; round++ {
 		msg, err := s.provider.Chat(ctx, req.Model, messages, tools)
 		if err != nil {
 			return nil, err
@@ -128,7 +155,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, err
 		messages = append(messages, msg)
 		for _, tc := range msg.ToolCalls {
 			result, note := s.runTool(req.Mode, req.SessionID, req.WorkingDir, tc.Name, tc.Arguments)
-			result = truncateToolResult(result)
+			result = truncateToolResultTo(result, s.runtime.MaxToolResultChars)
 			if note != "" {
 				notes = append(notes, note)
 			}

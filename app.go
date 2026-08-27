@@ -578,7 +578,7 @@ func (a *App) CopilotChat(req copilot.ChatRequest) (*copilot.ChatResponse, error
 	}
 	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	defer cancel()
-	return a.copilotService.WithProvider(provider).Chat(ctx, req)
+	return a.copilotService.WithProvider(provider).WithRuntimeSettings(copilot.RuntimeSettings{MaxToolRounds: settings.CopilotMaxToolRounds, MaxToolResultChars: settings.CopilotMaxToolResultChars}).Chat(ctx, req)
 }
 
 func (a *App) CopilotClassify(kind, content string) copilot.Result {

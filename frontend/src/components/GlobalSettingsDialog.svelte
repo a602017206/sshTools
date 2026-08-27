@@ -41,6 +41,7 @@
       copilot_provider: rest.copilot_provider || 'openai_compatible',
       copilot_base_url: rest.copilot_base_url || '',
       copilot_model: rest.copilot_model || ''
+      ,copilot_max_tool_rounds: rest.copilot_max_tool_rounds || 4, copilot_max_tool_result_chars: rest.copilot_max_tool_result_chars || 8000
     };
   }
 
@@ -372,6 +373,7 @@
                 class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
               />
             </label>
+            <div class="grid grid-cols-2 gap-3"><label class="space-y-2 block"><div class="text-sm font-semibold">最大工具轮次</div><input type="number" min="1" max="8" bind:value={draft.copilot_max_tool_rounds} class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border" /></label><label class="space-y-2 block"><div class="text-sm font-semibold">单次工具结果上限</div><input type="number" min="1000" max="20000" step="1000" bind:value={draft.copilot_max_tool_result_chars} class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border" /></label></div>
 
             <label class="space-y-2 block">
               <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">模型名称</div>
