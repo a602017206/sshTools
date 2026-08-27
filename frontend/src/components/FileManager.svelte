@@ -10,6 +10,10 @@
     CancelTransfer,
     DeleteFiles,
     RenameFile,
+    CreateDirectory,
+    CreateFile,
+    CopyFile,
+    ChmodFile,
     GetCurrentPath,
     GetFileManagerSettings,
     UpdateFileManagerSettings,
@@ -20,8 +24,22 @@
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
   import FileTypeIcon from './icons/FileTypeIcon.svelte';
+  import FileManagerContextMenu from './FileManagerContextMenu.svelte';
   import { formatFileModified } from '../lib/fileType.js';
   import { canUploadDroppedFiles, normalizeDroppedFilePaths } from '../lib/fileDropUpload.js';
+  import {
+    FILE_MANAGER_MENU_HEIGHT_BLANK,
+    FILE_MANAGER_MENU_HEIGHT_FILE,
+    FILE_MANAGER_MENU_WIDTH,
+    getContextMenuPosition,
+    isMacPlatform,
+    joinRemotePath,
+    matchFileManagerShortcut,
+    toggleFavoriteHistory,
+    uniqueCopyName,
+    unixModeToOctal,
+    isValidOctalMode,
+  } from '../lib/fileManagerContextMenu.js';
 
   // Svelte action to focus element on mount
   function focus(node) {
@@ -80,6 +98,10 @@
     y: 0,
     file: null,
   };
+  let fileClipboard = null;
+  let moreOpen = false;
+  let inputDialogMode = 'rename';
+  const isMac = typeof navigator !== 'undefined' && isMacPlatform(navigator.userAgent);
 
   // Editable path
   let isEditingPath = false;
@@ -94,11 +116,14 @@
   let showCancelUploadConfirm = false;
   let pendingCancelTransfer = null;
 
-  // Rename input dialog state
+  // Rename / create / chmod input dialog state
   let showRenameDialog = false;
   let renameDialogTitle = '';
   let renameDefaultName = '';
   let pendingRenameFile = null;
+  let inputDialogMessage = '请输入新的文件/文件夹名称';
+  let inputDialogPlaceholder = '新名称';
+  let inputDialogConfirmText = '重命名';
   let isFileDropRegistered = false;
 
   // Get current session object
@@ -364,38 +389,44 @@
   }
 
   function handleContextMenu(event, file) {
-    if (file?.is_parent) return;
     event.preventDefault();
     event.stopPropagation();
-    handleSelectFile(file);
-    suppressListClick = true;
-
-    const root = fileManagerEl?.getBoundingClientRect();
-    const menuWidth = 168;
-    const menuHeight = file?.is_dir ? 148 : 176;
-    let x = event.clientX;
-    let y = event.clientY;
-    if (root) {
-      x = event.clientX - root.left;
-      y = event.clientY - root.top;
-      x = Math.max(8, Math.min(x, root.width - menuWidth - 8));
-      y = Math.max(8, Math.min(y, root.height - menuHeight - 8));
+    if (file?.is_parent) {
+      openContextMenu(event, null);
+      return;
     }
+    if (file) handleSelectFile(file);
+    else selectedFiles = new Set();
+    openContextMenu(event, file || null);
+  }
 
-    contextMenu = {
-      open: true,
-      x,
-      y,
-      file,
-    };
+  function handleBlankContextMenu(event) {
+    if (event.target.closest?.('[data-file-row]')) return;
+    handleContextMenu(event, null);
+  }
+
+  function openContextMenu(event, file) {
+    suppressListClick = true;
+    moreOpen = false;
+    const root = fileManagerEl?.getBoundingClientRect();
+    const { x, y } = getContextMenuPosition({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      root,
+      menuWidth: FILE_MANAGER_MENU_WIDTH,
+      menuHeight: file ? FILE_MANAGER_MENU_HEIGHT_FILE : FILE_MANAGER_MENU_HEIGHT_BLANK,
+    });
+    contextMenu = { open: true, x, y, file };
   }
 
   function closeContextMenu() {
     if (!contextMenu.open) return;
+    moreOpen = false;
     contextMenu = { ...contextMenu, open: false, file: null };
   }
 
   function handleListClick() {
+    fileManagerEl?.focus?.();
     if (suppressListClick) {
       suppressListClick = false;
       return;
@@ -403,22 +434,147 @@
     closeContextMenu();
   }
 
-  async function handleContextOpen() {
+  function openInputDialog(mode, { title, message, placeholder, defaultValue, confirmText, file = null }) {
+    inputDialogMode = mode;
+    renameDialogTitle = title;
+    renameDefaultName = defaultValue || '';
+    showRenameDialog = true;
+    pendingRenameFile = file;
+    inputDialogMessage = message;
+    inputDialogPlaceholder = placeholder;
+    inputDialogConfirmText = confirmText;
+  }
+
+  async function handleMenuAction(event) {
+    const action = event.detail;
     const file = contextMenu.file;
+    const needsFile = action === 'rename' || action === 'delete' || action === 'cut' || action === 'chmod';
+    if (needsFile && !file) return;
+    if (action === 'copy' && (!file || file.is_dir)) return;
+
     closeContextMenu();
-    if (file?.is_dir) {
-      navigateTo(file.path, true);
+
+    switch (action) {
+      case 'openLocal':
+        if (file?.is_dir) navigateTo(file.path, true);
+        else if (file && !file.is_dir) await handleDownload(file);
+        break;
+      case 'refresh':
+        await handleRefresh();
+        break;
+      case 'toggleFavorite':
+        await handleToggleFavorite();
+        break;
+      case 'downloadTo':
+        if (file && !file.is_dir) await handleDownload(file);
+        break;
+      case 'uploadFiles':
+        await handleUpload();
+        break;
+      case 'rename':
+        openInputDialog('rename', {
+          title: '重命名',
+          message: '请输入新的文件/文件夹名称',
+          placeholder: '新名称',
+          defaultValue: file.name,
+          confirmText: '重命名',
+          file,
+        });
+        break;
+      case 'delete':
+        pendingDeleteFiles = [file.path];
+        deleteConfirmMessage = `确定要删除 "${file.name}" 吗？`;
+        showDeleteConfirm = true;
+        break;
+      case 'copyPath':
+        await copyText(file?.path || currentPath);
+        break;
+      case 'copy':
+        fileClipboard = { mode: 'copy', files: [file] };
+        break;
+      case 'cut':
+        fileClipboard = { mode: 'cut', files: [file] };
+        break;
+      case 'paste':
+        await handlePaste();
+        break;
+      case 'newFolder':
+        openInputDialog('newFolder', {
+          title: '新建文件夹',
+          message: '请输入文件夹名称',
+          placeholder: '新建文件夹',
+          defaultValue: '',
+          confirmText: '创建',
+          file,
+        });
+        break;
+      case 'newFile':
+        openInputDialog('newFile', {
+          title: '新建文件',
+          message: '请输入文件名称',
+          placeholder: 'untitled.txt',
+          defaultValue: '',
+          confirmText: '创建',
+          file,
+        });
+        break;
+      case 'chmod':
+        openInputDialog('chmod', {
+          title: '修改权限',
+          message: '请输入八进制权限，例如 644 或 755',
+          placeholder: '644',
+          defaultValue: unixModeToOctal(file.mode),
+          confirmText: '修改',
+          file,
+        });
+        break;
+      default:
+        break;
     }
   }
 
-  async function handleContextCopyPath() {
-    const file = contextMenu.file;
-    closeContextMenu();
-    if (!file?.path) return;
+  async function copyText(value) {
+    if (!value) return;
     try {
-      await navigator.clipboard.writeText(file.path);
+      await navigator.clipboard.writeText(value);
     } catch (err) {
       console.error('Copy path failed:', err);
+    }
+  }
+
+  async function handleToggleFavorite() {
+    if (!fileManagerConfig.historyEnabled) return;
+    fileManagerConfig.history = toggleFavoriteHistory(
+      fileManagerConfig.history,
+      currentPath,
+      fileManagerConfig.historyLimit || 5,
+    );
+    await handleSaveSettings();
+  }
+
+  async function handlePaste() {
+    if (!$activeSessionIdStore || !fileClipboard?.files?.length) return;
+    const names = new Set((files || []).filter((item) => !item.is_parent).map((item) => item.name));
+    try {
+      for (const item of fileClipboard.files) {
+        const destName = fileClipboard.mode === 'copy'
+          ? uniqueCopyName(names, item.name)
+          : item.name;
+        const destPath = joinRemotePath(currentPath, destName);
+        if (fileClipboard.mode === 'cut') {
+          if (item.path !== destPath) {
+            await RenameFile($activeSessionIdStore, item.path, destPath);
+          }
+        } else {
+          await CopyFile($activeSessionIdStore, item.path, destPath);
+        }
+        names.add(destName);
+      }
+      if (fileClipboard.mode === 'cut') fileClipboard = null;
+      await loadDirectory(currentPath);
+    } catch (err) {
+      console.error('Paste failed:', err);
+      error = err.message || '粘贴失败';
     }
   }
 
@@ -453,59 +609,64 @@
     pendingDeleteFiles = [];
   }
 
-  async function handleContextDelete() {
-    const file = contextMenu.file;
-    if (!file) return;
-
-    closeContextMenu();
-
-    // Show confirmation dialog
-    pendingDeleteFiles = [file.path];
-    deleteConfirmMessage = `确定要删除 "${file.name}" 吗？`;
-    showDeleteConfirm = true;
-  }
-
-  async function handleContextDownload() {
-    const file = contextMenu.file;
-    closeContextMenu();
-    if (file && !file.is_dir) {
-      await handleDownload(file);
-    }
-  }
-
-  async function handleContextRename() {
-    const file = contextMenu.file;
-    closeContextMenu();
-    if (!file) return;
-
-    // Show rename input dialog
-    pendingRenameFile = file;
-    renameDialogTitle = '重命名';
-    renameDefaultName = file.name;
-    showRenameDialog = true;
-  }
-
   async function handleConfirmRename(newName) {
     showRenameDialog = false;
     const file = pendingRenameFile;
+    const mode = inputDialogMode;
     pendingRenameFile = null;
+    inputDialogMode = 'rename';
 
-    if (!file || !newName || newName.trim() === file.name) return;
+    const name = (newName || '').trim();
+    if (!name) return;
 
     try {
-      const basePath = currentPath.endsWith('/') ? currentPath : `${currentPath}/`;
-      const newPath = `${basePath}${newName.trim()}`;
-      await RenameFile($activeSessionIdStore, file.path, newPath);
+      switch (mode) {
+        case 'rename':
+          if (!file || name === file.name) return;
+          await RenameFile($activeSessionIdStore, file.path, joinRemotePath(currentPath, name));
+          break;
+        case 'newFolder':
+          await CreateDirectory($activeSessionIdStore, joinRemotePath(currentPath, name));
+          break;
+        case 'newFile':
+          await CreateFile($activeSessionIdStore, joinRemotePath(currentPath, name));
+          break;
+        case 'chmod':
+          if (!file) return;
+          if (!isValidOctalMode(name)) {
+            error = '权限必须是 3 或 4 位八进制，例如 644';
+            return;
+          }
+          await ChmodFile($activeSessionIdStore, file.path, name);
+          break;
+        default:
+          break;
+      }
       await loadDirectory(currentPath);
     } catch (err) {
-      console.error('Rename failed:', err);
-      error = err.message || '重命名失败';
+      console.error('File manager input failed:', err);
+      error = err.message || '操作失败';
     }
   }
 
   function handleCancelRename() {
     showRenameDialog = false;
     pendingRenameFile = null;
+    inputDialogMode = 'rename';
+  }
+
+  function handleFileManagerKeydown(event) {
+    if (!canUseFileManager) return;
+    if (showRenameDialog || showDeleteConfirm || showSettingsDialog || isEditingPath || isDirSearchOpen) return;
+    const tag = event.target?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable) return;
+    const action = matchFileManagerShortcut(event, { isMac });
+    if (!action) return;
+    event.preventDefault();
+    const selectedPath = selectedFiles.size === 1 ? [...selectedFiles][0] : null;
+    const selectedFile = selectedPath ? (files || []).find((item) => item.path === selectedPath) : null;
+    contextMenu = { ...contextMenu, file: selectedFile || null };
+    handleMenuAction({ detail: action });
   }
 
   // Transfer progress subscription
@@ -777,6 +938,8 @@
     showHistoryDropdown = false;
     isDirSearchOpen = false;
     contextMenu = { open: false, x: 0, y: 0, file: null };
+    moreOpen = false;
+    fileClipboard = null;
   }
 
   // Restart tracking when tracking settings change
@@ -831,6 +994,8 @@
 <div
   class="file-manager h-full flex flex-col relative"
   bind:this={fileManagerEl}
+  tabindex="-1"
+  on:keydown={handleFileManagerKeydown}
   style={`--wails-drop-target: ${canUseFileManager ? 'drop' : 'none'};`}
 >
   <!-- 头部工具栏 -->
@@ -1098,10 +1263,7 @@
   <div
     class="flex-1 overflow-y-auto scrollbar-thin text-xs"
     on:click={handleListClick}
-    on:contextmenu={(event) => {
-      event.preventDefault();
-      if (!event.target.closest?.('[data-file-row]')) closeContextMenu();
-    }}
+    on:contextmenu={handleBlankContextMenu}
   >
     {#if isLoading}
       <div class="flex flex-col items-center justify-center h-40 text-gray-500 dark:text-gray-400 gap-2">
@@ -1195,22 +1357,19 @@
   </div>
 
   {#if contextMenu.open}
-    <div
-      class="file-manager__menu ops-flyout absolute z-[80] rounded-xl text-xs py-1 min-w-[160px]"
-      style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
-      on:mousedown|stopPropagation
-      on:click|stopPropagation
-    >
-      {#if contextMenu.file?.is_dir}
-        <button class="file-manager__menu-item" type="button" on:click={handleContextOpen}>打开</button>
-      {:else}
-        <button class="file-manager__menu-item" type="button" on:click={handleContextDownload}>下载</button>
-      {/if}
-      <button class="file-manager__menu-item" type="button" on:click={handleContextRename}>重命名</button>
-      <button class="file-manager__menu-item" type="button" on:click={handleContextCopyPath}>复制路径</button>
-      <div class="file-manager__menu-sep"></div>
-      <button class="file-manager__menu-item is-danger" type="button" on:click={handleContextDelete}>删除</button>
-    </div>
+    <FileManagerContextMenu
+      x={contextMenu.x}
+      y={contextMenu.y}
+      file={contextMenu.file}
+      currentPath={currentPath}
+      history={fileManagerConfig.history}
+      historyEnabled={fileManagerConfig.historyEnabled}
+      clipboard={fileClipboard}
+      moreOpen={moreOpen}
+      rootWidth={fileManagerEl?.clientWidth || 0}
+      on:action={handleMenuAction}
+      on:more={(event) => { moreOpen = event.detail; }}
+    />
   {/if}
 
   <ConfirmDialog
@@ -1238,10 +1397,10 @@
   <InputDialog
     bind:isOpen={showRenameDialog}
     title={renameDialogTitle}
-    message="请输入新的文件/文件夹名称"
-    placeholder="新名称"
+    message={inputDialogMessage}
+    placeholder={inputDialogPlaceholder}
     defaultValue={renameDefaultName}
-    confirmText="重命名"
+    confirmText={inputDialogConfirmText}
     cancelText="取消"
     onConfirm={handleConfirmRename}
     onCancel={handleCancelRename}
@@ -1496,6 +1655,7 @@
     color: var(--text-primary);
     min-height: 0;
     overflow: hidden;
+    outline: none;
   }
   :global(.file-manager.wails-drop-target-active)::after {
     content: '松开以上传到当前目录';
@@ -1526,33 +1686,6 @@
   .file-manager__chevron:hover {
     color: var(--text-primary);
     background: var(--bg-hover);
-  }
-  .file-manager__menu {
-    pointer-events: auto;
-  }
-  .file-manager__menu-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: 7px 12px;
-    color: var(--text-primary);
-    background: transparent;
-    border: 0;
-    cursor: pointer;
-  }
-  .file-manager__menu-item:hover {
-    background: var(--bg-hover);
-  }
-  .file-manager__menu-item.is-danger {
-    color: var(--ops-alert);
-  }
-  .file-manager__menu-item.is-danger:hover {
-    background: color-mix(in srgb, var(--ops-alert) 12%, transparent);
-  }
-  .file-manager__menu-sep {
-    height: 1px;
-    margin: 4px 8px;
-    background: var(--border-secondary);
   }
   .file-manager__toolbar {
     border-bottom: 1px solid var(--glass-border);

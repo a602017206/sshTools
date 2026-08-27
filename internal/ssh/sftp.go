@@ -382,6 +382,87 @@ func (sc *SFTPClient) CreateDirectory(dirPath string) error {
 	return nil
 }
 
+// CreateFile creates an empty file and fails if it already exists.
+func (sc *SFTPClient) CreateFile(filePath string) error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	filePath = normalizePath(filePath)
+	file, err := sc.client.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	return file.Close()
+}
+
+// CopyFile copies a remote file to a new remote path.
+func (sc *SFTPClient) CopyFile(srcPath, dstPath string) error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	srcPath = normalizePath(srcPath)
+	dstPath = normalizePath(dstPath)
+
+	stat, err := sc.client.Stat(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to stat source: %w", err)
+	}
+	if stat.IsDir() {
+		return fmt.Errorf("复制目录尚未支持")
+	}
+
+	src, err := sc.client.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open source: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := sc.client.OpenFile(dstPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY)
+	if err != nil {
+		return fmt.Errorf("failed to create destination: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+	if err := sc.client.Chmod(dstPath, stat.Mode()); err != nil {
+		return fmt.Errorf("failed to copy permissions: %w", err)
+	}
+	return nil
+}
+
+// ChmodFile updates remote file permissions from an octal mode string such as 644.
+func (sc *SFTPClient) ChmodFile(filePath, mode string) error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	parsed, err := parseOctalFileMode(mode)
+	if err != nil {
+		return err
+	}
+	filePath = normalizePath(filePath)
+	if err := sc.client.Chmod(filePath, parsed); err != nil {
+		return fmt.Errorf("failed to chmod: %w", err)
+	}
+	return nil
+}
+
+func parseOctalFileMode(value string) (os.FileMode, error) {
+	value = strings.TrimSpace(value)
+	if len(value) < 3 || len(value) > 4 {
+		return 0, fmt.Errorf("权限必须是 3 或 4 位八进制，例如 644")
+	}
+	var parsed os.FileMode
+	for _, ch := range value {
+		if ch < '0' || ch > '7' {
+			return 0, fmt.Errorf("权限必须是 3 或 4 位八进制，例如 644")
+		}
+		parsed = parsed<<3 | os.FileMode(ch-'0')
+	}
+	return parsed, nil
+}
+
 // ChangeDirectory changes the current working directory
 func (sc *SFTPClient) ChangeDirectory(dirPath string) error {
 	sc.mu.Lock()

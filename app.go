@@ -795,6 +795,21 @@ func (a *App) CreateDirectory(sessionID string, path string) error {
 	return a.sftpService.CreateDirectory(sessionID, path)
 }
 
+// CreateFile creates an empty remote file
+func (a *App) CreateFile(sessionID string, path string) error {
+	return a.sftpService.CreateFile(sessionID, path)
+}
+
+// CopyFile copies a remote file to another remote path
+func (a *App) CopyFile(sessionID string, srcPath string, dstPath string) error {
+	return a.sftpService.CopyFile(sessionID, srcPath, dstPath)
+}
+
+// ChmodFile updates remote file permissions with an octal mode such as 644
+func (a *App) ChmodFile(sessionID string, path string, mode string) error {
+	return a.sftpService.ChmodFile(sessionID, path, mode)
+}
+
 // GetFileInfo gets information about a file
 func (a *App) GetFileInfo(sessionID string, path string) (*ssh.FileInfo, error) {
 	return a.sftpService.GetFileInfo(sessionID, path)

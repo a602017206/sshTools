@@ -261,6 +261,36 @@ func (s *SFTPService) CreateDirectory(sessionID string, path string) error {
 	return sftpClient.CreateDirectory(path)
 }
 
+// CreateFile creates an empty remote file.
+func (s *SFTPService) CreateFile(sessionID string, path string) error {
+	sftpClient, err := s.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.CreateFile(path)
+}
+
+// CopyFile copies a remote file to another remote path.
+func (s *SFTPService) CopyFile(sessionID string, srcPath string, dstPath string) error {
+	sftpClient, err := s.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.CopyFile(srcPath, dstPath)
+}
+
+// ChmodFile updates remote file permissions.
+func (s *SFTPService) ChmodFile(sessionID string, path string, mode string) error {
+	sftpClient, err := s.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	return sftpClient.ChmodFile(path, mode)
+}
+
 // CancelTransfer cancels a file transfer
 func (s *SFTPService) CancelTransfer(transferID string) error {
 	return s.transferManager.CancelTransfer(transferID)
