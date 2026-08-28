@@ -77,4 +77,8 @@ func (c *appNativeDatabaseClient) ListSecondaryResources(_ context.Context, pare
 	return c.secondary[parent], nil
 }
 
+func (*appNativeDatabaseClient) DescribeResource(context.Context, string, string) (service.NativeResourceDetails, error) {
+	return service.NativeResourceDetails{}, nil
+}
+
 func (*appNativeDatabaseClient) Close() error { return nil }

@@ -644,6 +644,34 @@ export namespace service {
 	        this.content = source["content"];
 	    }
 	}
+	export class NativeQueryResult {
+	    summary: string;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NativeQueryResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.summary = source["summary"];
+	        this.content = source["content"];
+	    }
+	}
+	export class NativeMutationResult {
+	    summary: string;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NativeMutationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.summary = source["summary"];
+	        this.content = source["content"];
+	    }
+	}
 	
 	export class TableDDL {
 	    table_name: string;

@@ -118,6 +118,14 @@ export function DescribeNativeDatabaseResource(arg1, arg2, arg3) {
   return window['go']['main']['App']['DescribeNativeDatabaseResource'](arg1, arg2, arg3);
 }
 
+export function ExecuteNativeDatabaseQuery(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ExecuteNativeDatabaseQuery'](arg1, arg2, arg3, arg4);
+}
+
+export function MutateNativeDatabaseResource(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['MutateNativeDatabaseResource'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function DownloadFile(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadFile'](arg1, arg2, arg3);
 }

@@ -160,6 +160,9 @@ func (*shutdownNativeClient) ListPrimaryResources(context.Context) ([]service.Na
 func (*shutdownNativeClient) ListSecondaryResources(context.Context, string) ([]service.NativeResource, error) {
 	return nil, nil
 }
+func (*shutdownNativeClient) DescribeResource(context.Context, string, string) (service.NativeResourceDetails, error) {
+	return service.NativeResourceDetails{}, nil
+}
 func (c *shutdownNativeClient) Close() error {
 	c.closed = true
 	return nil

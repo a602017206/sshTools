@@ -87,6 +87,22 @@ func (c *fakeElasticsearchNativeClient) DescribeIndex(context.Context, string) (
 	return c.indexDetails, nil
 }
 
+func (c *fakeElasticsearchNativeClient) SearchIndex(context.Context, string, string) (NativeQueryResult, error) {
+	return NativeQueryResult{Summary: "1 hit", Content: `{"hits":[]}`}, nil
+}
+
+func (c *fakeElasticsearchNativeClient) IndexDocument(context.Context, string, string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: "indexed"}, nil
+}
+
+func (c *fakeElasticsearchNativeClient) UpdateDocument(context.Context, string, string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: "updated"}, nil
+}
+
+func (c *fakeElasticsearchNativeClient) DeleteDocument(context.Context, string, string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: "deleted"}, nil
+}
+
 func (c *fakeElasticsearchNativeClient) Close() error {
 	c.closed = true
 	return nil

@@ -123,6 +123,18 @@ func (c *fakeRedisNativeClient) DescribeKey(context.Context, string) (NativeReso
 	return c.keyDetails, nil
 }
 
+func (c *fakeRedisNativeClient) SetKey(context.Context, string, string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: "saved"}, nil
+}
+
+func (c *fakeRedisNativeClient) SaveKeyValue(context.Context, string, string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: "saved"}, nil
+}
+
+func (c *fakeRedisNativeClient) DeleteKey(context.Context, string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: "deleted"}, nil
+}
+
 func (c *fakeRedisNativeClient) Ping(context.Context) error { return c.pingErr }
 
 func (c *fakeRedisNativeClient) Keyspace(context.Context) (map[int]int, error) {

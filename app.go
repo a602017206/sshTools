@@ -1413,6 +1413,24 @@ func (a *App) CloseNativeDatabase(sessionID string) error {
 	return a.nativeDatabaseService.Close(sessionID)
 }
 
+func (a *App) ExecuteNativeDatabaseQuery(sessionID, parent, name, query string) (service.NativeQueryResult, error) {
+	if a.nativeDatabaseService == nil {
+		return service.NativeQueryResult{}, fmt.Errorf("原生数据库服务尚未初始化")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return a.nativeDatabaseService.ExecuteQuery(ctx, sessionID, parent, name, query)
+}
+
+func (a *App) MutateNativeDatabaseResource(sessionID, parent, name, operation, payload string) (service.NativeMutationResult, error) {
+	if a.nativeDatabaseService == nil {
+		return service.NativeMutationResult{}, fmt.Errorf("原生数据库服务尚未初始化")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return a.nativeDatabaseService.MutateResource(ctx, sessionID, parent, name, operation, payload)
+}
+
 func (a *App) nativeDatabaseRequest(host string, port int, user, password, databaseType, database string) (*service.NativeDatabaseService, service.NativeDatabaseConfig, context.Context, context.CancelFunc, error) {
 	if a.nativeDatabaseService == nil {
 		return nil, service.NativeDatabaseConfig{}, nil, nil, fmt.Errorf("原生数据库服务尚未初始化")

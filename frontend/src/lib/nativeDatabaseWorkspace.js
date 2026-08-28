@@ -3,9 +3,12 @@ const workspaceByType = {
     title: 'Redis 键空间',
     resourceLabel: '逻辑库',
     childLabel: '键',
-    description: '展开逻辑库可浏览其中的键；当前为只读浏览。',
-    canExpand: true,
-    canDescribe: true
+    description: '选择逻辑库后浏览键；支持 string/hash/list/set/zset 预览与编辑。',
+    dbSelector: 'dropdown',
+    canExpand: false,
+    canDescribe: true,
+    canWrite: true,
+    canDelete: true
   },
   mongodb: {
     title: 'MongoDB 数据库',
@@ -18,9 +21,12 @@ const workspaceByType = {
     title: 'Elasticsearch 索引',
     resourceLabel: '索引',
     childLabel: '',
-    description: '可查看索引的受限文档预览；不提供写入操作。',
+    description: '选择索引后可执行 DSL 查询，并写入/更新/删除文档。',
     canExpand: false,
-    canDescribe: true
+    canDescribe: true,
+    canQuery: true,
+    canWrite: true,
+    canDelete: true
   },
   memcached: {
     title: 'Memcached 统计',

@@ -18,6 +18,10 @@ type ElasticsearchNativeClient interface {
 	Ping(context.Context) error
 	ListIndices(context.Context) ([]string, error)
 	DescribeIndex(context.Context, string) (NativeResourceDetails, error)
+	SearchIndex(context.Context, string, string) (NativeQueryResult, error)
+	IndexDocument(context.Context, string, string) (NativeMutationResult, error)
+	UpdateDocument(context.Context, string, string) (NativeMutationResult, error)
+	DeleteDocument(context.Context, string, string) (NativeMutationResult, error)
 	Close() error
 }
 
@@ -115,7 +119,7 @@ type elasticsearchGoClient struct {
 }
 
 func (c *elasticsearchGoClient) Ping(ctx context.Context) error {
-	response, err := c.perform(ctx, http.MethodGet, "/")
+	response, err := c.perform(ctx, http.MethodGet, "/", nil)
 	if err != nil {
 		return err
 	}
@@ -124,7 +128,7 @@ func (c *elasticsearchGoClient) Ping(ctx context.Context) error {
 }
 
 func (c *elasticsearchGoClient) ListIndices(ctx context.Context) ([]string, error) {
-	response, err := c.perform(ctx, http.MethodGet, "/_cat/indices?format=json&h=index")
+	response, err := c.perform(ctx, http.MethodGet, "/_cat/indices?format=json&h=index", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +161,7 @@ func (c *elasticsearchGoClient) DescribeIndex(ctx context.Context, name string) 
 	if name == "" {
 		return NativeResourceDetails{}, fmt.Errorf("Elasticsearch 索引名不能为空")
 	}
-	response, err := c.perform(ctx, http.MethodGet, "/"+url.PathEscape(name)+"/_search?size=20&track_total_hits=false")
+	response, err := c.perform(ctx, http.MethodGet, "/"+url.PathEscape(name)+"/_search?size=20&track_total_hits=false", nil)
 	if err != nil {
 		return NativeResourceDetails{}, err
 	}
@@ -179,14 +183,6 @@ func (c *elasticsearchGoClient) DescribeIndex(ctx context.Context, name string) 
 		return NativeResourceDetails{}, err
 	}
 	return NativeResourceDetails{Kind: NativeResourceKindIndex, Name: name, Summary: fmt.Sprintf("%d 条文档预览", len(payload.Hits.Hits)), Content: string(content)}, nil
-}
-
-func (c *elasticsearchGoClient) perform(ctx context.Context, method, path string) (*http.Response, error) {
-	request, err := http.NewRequestWithContext(ctx, method, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	return c.client.Perform(request)
 }
 
 func elasticsearchResponseError(response *http.Response) error {

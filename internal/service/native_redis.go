@@ -24,6 +24,9 @@ type RedisNativeClient interface {
 	Keyspace(context.Context) (map[int]int, error)
 	Scan(context.Context, uint64, int, int64) ([]string, uint64, error)
 	DescribeKey(context.Context, string) (NativeResourceDetails, error)
+	SetKey(context.Context, string, string) (NativeMutationResult, error)
+	SaveKeyValue(context.Context, string, string) (NativeMutationResult, error)
+	DeleteKey(context.Context, string) (NativeMutationResult, error)
 	Close() error
 }
 
@@ -242,16 +245,8 @@ func (c *redisGoClient) DescribeKey(ctx context.Context, name string) (NativeRes
 		return NativeResourceDetails{}, err
 	}
 	data := map[string]any{"type": kind, "ttlSeconds": ttlSeconds(ttl)}
-	if kind == "string" {
-		value, getErr := c.client.Get(ctx, name).Result()
-		if getErr != nil && getErr != redis.Nil {
-			return NativeResourceDetails{}, getErr
-		}
-		if len(value) > redisPreviewLimit {
-			value = value[:redisPreviewLimit]
-			data["truncated"] = true
-		}
-		data["value"] = value
+	if err := c.readKeyPreview(ctx, kind, name, data); err != nil {
+		return NativeResourceDetails{}, err
 	}
 	content, err := json.Marshal(data)
 	if err != nil {
@@ -268,14 +263,4 @@ func ttlSeconds(ttl time.Duration) int64 {
 		return -2
 	}
 	return int64(ttl.Seconds())
-}
-
-func redisKeySummary(kind string, ttl time.Duration) string {
-	if ttl == -1 {
-		return fmt.Sprintf("%s · 永不过期", kind)
-	}
-	if ttl == -2 {
-		return fmt.Sprintf("%s · 已不存在", kind)
-	}
-	return fmt.Sprintf("%s · %d 秒后过期", kind, ttlSeconds(ttl))
 }
