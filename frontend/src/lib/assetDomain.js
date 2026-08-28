@@ -83,3 +83,28 @@ export function defaultAssetTypeForDomain(domainId) {
 export function domainLabel(domainId) {
   return ASSET_DOMAINS.find((domain) => domain.id === domainId)?.label || domainId;
 }
+
+/** 新建连接对话框中数据库类型的域分组（不含 all/ssh/docker） */
+export function groupDatabaseTypesByDomain(databaseTypes) {
+  const groups = [
+    { id: 'database', label: '数据库', types: [] },
+    { id: 'cache', label: '缓存', types: [] },
+    { id: 'search', label: '搜索', types: [] },
+    { id: 'mq', label: '消息队列', types: [] }
+  ];
+  const byId = Object.fromEntries(groups.map((group) => [group.id, group]));
+
+  for (const item of databaseTypes || []) {
+    const domain = resolveAssetDomain({
+      type: 'database',
+      metadata: { db_type: item.value }
+    });
+    if (byId[domain]) {
+      byId[domain].types.push(item);
+    } else {
+      byId.database.types.push(item);
+    }
+  }
+
+  return groups.filter((group) => group.types.length > 0);
+}

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   defaultAssetTypeForDomain,
   filterAssetsByDomain,
+  groupDatabaseTypesByDomain,
   resolveAssetDomain
 } from '../src/lib/assetDomain.js';
 
@@ -43,4 +44,17 @@ test('defaultAssetTypeForDomain 为新建连接提供默认类型', () => {
   assert.deepEqual(defaultAssetTypeForDomain('cache'), { assetType: 'database', dbType: 'redis' });
   assert.deepEqual(defaultAssetTypeForDomain('search'), { assetType: 'database', dbType: 'elasticsearch' });
   assert.deepEqual(defaultAssetTypeForDomain('ssh'), { assetType: 'ssh', dbType: '' });
+});
+
+test('groupDatabaseTypesByDomain 按域分组类型列表', () => {
+  const groups = groupDatabaseTypesByDomain([
+    { value: 'mysql', label: 'MySQL' },
+    { value: 'redis', label: 'Redis' },
+    { value: 'elasticsearch', label: 'ES' },
+    { value: 'kafka', label: 'Kafka' },
+    { value: 'mongodb', label: 'Mongo' }
+  ]);
+  assert.deepEqual(groups.map((group) => group.id), ['database', 'cache', 'search', 'mq']);
+  assert.deepEqual(groups.find((group) => group.id === 'cache').types.map((item) => item.value), ['redis']);
+  assert.deepEqual(groups.find((group) => group.id === 'database').types.map((item) => item.value), ['mysql', 'mongodb']);
 });

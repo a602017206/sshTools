@@ -7,7 +7,7 @@
   import { shouldApplyClone } from '../lib/cloneDialogState.js';
   import { shouldResetBlankConnectionForm } from '../lib/connectionDialogRequest.js';
   import { shouldApplyEditConnectionResult, shouldLoadEditConnection } from '../lib/editConnectionLoadState.js';
-  import { defaultAssetTypeForDomain, resolveAssetDomain } from '../lib/assetDomain.js';
+  import { defaultAssetTypeForDomain, groupDatabaseTypesByDomain, resolveAssetDomain } from '../lib/assetDomain.js';
 
   export let isOpen = false;
   export let onAdd = () => {};
@@ -53,6 +53,7 @@
     { value: 'neo4j', label: 'Neo4j', port: '7687' },
     { value: 'kafka', label: 'Kafka', port: '9092' }
   ];
+  $: databaseTypeGroups = groupDatabaseTypesByDomain(databaseTypes);
 
   // Group selector state
   let showGroupDropdown = false;
@@ -746,9 +747,13 @@
           on:change={handleDatabaseTypeChange}
           class={inputClass}
         >
-            {#each databaseTypes as db}
-              <option value={db.value}>{db.label}</option>
-            {/each}
+          {#each databaseTypeGroups as group}
+            <optgroup label={group.label}>
+              {#each group.types as db}
+                <option value={db.value}>{db.label}</option>
+              {/each}
+            </optgroup>
+          {/each}
          </select>
        </div>
 	   {#if selectedJDBCProfileMissing}

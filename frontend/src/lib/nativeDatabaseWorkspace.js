@@ -88,3 +88,12 @@ const fallbackWorkspace = {
 export function nativeDatabaseWorkspace(databaseType) {
   return workspaceByType[String(databaseType || '').toLowerCase()] || fallbackWorkspace;
 }
+
+/** @returns {'redis'|'elasticsearch'|'kafka'|'generic'} */
+export function resolveNativeWorkspaceKind(databaseType) {
+  const type = String(databaseType || '').toLowerCase();
+  if (type === 'redis') return 'redis';
+  if (type === 'elasticsearch' || type === 'opensearch') return 'elasticsearch';
+  if (type === 'kafka') return 'kafka';
+  return 'generic';
+}
