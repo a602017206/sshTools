@@ -41,29 +41,55 @@ func NewArtifactDownloader(options ArtifactDownloadOptions) *ArtifactDownloader 
 }
 
 func (d *ArtifactDownloader) Download(ctx context.Context, sourceURL, expectedSHA256, target string) error {
-	parsedURL, err := url.Parse(sourceURL)
+	parsedURL, err := d.parseSourceURL(sourceURL)
 	if err != nil {
-		return fmt.Errorf("解析下载地址失败: %w", err)
+		return err
 	}
-	if parsedURL.Scheme != "https" && !(d.allowHTTP && parsedURL.Scheme == "http") {
-		return fmt.Errorf("下载地址必须使用 HTTPS")
-	}
-	expected, err := hex.DecodeString(expectedSHA256)
-	if err != nil || len(expected) != sha256.Size {
+	if !isSHA256(expectedSHA256) {
 		return fmt.Errorf("SHA-256 格式无效")
 	}
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
+	response, err := d.downloadResponse(ctx, parsedURL)
 	if err != nil {
-		return fmt.Errorf("创建下载请求失败: %w", err)
+		return err
+	}
+	defer response.Body.Close()
+	if err := d.validateResponse(response); err != nil {
+		return err
+	}
+	return d.writeVerifiedArtifact(response.Body, expectedSHA256, target)
+}
+
+func (d *ArtifactDownloader) parseSourceURL(sourceURL string) (*url.URL, error) {
+	parsedURL, err := url.Parse(sourceURL)
+	if err != nil {
+		return nil, fmt.Errorf("解析下载地址失败: %w", err)
+	}
+	if !d.isAllowedURL(parsedURL) {
+		return nil, fmt.Errorf("下载地址必须使用 HTTPS")
+	}
+	return parsedURL, nil
+}
+
+func isSHA256(value string) bool {
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == sha256.Size
+}
+
+func (d *ArtifactDownloader) downloadResponse(ctx context.Context, sourceURL *url.URL) (*http.Response, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建下载请求失败: %w", err)
 	}
 	request.Header.Set("User-Agent", "AHaSSHTools-JDBC/1")
 	response, err := d.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("下载文件失败: %w", err)
+		return nil, fmt.Errorf("下载文件失败: %w", err)
 	}
-	defer response.Body.Close()
-	if response.Request == nil || (response.Request.URL.Scheme != "https" && !(d.allowHTTP && response.Request.URL.Scheme == "http")) {
+	return response, nil
+}
+
+func (d *ArtifactDownloader) validateResponse(response *http.Response) error {
+	if response.Request == nil || !d.isAllowedURL(response.Request.URL) {
 		return fmt.Errorf("下载重定向到不安全地址")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -72,6 +98,14 @@ func (d *ArtifactDownloader) Download(ctx context.Context, sourceURL, expectedSH
 	if response.ContentLength > d.maxBytes {
 		return fmt.Errorf("下载文件超过大小限制")
 	}
+	return nil
+}
+
+func (d *ArtifactDownloader) isAllowedURL(parsedURL *url.URL) bool {
+	return parsedURL.Scheme == "https" || (d.allowHTTP && parsedURL.Scheme == "http")
+}
+
+func (d *ArtifactDownloader) writeVerifiedArtifact(body io.Reader, expectedSHA256, target string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return fmt.Errorf("创建下载目录失败: %w", err)
 	}
@@ -89,7 +123,7 @@ func (d *ArtifactDownloader) Download(ctx context.Context, sourceURL, expectedSH
 	}()
 
 	hash := sha256.New()
-	written, err := io.Copy(io.MultiWriter(temporary, hash), io.LimitReader(response.Body, d.maxBytes+1))
+	written, err := io.Copy(io.MultiWriter(temporary, hash), io.LimitReader(body, d.maxBytes+1))
 	if err != nil {
 		return fmt.Errorf("写入下载文件失败: %w", err)
 	}

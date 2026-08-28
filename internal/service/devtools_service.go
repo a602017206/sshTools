@@ -265,54 +265,11 @@ func (s *DevToolsService) EncryptText(input, algorithm, keyHex, ivHex string) (s
 
 	switch strings.ToLower(algorithm) {
 	case "aes-gcm":
-		if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
-			return "", err
-		}
-		block, err := aes.NewCipher(key)
-		if err != nil {
-			return "", fmt.Errorf("AES初始化失败: %v", err)
-		}
-		gcm, err := cipher.NewGCM(block)
-		if err != nil {
-			return "", fmt.Errorf("AES-GCM初始化失败: %v", err)
-		}
-		if len(iv) != gcm.NonceSize() {
-			return "", fmt.Errorf("Nonce长度必须为 %d 字节", gcm.NonceSize())
-		}
-		ciphertext := gcm.Seal(nil, iv, plaintext, nil)
-		return base64.StdEncoding.EncodeToString(ciphertext), nil
+		return encryptAESGCM(plaintext, key, iv)
 	case "aes-cbc":
-		if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
-			return "", err
-		}
-		if len(iv) != aes.BlockSize {
-			return "", fmt.Errorf("IV长度必须为 %d 字节", aes.BlockSize)
-		}
-		block, err := aes.NewCipher(key)
-		if err != nil {
-			return "", fmt.Errorf("AES初始化失败: %v", err)
-		}
-		padded := pkcs7Pad(plaintext, aes.BlockSize)
-		ciphertext := make([]byte, len(padded))
-		mode := cipher.NewCBCEncrypter(block, iv)
-		mode.CryptBlocks(ciphertext, padded)
-		return base64.StdEncoding.EncodeToString(ciphertext), nil
+		return encryptAESCBC(plaintext, key, iv)
 	case "sm4-cbc":
-		if err := validateKeyLength(key, []int{16}, "SM4密钥"); err != nil {
-			return "", err
-		}
-		if len(iv) != sm4.BlockSize {
-			return "", fmt.Errorf("IV长度必须为 %d 字节", sm4.BlockSize)
-		}
-		block, err := sm4.NewCipher(key)
-		if err != nil {
-			return "", fmt.Errorf("SM4初始化失败: %v", err)
-		}
-		padded := pkcs7Pad(plaintext, sm4.BlockSize)
-		ciphertext := make([]byte, len(padded))
-		mode := cipher.NewCBCEncrypter(block, iv)
-		mode.CryptBlocks(ciphertext, padded)
-		return base64.StdEncoding.EncodeToString(ciphertext), nil
+		return encryptSM4CBC(plaintext, key, iv)
 	default:
 		return "", fmt.Errorf("不支持的算法: %s", algorithm)
 	}
@@ -342,72 +299,116 @@ func (s *DevToolsService) DecryptText(input, algorithm, keyHex, ivHex string) (s
 
 	switch strings.ToLower(algorithm) {
 	case "aes-gcm":
-		if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
-			return "", err
-		}
-		block, err := aes.NewCipher(key)
-		if err != nil {
-			return "", fmt.Errorf("AES初始化失败: %v", err)
-		}
-		gcm, err := cipher.NewGCM(block)
-		if err != nil {
-			return "", fmt.Errorf("AES-GCM初始化失败: %v", err)
-		}
-		if len(iv) != gcm.NonceSize() {
-			return "", fmt.Errorf("Nonce长度必须为 %d 字节", gcm.NonceSize())
-		}
-		plaintext, err := gcm.Open(nil, iv, ciphertext, nil)
-		if err != nil {
-			return "", fmt.Errorf("解密失败: %v", err)
-		}
-		return string(plaintext), nil
+		return decryptAESGCM(ciphertext, key, iv)
 	case "aes-cbc":
-		if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
-			return "", err
-		}
-		if len(iv) != aes.BlockSize {
-			return "", fmt.Errorf("IV长度必须为 %d 字节", aes.BlockSize)
-		}
-		block, err := aes.NewCipher(key)
-		if err != nil {
-			return "", fmt.Errorf("AES初始化失败: %v", err)
-		}
-		if len(ciphertext)%aes.BlockSize != 0 {
-			return "", fmt.Errorf("密文长度不正确")
-		}
-		plaintext := make([]byte, len(ciphertext))
-		mode := cipher.NewCBCDecrypter(block, iv)
-		mode.CryptBlocks(plaintext, ciphertext)
-		unpadded, err := pkcs7Unpad(plaintext, aes.BlockSize)
-		if err != nil {
-			return "", err
-		}
-		return string(unpadded), nil
+		return decryptAESCBC(ciphertext, key, iv)
 	case "sm4-cbc":
-		if err := validateKeyLength(key, []int{16}, "SM4密钥"); err != nil {
-			return "", err
-		}
-		if len(iv) != sm4.BlockSize {
-			return "", fmt.Errorf("IV长度必须为 %d 字节", sm4.BlockSize)
-		}
-		block, err := sm4.NewCipher(key)
-		if err != nil {
-			return "", fmt.Errorf("SM4初始化失败: %v", err)
-		}
-		if len(ciphertext)%sm4.BlockSize != 0 {
-			return "", fmt.Errorf("密文长度不正确")
-		}
-		plaintext := make([]byte, len(ciphertext))
-		mode := cipher.NewCBCDecrypter(block, iv)
-		mode.CryptBlocks(plaintext, ciphertext)
-		unpadded, err := pkcs7Unpad(plaintext, sm4.BlockSize)
-		if err != nil {
-			return "", err
-		}
-		return string(unpadded), nil
+		return decryptSM4CBC(ciphertext, key, iv)
 	default:
 		return "", fmt.Errorf("不支持的算法: %s", algorithm)
 	}
+}
+
+func encryptAESGCM(plaintext, key, nonce []byte) (string, error) {
+	if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("AES初始化失败: %v", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("AES-GCM初始化失败: %v", err)
+	}
+	if len(nonce) != gcm.NonceSize() {
+		return "", fmt.Errorf("Nonce长度必须为 %d 字节", gcm.NonceSize())
+	}
+	return base64.StdEncoding.EncodeToString(gcm.Seal(nil, nonce, plaintext, nil)), nil
+}
+
+func decryptAESGCM(ciphertext, key, nonce []byte) (string, error) {
+	if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("AES初始化失败: %v", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("AES-GCM初始化失败: %v", err)
+	}
+	if len(nonce) != gcm.NonceSize() {
+		return "", fmt.Errorf("Nonce长度必须为 %d 字节", gcm.NonceSize())
+	}
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", fmt.Errorf("解密失败: %v", err)
+	}
+	return string(plaintext), nil
+}
+
+func encryptAESCBC(plaintext, key, iv []byte) (string, error) {
+	if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
+		return "", err
+	}
+	return encryptCBC(plaintext, key, iv, aes.BlockSize, aes.NewCipher, "AES")
+}
+
+func decryptAESCBC(ciphertext, key, iv []byte) (string, error) {
+	if err := validateKeyLength(key, []int{16, 24, 32}, "AES密钥"); err != nil {
+		return "", err
+	}
+	return decryptCBC(ciphertext, key, iv, aes.BlockSize, aes.NewCipher, "AES")
+}
+
+func encryptSM4CBC(plaintext, key, iv []byte) (string, error) {
+	if err := validateKeyLength(key, []int{16}, "SM4密钥"); err != nil {
+		return "", err
+	}
+	return encryptCBC(plaintext, key, iv, sm4.BlockSize, sm4.NewCipher, "SM4")
+}
+
+func decryptSM4CBC(ciphertext, key, iv []byte) (string, error) {
+	if err := validateKeyLength(key, []int{16}, "SM4密钥"); err != nil {
+		return "", err
+	}
+	return decryptCBC(ciphertext, key, iv, sm4.BlockSize, sm4.NewCipher, "SM4")
+}
+
+func encryptCBC(plaintext, key, iv []byte, blockSize int, newCipher func([]byte) (cipher.Block, error), algorithm string) (string, error) {
+	if len(iv) != blockSize {
+		return "", fmt.Errorf("IV长度必须为 %d 字节", blockSize)
+	}
+	block, err := newCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("%s初始化失败: %v", algorithm, err)
+	}
+	padded := pkcs7Pad(plaintext, blockSize)
+	ciphertext := make([]byte, len(padded))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ciphertext, padded)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+func decryptCBC(ciphertext, key, iv []byte, blockSize int, newCipher func([]byte) (cipher.Block, error), algorithm string) (string, error) {
+	if len(iv) != blockSize {
+		return "", fmt.Errorf("IV长度必须为 %d 字节", blockSize)
+	}
+	block, err := newCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("%s初始化失败: %v", algorithm, err)
+	}
+	if len(ciphertext)%blockSize != 0 {
+		return "", fmt.Errorf("密文长度不正确")
+	}
+	plaintext := make([]byte, len(ciphertext))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plaintext, ciphertext)
+	unpadded, err := pkcs7Unpad(plaintext, blockSize)
+	if err != nil {
+		return "", err
+	}
+	return string(unpadded), nil
 }
 
 func decodeHexBytes(input, name string) ([]byte, error) {

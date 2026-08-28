@@ -13,6 +13,8 @@ SonarQube 扫描报告了重复字面量、空实现说明、DOM 属性写法和
 - `internal/api/handlers/connection.go`、`internal/api/handlers/session.go`
 - `internal/service/copilot/tools.go`、`internal/service/jdbc_gateway.go`
 - `internal/service/jdbc_agent_process_windows.go`、`menu.go`、`app.go`
+- `internal/service/devtools_service.go`、`internal/service/devtools_service_test.go`、`internal/service/artifact_download.go`、`internal/service/archive_extract.go`
+- `internal/service/jdbc_runtime_provider.go`
 - `frontend/src/settings/appearance.js`
 - `jdbc-agent/src/main/java/com/sshtools/jdbcagent/MetadataServiceImpl.java`
 - 三个 JDBC Agent 测试观察者类
@@ -27,4 +29,4 @@ SonarQube 扫描报告了重复字面量、空实现说明、DOM 属性写法和
 
 ## 剩余风险
 
-剩余复杂度重构涉及 SSH 会话、SFTP 和数据库服务；在补充行为测试前不进行批量重构，以避免引入业务回归。
+剩余复杂度重构涉及 SSH 会话、SFTP、数据库和应用编排；在补充行为测试前不进行批量重构，以避免引入业务回归。

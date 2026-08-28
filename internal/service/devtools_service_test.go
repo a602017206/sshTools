@@ -62,22 +62,21 @@ func TestFormatJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := service.FormatJSON(tt.input)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("FormatJSON() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if !tt.wantErr {
-				if result == "" {
-					t.Errorf("FormatJSON() returned empty result")
-				}
-				if tt.expectKey != "" && !strings.Contains(result, tt.expectKey) {
-					t.Errorf("FormatJSON() result does not contain expected key '%s'", tt.expectKey)
-				}
-			}
+			assertFormattedJSON(t, service, tt.input, tt.wantErr, tt.expectKey)
 		})
+	}
+}
+
+func assertFormattedJSON(t *testing.T, service *DevToolsService, input string, wantErr bool, expectedKey string) {
+	t.Helper()
+	result, err := service.FormatJSON(input)
+	if (err != nil) != wantErr {
+		t.Errorf("FormatJSON() error = %v, wantErr %v", err, wantErr)
+		return
+	}
+	if !wantErr {
+		assertNonEmptyResult(t, "FormatJSON", result)
+		assertContains(t, "FormatJSON", result, expectedKey)
 	}
 }
 
@@ -201,26 +200,27 @@ func TestMinifyJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := service.MinifyJSON(tt.input)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("MinifyJSON() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if !tt.wantErr {
-				if result == "" {
-					t.Errorf("MinifyJSON() returned empty result")
-				}
-				if len(result) > tt.maxLen {
-					t.Errorf("MinifyJSON() result length %d exceeds max %d", len(result), tt.maxLen)
-				}
-				// 验证压缩后不包含换行符
-				if strings.Contains(result, "\n") {
-					t.Errorf("MinifyJSON() result contains newlines")
-				}
-			}
+			assertMinifiedJSON(t, service, tt.input, tt.wantErr, tt.maxLen)
 		})
+	}
+}
+
+func assertMinifiedJSON(t *testing.T, service *DevToolsService, input string, wantErr bool, maxLen int) {
+	t.Helper()
+	result, err := service.MinifyJSON(input)
+	if (err != nil) != wantErr {
+		t.Errorf("MinifyJSON() error = %v, wantErr %v", err, wantErr)
+		return
+	}
+	if wantErr {
+		return
+	}
+	assertNonEmptyResult(t, "MinifyJSON", result)
+	if len(result) > maxLen {
+		t.Errorf("MinifyJSON() result length %d exceeds max %d", len(result), maxLen)
+	}
+	if strings.Contains(result, "\n") {
+		t.Errorf("MinifyJSON() result contains newlines")
 	}
 }
 
@@ -259,22 +259,35 @@ func TestEscapeJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := service.EscapeJSON(tt.input)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("EscapeJSON() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if !tt.wantErr {
-				if result == "" {
-					t.Errorf("EscapeJSON() returned empty result")
-				}
-				if tt.expectChar != "" && !strings.Contains(result, tt.expectChar) {
-					t.Errorf("EscapeJSON() result does not contain expected char '%s', got: %s", tt.expectChar, result)
-				}
-			}
+			assertEscapedJSON(t, service, tt.input, tt.wantErr, tt.expectChar)
 		})
+	}
+}
+
+func assertEscapedJSON(t *testing.T, service *DevToolsService, input string, wantErr bool, expectedChar string) {
+	t.Helper()
+	result, err := service.EscapeJSON(input)
+	if (err != nil) != wantErr {
+		t.Errorf("EscapeJSON() error = %v, wantErr %v", err, wantErr)
+		return
+	}
+	if !wantErr {
+		assertNonEmptyResult(t, "EscapeJSON", result)
+		assertContains(t, "EscapeJSON", result, expectedChar)
+	}
+}
+
+func assertNonEmptyResult(t *testing.T, operation, result string) {
+	t.Helper()
+	if result == "" {
+		t.Errorf("%s() returned empty result", operation)
+	}
+}
+
+func assertContains(t *testing.T, operation, result, expected string) {
+	t.Helper()
+	if expected != "" && !strings.Contains(result, expected) {
+		t.Errorf("%s() result does not contain expected value %q, got: %s", operation, expected, result)
 	}
 }
 

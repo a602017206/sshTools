@@ -106,39 +106,63 @@ func extractTarGzArchive(archivePath, targetDir string) error {
 
 	var extracted int64
 	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("读取 tar 归档失败: %w", err)
-		}
-		if header.Size < 0 || header.Size > maxExtractedArchiveSize || extracted > maxExtractedArchiveSize-header.Size {
-			return fmt.Errorf("归档展开内容超过限制")
-		}
-		extracted += header.Size
-		target, err := safeArchiveTarget(targetDir, header.Name)
+		header, err := nextTarHeader(tarReader)
 		if err != nil {
 			return err
 		}
-		mode := os.FileMode(header.Mode)
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, secureDirMode(mode)); err != nil {
-				return fmt.Errorf("创建归档目录失败: %w", err)
-			}
-		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-				return fmt.Errorf("创建归档文件目录失败: %w", err)
-			}
-			if err := writeArchiveFile(target, secureFileMode(mode), io.LimitReader(tarReader, header.Size)); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("归档包含不允许的文件类型: %s", header.Name)
+		if header == nil {
+			break
+		}
+		if !isAllowedArchiveSize(header.Size, extracted) {
+			return fmt.Errorf("归档展开内容超过限制")
+		}
+		extracted += header.Size
+		if err := extractTarEntry(tarReader, header, targetDir); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func nextTarHeader(reader *tar.Reader) (*tar.Header, error) {
+	header, err := reader.Next()
+	if err == io.EOF {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("读取 tar 归档失败: %w", err)
+	}
+	return header, nil
+}
+
+func isAllowedArchiveSize(size, extracted int64) bool {
+	return size >= 0 && size <= maxExtractedArchiveSize && extracted <= maxExtractedArchiveSize-size
+}
+
+func extractTarEntry(reader *tar.Reader, header *tar.Header, targetDir string) error {
+	target, err := safeArchiveTarget(targetDir, header.Name)
+	if err != nil {
+		return err
+	}
+	mode := os.FileMode(header.Mode)
+	switch header.Typeflag {
+	case tar.TypeDir:
+		if err := os.MkdirAll(target, secureDirMode(mode)); err != nil {
+			return fmt.Errorf("创建归档目录失败: %w", err)
+		}
+		return nil
+	case tar.TypeReg, tar.TypeRegA:
+		return extractTarRegularFile(reader, header.Size, target, secureFileMode(mode))
+	default:
+		return fmt.Errorf("归档包含不允许的文件类型: %s", header.Name)
+	}
+}
+
+func extractTarRegularFile(reader *tar.Reader, size int64, target string, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return fmt.Errorf("创建归档文件目录失败: %w", err)
+	}
+	return writeArchiveFile(target, mode, io.LimitReader(reader, size))
 }
 
 func safeArchiveTarget(targetDir, name string) (string, error) {
