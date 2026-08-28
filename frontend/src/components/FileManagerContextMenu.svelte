@@ -1,11 +1,14 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import {
+    FILE_MANAGER_MENU_HEIGHT_BLANK,
+    FILE_MANAGER_MENU_HEIGHT_FILE,
     FILE_MANAGER_MENU_WIDTH,
     FILE_MANAGER_SUBMENU_WIDTH,
     getFileManagerMenuFlags,
-    getSubmenuSide,
+    getSubmenuPlacement,
     isMacPlatform,
+    shiftMenuTopForInlineMore,
   } from '../lib/fileManagerContextMenu.js';
 
   export let x = 0;
@@ -17,6 +20,7 @@
   export let clipboard = null;
   export let moreOpen = false;
   export let rootWidth = 0;
+  export let rootHeight = 0;
 
   const dispatch = createEventDispatcher();
   const isMac = typeof navigator !== 'undefined' && isMacPlatform(navigator.userAgent || navigator.platform);
@@ -30,7 +34,10 @@
     historyEnabled,
     clipboard,
   });
-  $: submenuSide = getSubmenuSide(x, rootWidth);
+  $: submenuPlacement = getSubmenuPlacement(x, rootWidth);
+  $: menuTop = moreOpen && submenuPlacement === 'down'
+    ? shiftMenuTopForInlineMore(y, rootHeight, file ? FILE_MANAGER_MENU_HEIGHT_FILE : FILE_MANAGER_MENU_HEIGHT_BLANK)
+    : y;
 
   function act(id) {
     dispatch('action', id);
@@ -39,7 +46,7 @@
 
 <div
   class="file-manager__menu ops-flyout absolute z-[80] rounded-xl text-xs py-1"
-  style={`left: ${x}px; top: ${y}px; width: ${FILE_MANAGER_MENU_WIDTH}px;`}
+  style={`left: ${x}px; top: ${menuTop}px; width: ${FILE_MANAGER_MENU_WIDTH}px;`}
   on:mousedown|stopPropagation
   on:click|stopPropagation
   on:mouseleave={() => dispatch('more', false)}
@@ -125,14 +132,17 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="12" r="1.4" fill="currentColor" /><circle cx="12" cy="12" r="1.4" fill="currentColor" /><circle cx="18" cy="12" r="1.4" fill="currentColor" /></svg>
         更多
       </span>
-      <span class="file-manager__menu-caret">›</span>
+      <span class="file-manager__menu-caret">{submenuPlacement === 'down' ? '⌄' : '›'}</span>
     </button>
 
     {#if moreOpen}
       <div
-        class="file-manager__submenu ops-flyout rounded-xl py-1"
-        class:is-left={submenuSide === 'left'}
-        style={`width: ${FILE_MANAGER_SUBMENU_WIDTH}px;`}
+        class="file-manager__submenu py-1"
+        class:ops-flyout={submenuPlacement !== 'down'}
+        class:rounded-xl={submenuPlacement !== 'down'}
+        class:is-left={submenuPlacement === 'left'}
+        class:is-down={submenuPlacement === 'down'}
+        style={submenuPlacement === 'down' ? '' : `width: ${FILE_MANAGER_SUBMENU_WIDTH}px;`}
       >
         <button class="file-manager__menu-item" type="button" on:click={() => act('copyPath')}>
           <span class="file-manager__menu-label">复制路径</span>
@@ -255,5 +265,15 @@
   .file-manager__submenu.is-left {
     left: auto;
     right: calc(100% - 6px);
+  }
+  .file-manager__submenu.is-down {
+    position: relative;
+    top: 0;
+    left: auto;
+    right: auto;
+    margin: 0 6px 6px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--glass-bg) 55%, transparent);
   }
 </style>

@@ -1367,6 +1367,7 @@
       clipboard={fileClipboard}
       moreOpen={moreOpen}
       rootWidth={fileManagerEl?.clientWidth || 0}
+      rootHeight={fileManagerEl?.clientHeight || 0}
       on:action={handleMenuAction}
       on:more={(event) => { moreOpen = event.detail; }}
     />

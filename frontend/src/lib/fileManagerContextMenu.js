@@ -2,6 +2,8 @@ export const FILE_MANAGER_MENU_WIDTH = 248;
 export const FILE_MANAGER_SUBMENU_WIDTH = 200;
 export const FILE_MANAGER_MENU_HEIGHT_FILE = 412;
 export const FILE_MANAGER_MENU_HEIGHT_BLANK = 300;
+export const FILE_MANAGER_MORE_INLINE_HEIGHT = 136;
+export const FILE_MANAGER_SUBMENU_OVERLAP = 6;
 
 export function isMacPlatform(userAgent = '') {
   return /Mac|iPhone|iPad/i.test(userAgent);
@@ -83,9 +85,27 @@ export function getContextMenuPosition({
   };
 }
 
-export function getSubmenuSide(menuX, rootWidth, menuWidth = FILE_MANAGER_MENU_WIDTH, submenuWidth = FILE_MANAGER_SUBMENU_WIDTH) {
+export function getSubmenuPlacement(
+  menuX,
+  rootWidth,
+  menuWidth = FILE_MANAGER_MENU_WIDTH,
+  submenuWidth = FILE_MANAGER_SUBMENU_WIDTH,
+) {
   if (!rootWidth) return 'right';
-  return menuX + menuWidth + submenuWidth > rootWidth - 8 ? 'left' : 'right';
+  const rightFits = menuX + menuWidth + submenuWidth - FILE_MANAGER_SUBMENU_OVERLAP <= rootWidth - 8;
+  if (rightFits) return 'right';
+  const leftFits = menuX + FILE_MANAGER_SUBMENU_OVERLAP >= submenuWidth + 8;
+  if (leftFits) return 'left';
+  return 'down';
+}
+
+export function getSubmenuSide(menuX, rootWidth, menuWidth = FILE_MANAGER_MENU_WIDTH, submenuWidth = FILE_MANAGER_SUBMENU_WIDTH) {
+  return getSubmenuPlacement(menuX, rootWidth, menuWidth, submenuWidth);
+}
+
+export function shiftMenuTopForInlineMore(y, rootHeight, menuHeight = FILE_MANAGER_MENU_HEIGHT_FILE) {
+  if (!rootHeight) return y;
+  return Math.max(8, Math.min(y, rootHeight - menuHeight - FILE_MANAGER_MORE_INLINE_HEIGHT - 8));
 }
 
 export function getFileManagerMenuFlags({

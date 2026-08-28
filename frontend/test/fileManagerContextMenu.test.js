@@ -4,11 +4,12 @@ import test from 'node:test';
 import {
   getContextMenuPosition,
   getFileManagerMenuFlags,
-  getSubmenuSide,
+  getSubmenuPlacement,
   isPathFavorite,
   isValidOctalMode,
   joinRemotePath,
   matchFileManagerShortcut,
+  shiftMenuTopForInlineMore,
   toggleFavoriteHistory,
   uniqueCopyName,
   unixModeToOctal,
@@ -41,7 +42,7 @@ test('收藏路径可加入和取消', () => {
   assert.deepEqual(toggleFavoriteHistory(['/a'], '/b', 2), ['/b', '/a']);
 });
 
-test('右键菜单在面板内夹紧，子菜单在右侧空间不足时翻到左侧', () => {
+test('右键菜单在面板内夹紧；子菜单优先右侧，左右都不够时向下展开', () => {
   assert.deepEqual(
     getContextMenuPosition({
       clientX: 900,
@@ -52,8 +53,10 @@ test('右键菜单在面板内夹紧，子菜单在右侧空间不足时翻到�
     }),
     { x: 64, y: 92 },
   );
-  assert.equal(getSubmenuSide(20, 500), 'right');
-  assert.equal(getSubmenuSide(200, 320), 'left');
+  assert.equal(getSubmenuPlacement(20, 600), 'right');
+  assert.equal(getSubmenuPlacement(280, 520), 'left');
+  assert.equal(getSubmenuPlacement(8, 300), 'down');
+  assert.equal(shiftMenuTopForInlineMore(400, 500, 300), 56);
 });
 
 test('空白处右键禁用针对文件的动作，文件右键启用下载和复制', () => {
