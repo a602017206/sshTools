@@ -13,6 +13,8 @@ export function CancelTransfer(arg1:string):Promise<void>;
 
 export function ChangeDirectory(arg1:string,arg2:string):Promise<void>;
 
+export function ChmodFile(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function ClearBackgroundImage():Promise<void>;
 
 export function ClearCopilotAPIKey():Promise<void>;
@@ -39,13 +41,11 @@ export function CopilotChat(arg1:copilot.ChatRequest):Promise<copilot.ChatRespon
 
 export function CopilotClassify(arg1:string,arg2:string):Promise<copilot.Result>;
 
+export function CopyFile(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function CreateDirectory(arg1:string,arg2:string):Promise<void>;
 
 export function CreateFile(arg1:string,arg2:string):Promise<void>;
-
-export function CopyFile(arg1:string,arg2:string,arg3:string):Promise<void>;
-
-export function ChmodFile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function DateTimeToTimestamp(arg1:string,arg2:string):Promise<number>;
 

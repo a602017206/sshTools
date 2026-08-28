@@ -46,9 +46,9 @@ func NewLocalSession(shellType string) (*LocalSession, error) {
 		return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
 	// Start the process with a pseudo-terminal
+	// pty.Start configures Setsid and Setctty itself. Combining those settings
+	// with Setpgid makes macOS reject the fork/exec operation with EPERM.
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start PTY: %w", err)

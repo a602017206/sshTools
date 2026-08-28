@@ -4,8 +4,11 @@
   import Dialog from './ui/Dialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
   import DatabaseSidebarTree from './DatabaseSidebarTree.svelte';
+  import DatabaseTypeIcon from './icons/DatabaseTypeIcon.svelte';
   import { onMount } from 'svelte';
   import { shouldConnectAsset } from '../lib/assetActivation.js';
+  import { assetLinkStateLabel, getAssetLinkState } from '../lib/assetLinkState.js';
+  import { databaseTypeLabel, resolveDatabaseType } from '../lib/databaseTypeIcon.js';
 
   export let onConnect;
   export let onAddClick;
@@ -52,21 +55,10 @@
     }
   });
 
-  function getAssetLinkState(asset) {
-    const sessions = Array.from($connectionsStore?.values?.() || []).filter(
-      (session) => session?.connection?.id === asset.id
-    );
-    if (sessions.some((session) => session && session.connected === false && !session.panelType)) {
-      return 'connecting';
-    }
-    if (asset.type === 'database') {
-      if (asset.dbConnected || sessions.some((session) => session?.connected)) return 'online';
-      if (asset.status === 'error') return 'error';
-      return 'idle';
-    }
-    if (sessions.some((session) => session?.connected) || asset.status === 'online') return 'online';
-    if (asset.status === 'error') return 'error';
-    return 'idle';
+  $: connectionSessions = Array.from($connectionsStore?.values?.() || []);
+
+  function resolveAssetLinkState(asset) {
+    return getAssetLinkState(asset, connectionSessions);
   }
 
   function showMessage(title, message) {
@@ -587,10 +579,6 @@
 
   function getAssetIcon(type) {
     switch (type) {
-      case 'database':
-        return `<svg class="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-        </svg>`;
       case 'docker':
         return `<svg class="w-4 h-4 accent-text flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
           <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-3.333h2.118a.186.186 0 00.186-.186V5.671a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.954 3.333h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186H8.075a.186.186 0 00-.186.186v1.888c0 .102.083.185.186.185m-2.954-3.333h2.119a.186.186 0 00.185-.186V5.671a.185.185 0 00-.185-.185H5.12a.186.186 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.93 3.333h2.12a.185.185 0 00.185-.185V9.006a.185.185 0 00-.186-.186h-2.12a.185.185 0 00-.184.186v1.888c0 .102.083.185.185.185M20.69 6.662c.057.16.09.331.09.51v7.9c0 3.058-2.724 4.928-8.78 4.928-6.055 0-8.779-1.87-8.779-4.928v-7.9c0-.179.033-.35.09-.51C1.536 7.396 0 9.522 0 12.072v3.639c0 4.072 3.608 6.789 12 6.789 8.391 0 12-2.717 12-6.79v-3.638c0-2.55-1.536-4.677-4.31-6.41" />
@@ -718,7 +706,7 @@
 
         <!-- 分组内的服务器 -->
         {#if expandedGroups.has(group)}
-          <div class="ml-2 mr-2 space-y-0.5">
+          <div class="ops-asset-group-items space-y-0.5">
             {#each groupAssets as asset (asset.id)}
               <div>
                 <div
@@ -728,7 +716,9 @@
                   class:is-active={asset.id === activeAssetId}
                   role="button"
                   tabindex="0"
-                  title={`${asset.username}@${asset.host}:${asset.port}`}
+                  title={asset.type === 'database'
+                    ? `${databaseTypeLabel(resolveDatabaseType(asset))} · ${asset.username}@${asset.host}:${asset.port}`
+                    : `${asset.username}@${asset.host}:${asset.port}`}
                   on:keydown={(event) => {
                     if (shouldConnectAsset(event)) {
                       event.preventDefault();
@@ -736,32 +726,40 @@
                     }
                   }}
                 >
-                  {#if asset.type === 'database'}
-                    <button
-                      type="button"
-                      class="ops-asset-expand flex-shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-[var(--bg-hover)]"
-                      on:click|stopPropagation={() => toggleDatabaseAsset(asset)}
-                      title={asset.dbConnected ? (expandedDatabaseAssets.has(asset.id) ? '收起数据库' : '展开数据库') : '连接后展开'}
-                      aria-expanded={expandedDatabaseAssets.has(asset.id)}
-                    >
-                      {#if expandedDatabaseAssets.has(asset.id)}
-                        <svg class="w-3 h-3" style="color: var(--text-secondary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      {:else}
-                        <svg class="w-3 h-3" style="color: var(--text-secondary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                      {/if}
-                    </button>
-                  {/if}
+                  <div class="ops-asset-row__leading">
+                    {#if asset.type === 'database'}
+                      <button
+                        type="button"
+                        class="ops-asset-expand"
+                        on:click|stopPropagation={() => toggleDatabaseAsset(asset)}
+                        title={asset.dbConnected ? (expandedDatabaseAssets.has(asset.id) ? '收起数据库' : '展开数据库') : '连接后展开'}
+                        aria-expanded={expandedDatabaseAssets.has(asset.id)}
+                      >
+                        {#if expandedDatabaseAssets.has(asset.id)}
+                          <svg class="w-3 h-3" style="color: var(--text-secondary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        {:else}
+                          <svg class="w-3 h-3" style="color: var(--text-secondary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                          </svg>
+                        {/if}
+                      </button>
+                    {:else}
+                      <span class="ops-asset-expand-spacer" aria-hidden="true"></span>
+                    {/if}
+                  </div>
                   <span
-                    class={`ops-pulse is-${getAssetLinkState(asset)}`}
-                    title={getAssetLinkState(asset)}
+                    class={`ops-pulse is-${resolveAssetLinkState(asset)}`}
+                    title={assetLinkStateLabel(resolveAssetLinkState(asset))}
                     aria-hidden="true"
                   ></span>
                   <div class="flex-shrink-0">
-                    {@html getAssetIcon(asset.type)}
+                    {#if asset.type === 'database'}
+                      <DatabaseTypeIcon databaseType={resolveDatabaseType(asset)} size={16} />
+                    {:else}
+                      {@html getAssetIcon(asset.type)}
+                    {/if}
                   </div>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
@@ -793,7 +791,7 @@
                 </div>
 
                 {#if asset.type === 'database' && expandedDatabaseAssets.has(asset.id)}
-                  <div class="ml-8 mr-2 mb-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-1" on:click|stopPropagation>
+                  <div class="ops-asset-subtree mb-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-1" on:click|stopPropagation>
                     <DatabaseSidebarTree {asset} />
                   </div>
                 {/if}
