@@ -123,10 +123,16 @@ jobs:
             - 更新时间：${{ github.event.release.published_at }}
             - 更新内容：
               - 新增功能：
+                - Redis / Elasticsearch 原生工作区支持查询与读写
+                - Redis 支持 string / hash / list / set / zset 预览与编辑，逻辑库改为顶部下拉切换
+                - Elasticsearch 支持 DSL 查询，以及文档写入、更新、删除
               - 修复问题：
-                - pg数据库表加载异常问题
+                - PostgreSQL 数据库表加载异常
+                - 本地终端 PTY 启动异常
+                - SSH 资产未连接时状态灯误显示为绿色
               - 优化体验：
-                - 不同数据库提供不同的图标
+                - 不同数据库类型显示专属图标，便于快速区分
+                - 资产树连接状态灯对齐，分组下连接项层级更清晰
             
             ## AHaSSHTools ${{ github.ref_name }}
 
