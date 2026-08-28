@@ -1401,6 +1401,16 @@ func (a *App) DescribeNativeDatabaseResource(sessionID, parent, name string) (se
 	return a.nativeDatabaseService.DescribeResource(ctx, sessionID, parent, name)
 }
 
+// DescribeNativeDatabaseSession returns session/cluster overview when supported.
+func (a *App) DescribeNativeDatabaseSession(sessionID string) (service.NativeResourceDetails, error) {
+	if a.nativeDatabaseService == nil {
+		return service.NativeResourceDetails{}, fmt.Errorf("原生数据库服务尚未初始化")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.nativeDatabaseService.DescribeSession(ctx, sessionID)
+}
+
 func (a *App) CloseNativeDatabase(sessionID string) error {
 	if a.nativeDatabaseService == nil {
 		return fmt.Errorf("原生数据库服务尚未初始化")

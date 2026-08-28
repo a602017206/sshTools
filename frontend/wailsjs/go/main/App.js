@@ -118,6 +118,10 @@ export function DescribeNativeDatabaseResource(arg1, arg2, arg3) {
   return window['go']['main']['App']['DescribeNativeDatabaseResource'](arg1, arg2, arg3);
 }
 
+export function DescribeNativeDatabaseSession(arg1) {
+  return window['go']['main']['App']['DescribeNativeDatabaseSession'](arg1);
+}
+
 export function DownloadFile(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadFile'](arg1, arg2, arg3);
 }

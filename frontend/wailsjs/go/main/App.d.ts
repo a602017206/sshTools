@@ -63,6 +63,8 @@ export function DeletePassword(arg1:string):Promise<void>;
 
 export function DescribeNativeDatabaseResource(arg1:string,arg2:string,arg3:string):Promise<service.NativeResourceDetails>;
 
+export function DescribeNativeDatabaseSession(arg1:string):Promise<service.NativeResourceDetails>;
+
 export function DownloadFile(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function DownloadFiles(arg1:string,arg2:Array<string>,arg3:string):Promise<Array<string>>;

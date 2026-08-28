@@ -6,6 +6,9 @@ import {
   buildRedisSetPayload,
   createRedisEditorState,
   defaultElasticsearchQuery,
+  filterNativeResources,
+  parseElasticsearchClusterOverview,
+  parseElasticsearchIndexMetadata,
   parseElasticsearchQueryHits,
   redisDatabaseOptions,
   redisInspectorState
@@ -81,4 +84,51 @@ test('parseElasticsearchQueryHits 解析命中列表', () => {
   }));
   assert.equal(hits.length, 1);
   assert.equal(hits[0].id, 'p-1');
+});
+
+test('filterNativeResources 按名称过滤索引', () => {
+  const resources = [{ name: 'logs-2026' }, { name: 'products' }, { name: '.security' }];
+  assert.deepEqual(filterNativeResources(resources, 'log').map((item) => item.name), ['logs-2026']);
+  assert.equal(filterNativeResources(resources, '').length, 3);
+});
+
+test('parseElasticsearchClusterOverview 解析节点概览', () => {
+  assert.deepEqual(parseElasticsearchClusterOverview(JSON.stringify({
+    clusterName: 'demo',
+    version: '8.15.0',
+    health: 'green',
+    nodeCount: 3,
+    numberOfDataNodes: 2,
+    activeShards: 10,
+    unassignedShards: 0,
+    nodes: [{ name: 'n1' }]
+  })), {
+    clusterName: 'demo',
+    version: '8.15.0',
+    health: 'green',
+    nodeCount: 3,
+    dataNodeCount: 2,
+    activeShards: 10,
+    unassignedShards: 0,
+    nodes: [{ name: 'n1' }]
+  });
+});
+
+test('parseElasticsearchIndexMetadata 解析 mapping 与数据量', () => {
+  const metadata = parseElasticsearchIndexMetadata(JSON.stringify({
+    stats: {
+      health: 'green',
+      status: 'open',
+      docsCount: '12',
+      docsDeleted: '1',
+      storeSize: '8kb',
+      priStoreSize: '8kb',
+      primaries: '1',
+      replicas: '0'
+    },
+    mapping: { mappings: { properties: { name: { type: 'text' } } } }
+  }));
+  assert.equal(metadata.docsCount, '12');
+  assert.equal(metadata.storeSize, '8kb');
+  assert.deepEqual(metadata.mapping.mappings.properties.name, { type: 'text' });
 });

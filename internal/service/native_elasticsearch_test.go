@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -52,10 +53,10 @@ func TestElasticsearchNativeProviderPropagatesHealthFailure(t *testing.T) {
 	}
 }
 
-func TestElasticsearchNativeSessionDescribesIndexWithDocumentPreview(t *testing.T) {
+func TestElasticsearchNativeSessionDescribesIndexMetadata(t *testing.T) {
 	client := &fakeElasticsearchNativeClient{indexDetails: NativeResourceDetails{
-		Kind: NativeResourceKindIndex, Name: "products", Summary: "12 文档 · 8 KiB",
-		Content: `{"documents":[{"_id":"p-1","_source":{"name":"Keyboard"}}]}`,
+		Kind: NativeResourceKindIndex, Name: "products", Summary: "green · 12 文档 · 8kb",
+		Content: `{"stats":{"docsCount":"12","storeSize":"8kb","health":"green"},"mapping":{"mappings":{"properties":{"name":{"type":"text"}}}}}`,
 	}}
 	provider := NewElasticsearchNativeProvider(&fakeElasticsearchNativeClientFactory{client: client})
 	connected, err := provider.Connect(context.Background(), NativeDatabaseConfig{Type: NativeDatabaseTypeElasticsearch})
@@ -66,16 +67,40 @@ func TestElasticsearchNativeSessionDescribesIndexWithDocumentPreview(t *testing.
 	if err != nil {
 		t.Fatalf("describe Elasticsearch index: %v", err)
 	}
-	if details.Name != "products" || details.Content == "" {
+	if details.Name != "products" || !strings.Contains(details.Content, `"mapping"`) || strings.Contains(details.Content, `"documents"`) {
+		t.Fatalf("details = %#v", details)
+	}
+}
+
+func TestElasticsearchNativeSessionDescribesClusterOverview(t *testing.T) {
+	client := &fakeElasticsearchNativeClient{clusterDetails: NativeResourceDetails{
+		Name: "demo-cluster", Summary: "demo-cluster · green · 3 节点",
+		Content: `{"clusterName":"demo-cluster","nodeCount":3,"health":"green","version":"8.15.0"}`,
+	}}
+	provider := NewElasticsearchNativeProvider(&fakeElasticsearchNativeClientFactory{client: client})
+	connected, err := provider.Connect(context.Background(), NativeDatabaseConfig{Type: NativeDatabaseTypeElasticsearch})
+	if err != nil {
+		t.Fatalf("connect Elasticsearch: %v", err)
+	}
+	inspector, ok := connected.(NativeSessionInspector)
+	if !ok {
+		t.Fatal("expected Elasticsearch session to expose session overview")
+	}
+	details, err := inspector.DescribeSession(context.Background())
+	if err != nil {
+		t.Fatalf("describe cluster: %v", err)
+	}
+	if details.Name != "demo-cluster" || !strings.Contains(details.Content, `"nodeCount":3`) {
 		t.Fatalf("details = %#v", details)
 	}
 }
 
 type fakeElasticsearchNativeClient struct {
-	pingErr      error
-	indices      []string
-	indexDetails NativeResourceDetails
-	closed       bool
+	pingErr         error
+	indices         []string
+	indexDetails    NativeResourceDetails
+	clusterDetails  NativeResourceDetails
+	closed          bool
 }
 
 func (c *fakeElasticsearchNativeClient) Ping(context.Context) error { return c.pingErr }
@@ -85,6 +110,10 @@ func (c *fakeElasticsearchNativeClient) ListIndices(context.Context) ([]string, 
 }
 func (c *fakeElasticsearchNativeClient) DescribeIndex(context.Context, string) (NativeResourceDetails, error) {
 	return c.indexDetails, nil
+}
+
+func (c *fakeElasticsearchNativeClient) DescribeCluster(context.Context) (NativeResourceDetails, error) {
+	return c.clusterDetails, nil
 }
 
 func (c *fakeElasticsearchNativeClient) SearchIndex(context.Context, string, string) (NativeQueryResult, error) {

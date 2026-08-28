@@ -8,6 +8,7 @@
   import { onMount } from 'svelte';
   import { shouldConnectAsset } from '../lib/assetActivation.js';
   import { assetLinkStateLabel, getAssetLinkState } from '../lib/assetLinkState.js';
+  import { filterAssetsByDomain } from '../lib/assetDomain.js';
   import { databaseTypeLabel, resolveDatabaseType } from '../lib/databaseTypeIcon.js';
 
   export let onConnect;
@@ -15,6 +16,7 @@
   export let onDelete;
   export let onEdit;
   export let onClone;
+  export let activeDomain = 'all';
 
   let searchTerm = '';
   let expandedGroups = new Set(['生产环境', '开发环境']);
@@ -516,7 +518,7 @@
     pendingImportPath = '';
   }
 
-  $: filteredAssets = $assetsStore.filter(asset => {
+  $: filteredAssets = filterAssetsByDomain($assetsStore, activeDomain).filter(asset => {
     const searchLower = searchTerm.toLowerCase();
     return (
       asset.name.toLowerCase().includes(searchLower) ||
@@ -575,19 +577,6 @@
   function cancelDeleteAsset() {
     showDeleteConfirm = false;
     pendingDeleteAsset = null;
-  }
-
-  function getAssetIcon(type) {
-    switch (type) {
-      case 'docker':
-        return `<svg class="w-4 h-4 accent-text flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-3.333h2.118a.186.186 0 00.186-.186V5.671a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.954 3.333h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186H8.075a.186.186 0 00-.186.186v1.888c0 .102.083.185.186.185m-2.954-3.333h2.119a.186.186 0 00.185-.186V5.671a.185.185 0 00-.185-.185H5.12a.186.186 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.93 3.333h2.12a.185.185 0 00.185-.185V9.006a.185.185 0 00-.186-.186h-2.12a.185.185 0 00-.184.186v1.888c0 .102.083.185.185.185M20.69 6.662c.057.16.09.331.09.51v7.9c0 3.058-2.724 4.928-8.78 4.928-6.055 0-8.779-1.87-8.779-4.928v-7.9c0-.179.033-.35.09-.51C1.536 7.396 0 9.522 0 12.072v3.639c0 4.072 3.608 6.789 12 6.789 8.391 0 12-2.717 12-6.79v-3.638c0-2.55-1.536-4.677-4.31-6.41" />
-        </svg>`;
-      default:
-        return `<svg class="w-4 h-4 accent-text flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-        </svg>`;
-    }
   }
 </script>
 
@@ -757,8 +746,10 @@
                   <div class="flex-shrink-0">
                     {#if asset.type === 'database'}
                       <DatabaseTypeIcon databaseType={resolveDatabaseType(asset)} size={16} />
+                    {:else if asset.type === 'docker'}
+                      <DatabaseTypeIcon kind="docker" size={16} />
                     {:else}
-                      {@html getAssetIcon(asset.type)}
+                      <DatabaseTypeIcon kind="ssh" size={16} />
                     {/if}
                   </div>
                   <div class="flex-1 min-w-0">

@@ -21,12 +21,15 @@ const workspaceByType = {
     title: 'Elasticsearch 索引',
     resourceLabel: '索引',
     childLabel: '',
-    description: '选择索引后可执行 DSL 查询，并写入/更新/删除文档。',
+    description: '选择索引查看 mapping 与数据量；查询页签可执行 DSL。',
     canExpand: false,
     canDescribe: true,
     canQuery: true,
     canWrite: true,
-    canDelete: true
+    canDelete: true,
+    canSearchResources: true,
+    canResizeInspector: true,
+    showSessionOverview: true
   },
   memcached: {
     title: 'Memcached 统计',
@@ -84,4 +87,13 @@ const fallbackWorkspace = {
 
 export function nativeDatabaseWorkspace(databaseType) {
   return workspaceByType[String(databaseType || '').toLowerCase()] || fallbackWorkspace;
+}
+
+/** @returns {'redis'|'elasticsearch'|'kafka'|'generic'} */
+export function resolveNativeWorkspaceKind(databaseType) {
+  const type = String(databaseType || '').toLowerCase();
+  if (type === 'redis') return 'redis';
+  if (type === 'elasticsearch' || type === 'opensearch') return 'elasticsearch';
+  if (type === 'kafka') return 'kafka';
+  return 'generic';
 }

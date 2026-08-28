@@ -9,7 +9,8 @@
   import GlobalSettingsDialog from './components/GlobalSettingsDialog.svelte';
   import InputDialog from './components/ui/InputDialog.svelte';
   import ConfirmDialog from './components/ui/ConfirmDialog.svelte';
-  import { assetsStore, connectionsStore, activeSessionIdStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme } from './stores.js';
+  import { assetsStore, connectionsStore, activeSessionIdStore, themeStore, uiStore, setSidebarWidth, setRightPanelWidth, setFileManagerHeight, setTheme, setActiveDomain } from './stores.js';
+  import DomainRail from './components/DomainRail.svelte';
   import { uploadStore, activeTransfers, completedTransfers } from './stores/uploadStore.js';
   import { formatFileSize, formatSpeed, getTransferPercentage } from './stores/uploadStore.js';
   import { CancelTransfer } from '../wailsjs/go/main/App.js';
@@ -25,6 +26,8 @@
   import { formatConnectionError } from './lib/formatConnectionError.js';
   import { createClonedConnectionFormData } from './lib/connectionFormData.js';
   import { copilotStore } from './stores/copilot.js';
+
+  const DOMAIN_RAIL_WIDTH = 52;
 
   let isDevToolsOpen = false;
   let isAddDialogOpen = false;
@@ -92,6 +95,7 @@
   $: sidebarWidth = $uiStore.sidebarWidth;
   $: rightPanelWidth = $uiStore.rightPanelWidth;
   $: fileManagerHeight = $uiStore.fileManagerHeight;
+  $: activeDomain = $uiStore.activeDomain || 'all';
 
   // Resize state
   let isResizingSidebar = false;
@@ -943,14 +947,24 @@
     <div
       class="flex-shrink-0 transition-all duration-200 ops-float-panel overflow-hidden"
       class:collapsed={isSidebarCollapsed}
-      style="width: {isSidebarCollapsed ? '0' : sidebarWidth}px; min-width: {isSidebarCollapsed ? '0' : sidebarWidth}px; margin: {isSidebarCollapsed ? '0' : '10px 0 10px 10px'};"
+      style="width: {isSidebarCollapsed ? '0' : sidebarWidth + DOMAIN_RAIL_WIDTH}px; min-width: {isSidebarCollapsed ? '0' : sidebarWidth + DOMAIN_RAIL_WIDTH}px; margin: {isSidebarCollapsed ? '0' : '10px 0 10px 10px'};"
     >
-      <AssetList
-        onConnect={handleConnect}
-        onAddClick={openAddConnection}
-        onEdit={handleEditAsset}
-        onClone={handleCloneAsset}
-      />
+      <div class="h-full flex min-w-0">
+        <DomainRail
+          {activeDomain}
+          disabled={isAddDialogOpen}
+          onSelect={setActiveDomain}
+        />
+        <div class="flex-1 min-w-0 h-full overflow-hidden">
+          <AssetList
+            {activeDomain}
+            onConnect={handleConnect}
+            onAddClick={openAddConnection}
+            onEdit={handleEditAsset}
+            onClone={handleCloneAsset}
+          />
+        </div>
+      </div>
     </div>
 
     {#if !isSidebarCollapsed}
@@ -1097,6 +1111,7 @@
       bind:editingAsset={editingAsset}
       bind:cloningAsset={cloningAsset}
       dialogRequestVersion={connectionDialogRequestVersion}
+      preferredDomain={activeDomain}
       onAdd={handleAddAsset}
       onUpdate={handleUpdateAsset}
     />

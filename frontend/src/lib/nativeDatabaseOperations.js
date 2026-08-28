@@ -130,3 +130,39 @@ export function redisDatabaseOptions(databases) {
     label: `DB ${item.name}`
   }));
 }
+
+export function filterNativeResources(resources, searchTerm) {
+  const keyword = String(searchTerm || '').trim().toLowerCase();
+  if (!keyword) return resources || [];
+  return (resources || []).filter((resource) => String(resource?.name || '').toLowerCase().includes(keyword));
+}
+
+export function parseElasticsearchClusterOverview(content) {
+  const parsed = parseNativeResourceContent(content);
+  return {
+    clusterName: parsed.clusterName || '',
+    version: parsed.version || '',
+    health: parsed.health || 'unknown',
+    nodeCount: Number(parsed.nodeCount ?? parsed.numberOfNodes ?? 0) || 0,
+    dataNodeCount: Number(parsed.numberOfDataNodes ?? 0) || 0,
+    activeShards: Number(parsed.activeShards ?? 0) || 0,
+    unassignedShards: Number(parsed.unassignedShards ?? 0) || 0,
+    nodes: Array.isArray(parsed.nodes) ? parsed.nodes : []
+  };
+}
+
+export function parseElasticsearchIndexMetadata(content) {
+  const parsed = parseNativeResourceContent(content);
+  const stats = parsed.stats || {};
+  return {
+    health: stats.health || 'unknown',
+    status: stats.status || '',
+    docsCount: stats.docsCount || '0',
+    docsDeleted: stats.docsDeleted || '0',
+    storeSize: stats.storeSize || '-',
+    priStoreSize: stats.priStoreSize || '-',
+    primaries: stats.primaries || '-',
+    replicas: stats.replicas || '-',
+    mapping: parsed.mapping || {}
+  };
+}
