@@ -7,6 +7,7 @@
   import { shouldApplyClone } from '../lib/cloneDialogState.js';
   import { shouldResetBlankConnectionForm } from '../lib/connectionDialogRequest.js';
   import { shouldApplyEditConnectionResult, shouldLoadEditConnection } from '../lib/editConnectionLoadState.js';
+  import { defaultAssetTypeForDomain, resolveAssetDomain } from '../lib/assetDomain.js';
 
   export let isOpen = false;
   export let onAdd = () => {};
@@ -14,6 +15,7 @@
   export let editingAsset = null;
   export let cloningAsset = null;
   export let dialogRequestVersion = 0;
+  export let preferredDomain = 'all';
 
   let assetType = 'ssh';
   let authType = 'password';
@@ -251,7 +253,8 @@
           db_type: formData.dbType,
           driver_profile_id: formData.driverProfileID || undefined,
           oracle_connection_mode: formData.dbType === 'oracle' ? formData.oracleConnectionMode : undefined,
-          sqlserver_instance_name: formData.dbType === 'sqlserver' ? formData.sqlServerInstanceName || undefined : undefined
+          sqlserver_instance_name: formData.dbType === 'sqlserver' ? formData.sqlServerInstanceName || undefined : undefined,
+          domain: resolveAssetDomain({ type: assetType, metadata: { db_type: formData.dbType } })
         }
       };
 
@@ -301,6 +304,16 @@
     jdbcDriversLoaded = false;
     editingAssetLoaded = false; // Reset the loaded flag
     resetEditingAssetId = null;
+    applyPreferredDomainDefaults();
+  }
+
+  function applyPreferredDomainDefaults() {
+    const defaults = defaultAssetTypeForDomain(preferredDomain);
+    assetType = defaults.assetType || 'ssh';
+    if (defaults.dbType) {
+      formData.dbType = defaults.dbType;
+    }
+    formData.port = getDefaultPortFor(assetType, formData.dbType);
   }
 
   function applyCloningAsset() {

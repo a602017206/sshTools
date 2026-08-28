@@ -98,6 +98,8 @@ function loadUIConfig() {
   }
 }
 
+const DOMAIN_IDS = new Set(['all', 'ssh', 'database', 'cache', 'search', 'mq', 'docker']);
+
 const defaultUIConfig = {
   isDevToolsOpen: false,
   isFileManagerOpen: false,
@@ -105,13 +107,18 @@ const defaultUIConfig = {
   sidebarWidth: 260,
   rightPanelWidth: 320,
   fileManagerHeight: 50,
+  activeDomain: 'all',
 };
 
 const savedConfig = loadUIConfig();
+const resolvedActiveDomain = DOMAIN_IDS.has(savedConfig?.activeDomain)
+  ? savedConfig.activeDomain
+  : defaultUIConfig.activeDomain;
 
 export const uiStore = writable({
   ...defaultUIConfig,
   ...savedConfig,
+  activeDomain: resolvedActiveDomain,
 });
 
 // 保存配置到 localStorage
@@ -155,6 +162,11 @@ export function setRightPanelWidth(width) {
 
 export function setFileManagerHeight(height) {
   uiStore.update($ui => ({ ...$ui, fileManagerHeight: height }));
+}
+
+export function setActiveDomain(domainId) {
+  const next = DOMAIN_IDS.has(domainId) ? domainId : 'all';
+  uiStore.update($ui => ({ ...$ui, activeDomain: next }));
 }
 
 // ==================== Table Structure Store ====================
