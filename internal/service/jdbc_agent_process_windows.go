@@ -6,7 +6,9 @@ import (
 	"os/exec"
 )
 
-func configureAgentCmd(cmd *exec.Cmd) {}
+func configureAgentCmd(cmd *exec.Cmd) {
+	// Windows does not need process-group configuration for the agent command.
+}
 
 func stopAgentCmd(cmd *exec.Cmd) error {
 	if cmd == nil || cmd.Process == nil {

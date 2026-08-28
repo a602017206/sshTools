@@ -32,6 +32,11 @@ var Version = "dev"
 
 var cwdRegex = regexp.MustCompile(`\033\]0;CWD:([^\007]+)\007`)
 
+const (
+	sftpProgressEventPrefix               = "sftp:progress:"
+	jdbcAgentSupervisorUnavailableMessage = "JDBC agent supervisor 未初始化"
+)
+
 // App struct
 type App struct {
 	ctx context.Context
@@ -754,7 +759,7 @@ func (a *App) UpdateFileManagerSettings(connectionId string, settings map[string
 func (a *App) UploadFiles(sessionID string, localPaths []string, remotePath string) ([]string, error) {
 	return a.sftpService.UploadFiles(sessionID, localPaths, remotePath, func(progress ssh.TransferProgress) {
 		// Emit event to frontend
-		runtime.EventsEmit(a.ctx, "sftp:progress:"+progress.TransferID, progress)
+		runtime.EventsEmit(a.ctx, sftpProgressEventPrefix+progress.TransferID, progress)
 	})
 }
 
@@ -763,7 +768,7 @@ func (a *App) DownloadFile(sessionID string, remotePath string, localPath string
 	// Use service with Wails-specific progress callback
 	return a.sftpService.DownloadFile(sessionID, remotePath, localPath, func(progress ssh.TransferProgress) {
 		// Emit event to frontend
-		runtime.EventsEmit(a.ctx, "sftp:progress:"+progress.TransferID, progress)
+		runtime.EventsEmit(a.ctx, sftpProgressEventPrefix+progress.TransferID, progress)
 	})
 }
 
@@ -771,7 +776,7 @@ func (a *App) DownloadFile(sessionID string, remotePath string, localPath string
 func (a *App) DownloadFiles(sessionID string, remotePaths []string, localPath string) ([]string, error) {
 	return a.sftpService.DownloadFiles(sessionID, remotePaths, localPath, func(progress ssh.TransferProgress) {
 		// Emit event to frontend
-		runtime.EventsEmit(a.ctx, "sftp:progress:"+progress.TransferID, progress)
+		runtime.EventsEmit(a.ctx, sftpProgressEventPrefix+progress.TransferID, progress)
 	})
 }
 
@@ -1604,7 +1609,7 @@ func (a *App) jdbcDialogs() jdbcFileDialogs {
 
 func (a *App) GetJDBCAgentStatus() (service.JDBCAgentStatus, error) {
 	if a.jdbcAgentSupervisor == nil {
-		return service.JDBCAgentStatus{}, &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: "JDBC agent supervisor 未初始化"}
+		return service.JDBCAgentStatus{}, &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: jdbcAgentSupervisorUnavailableMessage}
 	}
 	status := a.jdbcAgentSupervisor.RefreshStatus(context.Background())
 	if a.jdbcRuntime != nil {
@@ -1630,7 +1635,7 @@ func (a *App) activateJDBCRuntime(mode, path string) (service.JDBCRuntimeActivat
 		return service.JDBCRuntimeActivationResult{}, fmt.Errorf("JDBC 运行时服务未初始化")
 	}
 	if a.jdbcAgentSupervisor == nil {
-		return service.JDBCRuntimeActivationResult{}, &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: "JDBC agent supervisor 未初始化"}
+		return service.JDBCRuntimeActivationResult{}, &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: jdbcAgentSupervisorUnavailableMessage}
 	}
 	settings := a.jdbcRuntimeSettings
 	if settings == nil {
@@ -1672,7 +1677,7 @@ func (a *App) jdbcRuntimeActivationResult() (service.JDBCRuntimeActivationResult
 
 func (a *App) RestartJDBCAgent() error {
 	if a.jdbcAgentSupervisor == nil {
-		return &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: "JDBC agent supervisor 未初始化"}
+		return &service.JDBCError{Code: service.JDBCErrorAgentUnavailable, Message: jdbcAgentSupervisorUnavailableMessage}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()

@@ -20,6 +20,7 @@ func buildAppMenu(isDarwin bool, ctx context.Context, showAbout func(), quitApp 
 
 		appSubmenu.AddSeparator()
 		appSubmenu.AddText("隐藏 AHaSSHTools", nil, func(cd *menu.CallbackData) {
+			// Wails handles the native macOS hide action without an explicit callback.
 		})
 
 		appSubmenu.AddSeparator()

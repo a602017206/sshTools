@@ -65,6 +65,7 @@ class QueryServiceImplTest {
 
         @Override
         public void onCompleted() {
+            // Test observers only need the value or error callback.
         }
     }
 }

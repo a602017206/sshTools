@@ -9,6 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const invalidRequestBodyMessage = "Invalid request body"
+
 // ConnectionHandler handles connection-related HTTP requests
 type ConnectionHandler struct {
 	service *service.ConnectionService
@@ -34,7 +36,7 @@ func (h *ConnectionHandler) GetConnections(c *gin.Context) {
 func (h *ConnectionHandler) AddConnection(c *gin.Context) {
 	var conn config.ConnectionConfig
 	if err := c.ShouldBindJSON(&conn); err != nil {
-		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse("Invalid request body"))
+		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse(invalidRequestBodyMessage))
 		return
 	}
 
@@ -52,7 +54,7 @@ func (h *ConnectionHandler) UpdateConnection(c *gin.Context) {
 
 	var conn config.ConnectionConfig
 	if err := c.ShouldBindJSON(&conn); err != nil {
-		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse("Invalid request body"))
+		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse(invalidRequestBodyMessage))
 		return
 	}
 
@@ -93,7 +95,7 @@ type TestConnectionRequest struct {
 func (h *ConnectionHandler) TestConnection(c *gin.Context) {
 	var req TestConnectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse("Invalid request body"))
+		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse(invalidRequestBodyMessage))
 		return
 	}
 

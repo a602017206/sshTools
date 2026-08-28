@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class MetadataServiceImpl extends QueryServiceImpl {
+    private static final String COLUMN_DEFAULT = "COLUMN_DEF";
     private final ConnectionRegistry registry;
 
     public MetadataServiceImpl(String token, ConnectionRegistry registry, DriverLoader driverLoader) {
@@ -138,8 +139,8 @@ public class MetadataServiceImpl extends QueryServiceImpl {
                                 .setPrimaryKey(primaryKeys.stream().anyMatch(key -> sameIdentifier(key, name)))
                                 .setColumnSize(columns.getInt("COLUMN_SIZE"))
                                 .setDecimalDigits(columns.getInt("DECIMAL_DIGITS"))
-                                .setHasDefault(columns.getObject("COLUMN_DEF") != null)
-                                .setDefaultValue(columns.getObject("COLUMN_DEF") == null ? "" : columns.getString("COLUMN_DEF"))
+                                .setHasDefault(columns.getObject(COLUMN_DEFAULT) != null)
+                                .setDefaultValue(columns.getObject(COLUMN_DEFAULT) == null ? "" : columns.getString(COLUMN_DEFAULT))
                                 .setDescription(columns.getString("REMARKS") == null ? "" : columns.getString("REMARKS"))
                                 .build());
                     }

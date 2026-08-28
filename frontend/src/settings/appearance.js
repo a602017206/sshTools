@@ -263,8 +263,8 @@ export function applyAppearanceSettings(settings) {
   root.style.setProperty('--terminal-font-family', settings.terminal_font_family || 'Menlo, Monaco, "Courier New", monospace');
   root.style.setProperty('--terminal-font-size', `${terminalFontSize}px`);
   root.style.fontSize = `${appFontSize}px`;
-  root.setAttribute('data-compact', settings.compact_mode ? 'true' : 'false');
-  root.setAttribute('data-reduced-motion', settings.reduced_motion ? 'true' : 'false');
+  root.dataset.compact = settings.compact_mode ? 'true' : 'false';
+  root.dataset.reducedMotion = settings.reduced_motion ? 'true' : 'false';
 
   applyBackgroundImage(settings);
 
@@ -281,12 +281,12 @@ export function applyBackgroundImage(settings = {}) {
   const opacity = Math.max(0, Math.min(100, Number(settings.background_image_opacity) || 0));
 
   if (enabled) {
-    root.setAttribute('data-bg-image', 'true');
+    root.dataset.bgImage = 'true';
     root.style.setProperty('--ops-bg-image', `url("${settings.background_image_data_url}")`);
     root.style.setProperty('--ops-bg-image-fit', fit);
     root.style.setProperty('--ops-bg-image-opacity', String(opacity / 100));
   } else {
-    root.removeAttribute('data-bg-image');
+    delete root.dataset.bgImage;
     root.style.removeProperty('--ops-bg-image');
     root.style.removeProperty('--ops-bg-image-fit');
     root.style.removeProperty('--ops-bg-image-opacity');

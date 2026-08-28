@@ -41,7 +41,7 @@ type ConnectRequest struct {
 func (h *SessionHandler) Connect(c *gin.Context) {
 	var req ConnectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse("Invalid request body"))
+		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse(invalidRequestBodyMessage))
 		return
 	}
 
@@ -91,7 +91,7 @@ func (h *SessionHandler) SendData(c *gin.Context) {
 
 	var req SendDataRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse("Invalid request body"))
+		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse(invalidRequestBodyMessage))
 		return
 	}
 
@@ -115,7 +115,7 @@ func (h *SessionHandler) Resize(c *gin.Context) {
 
 	var req ResizeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse("Invalid request body"))
+		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse(invalidRequestBodyMessage))
 		return
 	}
 

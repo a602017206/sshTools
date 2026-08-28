@@ -9,7 +9,10 @@ import (
 	"AHaSSHTools/internal/config"
 )
 
-const sshProbeTimeout = 5 * time.Second
+const (
+	sshProbeTimeout         = 5 * time.Second
+	schemaReaderUnavailable = "schema reader unavailable"
+)
 
 func schemaToolSpecs() []ToolSpec {
 	empty := json.RawMessage(`{"type":"object","properties":{}}`)
@@ -84,7 +87,7 @@ func (s *Service) runTool(mode, sessionID, workingDir, name, arguments string) (
 		return stdout, ""
 	case "list_databases":
 		if s.schema == nil {
-			return "schema reader unavailable", "工具失败"
+			return schemaReaderUnavailable, "工具失败"
 		}
 		dbs, err := s.schema.ListDatabases(sessionID)
 		if err != nil {
@@ -93,7 +96,7 @@ func (s *Service) runTool(mode, sessionID, workingDir, name, arguments string) (
 		return marshalToolJSON(dbs), ""
 	case "list_tables":
 		if s.schema == nil {
-			return "schema reader unavailable", "工具失败"
+			return schemaReaderUnavailable, "工具失败"
 		}
 		tables, err := s.schema.ListTables(sessionID)
 		if err != nil {
@@ -102,7 +105,7 @@ func (s *Service) runTool(mode, sessionID, workingDir, name, arguments string) (
 		return marshalToolJSON(tables), ""
 	case "get_table_schema":
 		if s.schema == nil {
-			return "schema reader unavailable", "工具失败"
+			return schemaReaderUnavailable, "工具失败"
 		}
 		var args struct {
 			Table string `json:"table"`
