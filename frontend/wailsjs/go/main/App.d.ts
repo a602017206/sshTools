@@ -63,6 +63,8 @@ export function DeletePassword(arg1:string):Promise<void>;
 
 export function DescribeNativeDatabaseResource(arg1:string,arg2:string,arg3:string):Promise<service.NativeResourceDetails>;
 
+export function DescribeNativeDatabaseSession(arg1:string):Promise<service.NativeResourceDetails>;
+
 export function ExecuteNativeDatabaseQuery(arg1:string,arg2:string,arg3:string,arg4:string):Promise<service.NativeQueryResult>;
 
 export function MutateNativeDatabaseResource(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<service.NativeMutationResult>;

@@ -9,11 +9,13 @@
     buildRedisSavePayload,
     createRedisEditorState,
     defaultElasticsearchQuery,
+    filterNativeResources,
     formatMutationMessage,
+    parseElasticsearchClusterOverview,
+    parseElasticsearchIndexMetadata,
     parseElasticsearchQueryHits,
     parseNativeResourceContent,
-    redisDatabaseOptions,
-    redisInspectorState
+    redisDatabaseOptions
   } from '../lib/nativeDatabaseOperations.js';
 
   export let sessionId = null;
@@ -44,16 +46,29 @@
   let esDocumentBody = '{\n  \n}';
   let showDeleteConfirm = false;
   let pendingDeleteTarget = null;
+  let resourceSearch = '';
+  let sessionOverview = null;
+  let inspectorWidth = 320;
+  let resizingInspector = false;
 
   $: databaseType = dbConfig?.metadata?.db_type || '';
   $: workspace = nativeDatabaseWorkspace(databaseType);
   $: isRedisPanel = databaseType === 'redis';
-  $: inspectorState = details ? redisInspectorState(details.content) : null;
+  $: isElasticsearchPanel = databaseType === 'elasticsearch';
   $: queryHits = queryResult ? parseElasticsearchQueryHits(queryResult.content) : [];
   $: showQueryTab = workspace.canQuery;
   $: redisDbOptions = redisDatabaseOptions(redisDatabases);
+  $: filteredResources = filterNativeResources(resources, resourceSearch);
+  $: clusterOverview = sessionOverview ? parseElasticsearchClusterOverview(sessionOverview.content) : null;
+  $: indexMetadata = isElasticsearchPanel && details ? parseElasticsearchIndexMetadata(details.content) : null;
+  $: bodyStyle = workspace.canResizeInspector
+    ? `grid-template-columns: minmax(0, 1fr) 6px ${inspectorWidth}px;`
+    : '';
 
-  onMount(loadResources);
+  onMount(() => {
+    loadResources();
+    return () => stopInspectorResize();
+  });
 
   async function loadResources() {
     if (!window.wailsBindings || !sessionId) return;
@@ -72,11 +87,44 @@
         childrenByParent = {};
         expanded = new Set();
       }
+      if (workspace.showSessionOverview && typeof window.wailsBindings.DescribeNativeDatabaseSession === 'function') {
+        try {
+          sessionOverview = await window.wailsBindings.DescribeNativeDatabaseSession(sessionId);
+        } catch (error) {
+          sessionOverview = null;
+          console.warn('Failed to load native session overview:', error);
+        }
+      } else {
+        sessionOverview = null;
+      }
     } catch (error) {
       errorMessage = `加载${workspace.resourceLabel}失败: ${error?.message || error || '未知错误'}`;
     } finally {
       loading = false;
     }
+  }
+
+  function startInspectorResize(event) {
+    if (!workspace.canResizeInspector) return;
+    event.preventDefault();
+    resizingInspector = true;
+    window.addEventListener('mousemove', handleInspectorResize);
+    window.addEventListener('mouseup', stopInspectorResize);
+  }
+
+  function handleInspectorResize(event) {
+    if (!resizingInspector) return;
+    const body = document.querySelector('.native-database-panel__body');
+    const bounds = body?.getBoundingClientRect?.();
+    if (!bounds) return;
+    const nextWidth = Math.round(bounds.right - event.clientX);
+    inspectorWidth = Math.min(560, Math.max(240, nextWidth));
+  }
+
+  function stopInspectorResize() {
+    resizingInspector = false;
+    window.removeEventListener('mousemove', handleInspectorResize);
+    window.removeEventListener('mouseup', stopInspectorResize);
   }
 
   async function loadRedisKeys() {
@@ -284,12 +332,22 @@
   }
 </script>
 
-<section class="native-database-panel" aria-label={workspace.title}>
+<section class="native-database-panel" aria-label={workspace.title} class:is-resizing={resizingInspector}>
   <header class="native-database-panel__header native-database-panel__context">
     <div>
       <div class="native-database-panel__eyebrow">{databaseType.toUpperCase() || 'NATIVE DATABASE'}</div>
       <h3>{workspace.title}</h3>
       <p>{dbConfig?.name || '原生数据库连接'} · {workspace.description}</p>
+      {#if isElasticsearchPanel && clusterOverview}
+        <div class="native-database-panel__cluster">
+          <span>集群 {clusterOverview.clusterName || '-'}</span>
+          <span>健康 {clusterOverview.health}</span>
+          <span>节点 {clusterOverview.nodeCount}</span>
+          <span>数据节点 {clusterOverview.dataNodeCount}</span>
+          <span>版本 {clusterOverview.version || '-'}</span>
+          <span>分片 {clusterOverview.activeShards}</span>
+        </div>
+      {/if}
     </div>
     <button class="native-database-panel__refresh" type="button" on:click={loadResources} disabled={loading}>
       {loading ? '加载中…' : '刷新'}
@@ -303,7 +361,7 @@
     </div>
   {/if}
 
-  <div class="native-database-panel__body">
+  <div class="native-database-panel__body" style={bodyStyle}>
     <main class="native-database-panel__content">
       {#if errorMessage}
         <div class="native-database-panel__state native-database-panel__error" role="alert">{errorMessage}</div>
@@ -403,45 +461,67 @@
       {:else if resources.length === 0}
         <div class="native-database-panel__state">未发现可显示的{workspace.resourceLabel}。</div>
       {:else}
-        <div class="native-database-panel__summary native-database-panel__resource-count native-database-panel__summary--spaced">
-          <span>{workspace.resourceLabel}</span>
-          <strong>{resources.length}</strong>
+        <div class="native-database-panel__toolbar native-database-panel__toolbar--resources">
+          {#if workspace.canSearchResources}
+            <label class="native-database-panel__search">
+              <span>搜索{workspace.resourceLabel}</span>
+              <input bind:value={resourceSearch} placeholder={`按${workspace.resourceLabel}名称过滤`} />
+            </label>
+          {/if}
+          <div class="native-database-panel__summary native-database-panel__resource-count">
+            <span>{workspace.resourceLabel}</span>
+            <strong>{filteredResources.length}{#if resourceSearch}/ {resources.length}{/if}</strong>
+          </div>
         </div>
-        <ul class="native-database-panel__tree">
-          {#each resources as resource}
-            <li class:expanded={expanded.has(resource.name)} class:selected={selectedResource === resource.name && !selectedParent}>
-              {#if workspace.canExpand}
-                <button class="native-database-panel__resource" type="button" on:click={() => { toggleResource(resource); selectResource(resource); }} aria-expanded={expanded.has(resource.name)}>
-                  <span class="native-database-panel__chevron">{expanded.has(resource.name) ? '⌄' : '›'}</span>
-                  <span>{resource.name}</span>
-                </button>
-              {:else}
-                <button class="native-database-panel__resource native-database-panel__resource--leaf" type="button" on:click={() => selectResource(resource)} class:selected={selectedResource === resource.name}>
-                  <span class="native-database-panel__leaf-mark">•</span>
-                  <span>{resource.name}</span>
-                </button>
-              {/if}
+        {#if filteredResources.length === 0}
+          <div class="native-database-panel__state">没有匹配“{resourceSearch}”的{workspace.resourceLabel}。</div>
+        {:else}
+          <ul class="native-database-panel__tree">
+            {#each filteredResources as resource}
+              <li class:expanded={expanded.has(resource.name)} class:selected={selectedResource === resource.name && !selectedParent}>
+                {#if workspace.canExpand}
+                  <button class="native-database-panel__resource" type="button" on:click={() => { toggleResource(resource); selectResource(resource); }} aria-expanded={expanded.has(resource.name)}>
+                    <span class="native-database-panel__chevron">{expanded.has(resource.name) ? '⌄' : '›'}</span>
+                    <span>{resource.name}</span>
+                  </button>
+                {:else}
+                  <button class="native-database-panel__resource native-database-panel__resource--leaf" type="button" on:click={() => selectResource(resource)} class:selected={selectedResource === resource.name}>
+                    <span class="native-database-panel__leaf-mark">•</span>
+                    <span>{resource.name}</span>
+                  </button>
+                {/if}
 
-              {#if expanded.has(resource.name)}
-                <ul class="native-database-panel__children">
-                  {#if (childrenByParent[resource.name] || []).length === 0}
-                    <li class="native-database-panel__children-empty">该{workspace.resourceLabel}中没有可显示的{workspace.childLabel}。</li>
-                  {:else}
-                    {#each childrenByParent[resource.name] || [] as child}
-                      <li>
-                        <button class="native-database-panel__child" type="button" class:selected={selectedResource === child.name && selectedParent === resource.name} on:click={() => selectResource(child, resource.name)}>
-                          <span>↳</span>{child.name}
-                        </button>
-                      </li>
-                    {/each}
-                  {/if}
-                </ul>
-              {/if}
-            </li>
-          {/each}
-        </ul>
+                {#if expanded.has(resource.name)}
+                  <ul class="native-database-panel__children">
+                    {#if (childrenByParent[resource.name] || []).length === 0}
+                      <li class="native-database-panel__children-empty">该{workspace.resourceLabel}中没有可显示的{workspace.childLabel}。</li>
+                    {:else}
+                      {#each childrenByParent[resource.name] || [] as child}
+                        <li>
+                          <button class="native-database-panel__child" type="button" class:selected={selectedResource === child.name && selectedParent === resource.name} on:click={() => selectResource(child, resource.name)}>
+                            <span>↳</span>{child.name}
+                          </button>
+                        </li>
+                      {/each}
+                    {/if}
+                  </ul>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
       {/if}
     </main>
+
+    {#if workspace.canResizeInspector}
+      <div
+        class="native-database-panel__splitter"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整对象信息宽度"
+        on:mousedown={startInspectorResize}
+      ></div>
+    {/if}
 
     <aside class="native-database-panel__inspector">
       <h4>对象信息</h4>
@@ -469,12 +549,26 @@
               onSave={saveRedisKey}
               onDelete={requestDeleteCurrentResource}
             />
+          {:else if isElasticsearchPanel && indexMetadata}
+            <dl class="native-database-panel__meta">
+              <div><dt>健康</dt><dd>{indexMetadata.health}</dd></div>
+              <div><dt>状态</dt><dd>{indexMetadata.status || '-'}</dd></div>
+              <div><dt>文档数</dt><dd>{indexMetadata.docsCount}</dd></div>
+              <div><dt>已删文档</dt><dd>{indexMetadata.docsDeleted}</dd></div>
+              <div><dt>存储大小</dt><dd>{indexMetadata.storeSize}</dd></div>
+              <div><dt>主分片存储</dt><dd>{indexMetadata.priStoreSize}</dd></div>
+              <div><dt>主分片</dt><dd>{indexMetadata.primaries}</dd></div>
+              <div><dt>副本</dt><dd>{indexMetadata.replicas}</dd></div>
+            </dl>
+            <div class="native-database-panel__mapping">
+              <h5>Mapping</h5>
+              <pre>{formatDetails(JSON.stringify(indexMetadata.mapping ?? {}))}</pre>
+            </div>
+            {#if workspace.canQuery}
+              <button type="button" class="native-database-panel__link-action" on:click={() => activeTab = 'query'}>打开查询编辑器</button>
+            {/if}
           {:else}
             <pre>{formatDetails(details.content)}</pre>
-          {/if}
-
-          {#if databaseType === 'elasticsearch' && workspace.canQuery}
-            <button type="button" class="native-database-panel__link-action" on:click={() => activeTab = 'query'}>打开查询编辑器</button>
           {/if}
         </div>
       {:else if workspace.canDescribe}
@@ -508,6 +602,19 @@
   .native-database-panel__error { border-color: #dc2626; color: #dc2626; }
   .native-database-panel__success { border-color: #059669; color: #047857; }
   .native-database-panel__toolbar { display: grid; gap: 10px; margin-bottom: 12px; }
+  .native-database-panel__toolbar--resources { margin-top: 0; }
+  .native-database-panel__search { display: grid; gap: 6px; font-size: 11px; color: #6d7783; }
+  .native-database-panel__search input {
+    width: 100%; min-height: 34px; border: 1px solid #d9e0e4; border-radius: 4px; padding: 0 10px;
+    box-sizing: border-box; color: #31414d; font-size: 12px; background: #fff;
+  }
+  .native-database-panel__cluster {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+  }
+  .native-database-panel__cluster span {
+    display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px;
+    border: 1px solid #d9e0e4; border-radius: 999px; background: #eff6f5; color: #0e6674; font-size: 11px;
+  }
   .native-database-panel__db-select { display: grid; gap: 6px; font-size: 11px; color: #6d7783; }
   .native-database-panel__db-select select {
     width: 100%; min-height: 34px; border: 1px solid #d9e0e4; border-radius: 4px; padding: 0 10px;
@@ -539,12 +646,27 @@
   .native-database-panel { padding: 0; display: flex; flex-direction: column; overflow: hidden; background: #f7f8f5; color: #1d2935; font-family: "PingFang SC", "Hiragino Sans GB", -apple-system, sans-serif; }
   .native-database-panel__context { min-height: 64px; padding: 0 20px; align-items: center; background: #fff; border-bottom-color: #d9e0e4; }
   .native-database-panel__body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 280px; overflow: hidden; }
+  .native-database-panel__splitter {
+    width: 6px; cursor: col-resize; background: #e7ecee; border-left: 1px solid #d9e0e4; border-right: 1px solid #d9e0e4;
+  }
+  .native-database-panel__splitter:hover, .native-database-panel.is-resizing .native-database-panel__splitter {
+    background: #cfe3e5;
+  }
   .native-database-panel__content { min-width: 0; overflow: auto; padding: 16px; background: #fff; }
-  .native-database-panel__inspector { padding: 18px 16px; border-left: 1px solid #d9e0e4; background: #f7f8f5; overflow: auto; }
+  .native-database-panel__inspector { min-width: 0; padding: 18px 16px; border-left: 1px solid #d9e0e4; background: #f7f8f5; overflow: auto; }
+  .native-database-panel__meta { margin: 12px 0 0; display: grid; gap: 8px; }
+  .native-database-panel__meta div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; align-items: start; }
+  .native-database-panel__meta dt { color: #7b8791; font-size: 11px; }
+  .native-database-panel__meta dd { margin: 0; color: #31414d; font-size: 12px; overflow-wrap: anywhere; }
+  .native-database-panel__mapping { display: grid; gap: 6px; margin-top: 12px; }
+  .native-database-panel__mapping h5 { margin: 0; color: #31414d; font-size: 11px; letter-spacing: .04em; }
   .native-database-panel__inspector h4 { margin: 0 0 14px; color: #31414d; font-size: 11px; letter-spacing: .04em; }
   .native-database-panel__inspector dl { margin: 0; display: grid; gap: 12px; }
   .native-database-panel__inspector dl div { display: grid; gap: 3px; }
   .native-database-panel__inspector dt { color: #7b8791; font-size: 11px; }
   .native-database-panel__inspector dd { margin: 0; color: #31414d; font-size: 12px; overflow-wrap: anywhere; }
-  @media (max-width: 760px) { .native-database-panel__body { grid-template-columns: 1fr; } .native-database-panel__inspector { display: none; } }
+  @media (max-width: 760px) {
+    .native-database-panel__body { grid-template-columns: 1fr !important; }
+    .native-database-panel__splitter, .native-database-panel__inspector { display: none; }
+  }
 </style>

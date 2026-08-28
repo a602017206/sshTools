@@ -28,6 +28,10 @@ type NativeResourceMutator interface {
 	MutateResource(context.Context, string, string, string, string) (NativeMutationResult, error)
 }
 
+type NativeSessionInspector interface {
+	DescribeSession(context.Context) (NativeResourceDetails, error)
+}
+
 func (s *NativeDatabaseService) ExecuteQuery(ctx context.Context, sessionID, parent, name, query string) (NativeQueryResult, error) {
 	session, err := s.session(sessionID)
 	if err != nil {
@@ -58,4 +62,20 @@ func (s *NativeDatabaseService) MutateResource(ctx context.Context, sessionID, p
 		return NativeMutationResult{}, fmt.Errorf("执行 %s 变更失败: %w", nativeDatabaseTypeName(session.Config.Type), err)
 	}
 	return result, nil
+}
+
+func (s *NativeDatabaseService) DescribeSession(ctx context.Context, sessionID string) (NativeResourceDetails, error) {
+	session, err := s.session(sessionID)
+	if err != nil {
+		return NativeResourceDetails{}, err
+	}
+	inspector, ok := session.client.(NativeSessionInspector)
+	if !ok {
+		return NativeResourceDetails{}, fmt.Errorf("%w: 会话概览", ErrNativeOperationUnsupported)
+	}
+	details, err := inspector.DescribeSession(ctx)
+	if err != nil {
+		return NativeResourceDetails{}, fmt.Errorf("读取 %s 会话概览失败: %w", nativeDatabaseTypeName(session.Config.Type), err)
+	}
+	return details, nil
 }

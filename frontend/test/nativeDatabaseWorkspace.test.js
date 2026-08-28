@@ -12,13 +12,16 @@ test('Redis 工作区使用顶部逻辑库下拉并支持读写', () => {
   assert.equal(workspace.canDelete, true);
 });
 
-test('Elasticsearch 工作区支持查询与文档变更', () => {
+test('Elasticsearch 工作区支持查询、搜索与可调分栏', () => {
   const workspace = nativeDatabaseWorkspace('elasticsearch');
   assert.equal(workspace.canExpand, false);
   assert.equal(workspace.canDescribe, true);
   assert.equal(workspace.canQuery, true);
   assert.equal(workspace.canWrite, true);
   assert.equal(workspace.canDelete, true);
+  assert.equal(workspace.canSearchResources, true);
+  assert.equal(workspace.canResizeInspector, true);
+  assert.equal(workspace.showSessionOverview, true);
 });
 
 test('未知原生类型使用安全的只读资源回退', () => {
