@@ -63,10 +63,6 @@ export function DeletePassword(arg1:string):Promise<void>;
 
 export function DescribeNativeDatabaseResource(arg1:string,arg2:string,arg3:string):Promise<service.NativeResourceDetails>;
 
-export function ExecuteNativeDatabaseQuery(arg1:string,arg2:string,arg3:string,arg4:string):Promise<service.NativeQueryResult>;
-
-export function MutateNativeDatabaseResource(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<service.NativeMutationResult>;
-
 export function DownloadFile(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function DownloadFiles(arg1:string,arg2:Array<string>,arg3:string):Promise<Array<string>>;
@@ -78,6 +74,8 @@ export function EncryptText(arg1:string,arg2:string,arg3:string,arg4:string):Pro
 export function EscapeJSON(arg1:string):Promise<string>;
 
 export function ExecuteDatabaseQuery(arg1:string,arg2:string):Promise<string>;
+
+export function ExecuteNativeDatabaseQuery(arg1:string,arg2:string,arg3:string,arg4:string):Promise<service.NativeQueryResult>;
 
 export function ExportConnections(arg1:boolean):Promise<string>;
 
@@ -176,6 +174,8 @@ export function ListNativeDatabaseResources(arg1:string):Promise<Array<service.N
 export function ListSSHSessions():Promise<Array<string>>;
 
 export function MinifyJSON(arg1:string):Promise<string>;
+
+export function MutateNativeDatabaseResource(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<service.NativeMutationResult>;
 
 export function ParseURL(arg1:string):Promise<Record<string, any>>;
 
