@@ -427,6 +427,52 @@
     background-color: var(--bg-hover);
   }
 
+  .ops-asset-group-items {
+    margin-left: 0.875rem;
+    margin-right: 0.5rem;
+    padding-left: 0.625rem;
+    border-left: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
+  }
+
+  .ops-asset-row__leading {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ops-asset-expand {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    padding: 0;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .ops-asset-expand:hover {
+    background: var(--bg-hover);
+  }
+
+  .ops-asset-expand-spacer {
+    display: block;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  .ops-asset-subtree {
+    margin-left: 1.75rem;
+    margin-right: 0.5rem;
+  }
+
   .ops-asset-row {
     position: relative;
     color: var(--text-primary);

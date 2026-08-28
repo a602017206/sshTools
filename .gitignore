@@ -45,3 +45,4 @@ config.local.json
 
 .codegraph/
 .superpowers/
+.scannerwork/

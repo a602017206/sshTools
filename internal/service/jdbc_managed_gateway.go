@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"AHaSSHTools/internal/config"
 )
@@ -74,7 +75,17 @@ func (s *ManagedJDBCGateway) ListTablesInSchema(ctx context.Context, sessionID, 
 
 func (s *ManagedJDBCGateway) ListObjects(ctx context.Context, sessionID, database, schema string, types []string) ([]string, error) {
 	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) ([]string, error) {
-		return gateway.ListObjects(ctx, sessionID, s.jdbcCatalog(sessionID, database), schema, types)
+		metadataSessionID := sessionID
+		metadataCatalog := s.jdbcCatalog(sessionID, database)
+		if config, needsTemporarySession := s.postgreSQLMetadataSession(sessionID, database); needsTemporarySession {
+			metadataSessionID = fmt.Sprintf("%s-metadata-%d", sessionID, time.Now().UnixNano())
+			if err := gateway.ConnectDatabase(ctx, metadataSessionID, config); err != nil {
+				return nil, err
+			}
+			defer func() { _ = gateway.CloseDatabase(ctx, metadataSessionID) }()
+			metadataCatalog = ""
+		}
+		return gateway.ListObjects(ctx, metadataSessionID, metadataCatalog, schema, types)
 	})
 }
 
@@ -166,9 +177,32 @@ func (s *ManagedJDBCGateway) jdbcCatalog(sessionID, database string) string {
 	case "oracle", "dm":
 		// Oracle/达梦的服务名不是 JDBC catalog；传入会导致元数据扫描异常缓慢。
 		return ""
+	case "postgresql", "kingbase", "opengauss":
+		// PostgreSQL 兼容数据库在一个连接内按 schema 暴露对象。数据库名并非
+		// 可用于 getTables 的 catalog，传入后会把结果错误过滤为空。
+		return ""
 	default:
 		return database
 	}
+}
+
+// postgreSQLMetadataSession opens a short-lived connection when a PostgreSQL
+// browser node targets another database. PostgreSQL has no cross-database
+// metadata catalog, so the primary connection cannot list that node's tables.
+func (s *ManagedJDBCGateway) postgreSQLMetadataSession(sessionID, database string) (config.DatabaseConfig, bool) {
+	cfg, ok := s.sessionConfig(sessionID)
+	if !ok {
+		return config.DatabaseConfig{}, false
+	}
+	switch strings.ToLower(cfg.DBType) {
+	case "postgresql", "kingbase", "opengauss":
+		requestedDatabase := strings.TrimSpace(database)
+		if requestedDatabase != "" && requestedDatabase != cfg.Database {
+			cfg.Database = requestedDatabase
+			return cfg, true
+		}
+	}
+	return config.DatabaseConfig{}, false
 }
 
 func managedGatewayCall[T any](s *ManagedJDBCGateway, ctx context.Context, sessionID string, call func(*JdbcGatewayService) (T, error)) (T, error) {

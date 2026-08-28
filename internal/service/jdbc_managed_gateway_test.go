@@ -119,6 +119,43 @@ func TestManagedJDBCGatewayListsKingbaseDatabasesThroughPostgreSQLCatalog(t *tes
 	}
 }
 
+func TestManagedJDBCGatewayListsPostgreSQLSchemaObjectsWithoutCatalog(t *testing.T) {
+	client := &managedGatewayClient{}
+	supervisor := &managedGatewaySupervisor{
+		current: &JDBCAgentConnection{Client: client, Token: "token"},
+	}
+	gateway := NewManagedJDBCGateway(supervisor)
+	gateway.SetProfileResolver(func(context.Context, config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return config.JDBCDriverProfile{ID: "postgresql", DriverClass: "org.postgresql.Driver"}, nil
+	})
+	if err := gateway.ConnectDatabase(context.Background(), "postgres-session", config.DatabaseConfig{DBType: "postgresql", Database: "postgres"}); err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+
+	if _, err := gateway.ListObjects(context.Background(), "postgres-session", "appdb", "business", []string{"TABLE"}); err != nil {
+		t.Fatalf("list objects failed: %v", err)
+	}
+
+	if len(client.openRequests) != 2 {
+		t.Fatalf("open requests = %d, want primary connection plus metadata connection", len(client.openRequests))
+	}
+	if got := client.openRequests[1].GetDatabase(); got != "appdb" {
+		t.Fatalf("metadata database = %q, want appdb", got)
+	}
+	if client.tablesRequest == nil {
+		t.Fatal("expected ListTables request")
+	}
+	if got := client.tablesRequest.GetSessionId(); got == "postgres-session" {
+		t.Fatal("metadata request must use the target database session")
+	}
+	if got := client.tablesRequest.GetCatalog(); got != "" {
+		t.Fatalf("catalog = %q, want empty for PostgreSQL schema metadata", got)
+	}
+	if got := client.tablesRequest.GetSchema(); got != "business" {
+		t.Fatalf("schema = %q, want business", got)
+	}
+}
+
 func TestManagedJDBCGatewayClearsOracleCatalogForMetadata(t *testing.T) {
 	client := &managedGatewayClient{}
 	supervisor := &managedGatewaySupervisor{
@@ -167,6 +204,7 @@ type managedGatewayClient struct {
 	openRequests   []*jdbcproto.OpenSessionRequest
 	queryRequests  []*jdbcproto.ExecuteQueryRequest
 	columnRequests []*jdbcproto.ListColumnsRequest
+	tablesRequest  *jdbcproto.ListTablesRequest
 	queryErr       error
 	queryResult    *jdbcproto.QueryResult
 	queryCalls     int
@@ -197,7 +235,8 @@ func (c *managedGatewayClient) ListRoutines(context.Context, *jdbcproto.ListRout
 	return &jdbcproto.ListRoutinesResponse{}, nil
 }
 
-func (c *managedGatewayClient) ListTables(context.Context, *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
+func (c *managedGatewayClient) ListTables(_ context.Context, request *jdbcproto.ListTablesRequest) (*jdbcproto.ListTablesResponse, error) {
+	c.tablesRequest = request
 	return &jdbcproto.ListTablesResponse{}, nil
 }
 

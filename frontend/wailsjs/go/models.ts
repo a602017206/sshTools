@@ -40,6 +40,8 @@ export namespace config {
 	    copilot_provider: string;
 	    copilot_base_url: string;
 	    copilot_model: string;
+	    copilot_max_tool_rounds: number;
+	    copilot_max_tool_result_chars: number;
 	    monitor_collapsed: boolean;
 	    monitor_width: number;
 	    monitor_refresh_interval: number;
@@ -77,6 +79,8 @@ export namespace config {
 	        this.copilot_provider = source["copilot_provider"];
 	        this.copilot_base_url = source["copilot_base_url"];
 	        this.copilot_model = source["copilot_model"];
+	        this.copilot_max_tool_rounds = source["copilot_max_tool_rounds"];
+	        this.copilot_max_tool_result_chars = source["copilot_max_tool_result_chars"];
 	        this.monitor_collapsed = source["monitor_collapsed"];
 	        this.monitor_width = source["monitor_width"];
 	        this.monitor_refresh_interval = source["monitor_refresh_interval"];

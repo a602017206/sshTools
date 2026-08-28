@@ -18,6 +18,10 @@ export function ChangeDirectory(arg1, arg2) {
   return window['go']['main']['App']['ChangeDirectory'](arg1, arg2);
 }
 
+export function ChmodFile(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ChmodFile'](arg1, arg2, arg3);
+}
+
 export function ClearBackgroundImage() {
   return window['go']['main']['App']['ClearBackgroundImage']();
 }
@@ -70,20 +74,16 @@ export function CopilotClassify(arg1, arg2) {
   return window['go']['main']['App']['CopilotClassify'](arg1, arg2);
 }
 
+export function CopyFile(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CopyFile'](arg1, arg2, arg3);
+}
+
 export function CreateDirectory(arg1, arg2) {
   return window['go']['main']['App']['CreateDirectory'](arg1, arg2);
 }
 
 export function CreateFile(arg1, arg2) {
   return window['go']['main']['App']['CreateFile'](arg1, arg2);
-}
-
-export function CopyFile(arg1, arg2, arg3) {
-  return window['go']['main']['App']['CopyFile'](arg1, arg2, arg3);
-}
-
-export function ChmodFile(arg1, arg2, arg3) {
-  return window['go']['main']['App']['ChmodFile'](arg1, arg2, arg3);
 }
 
 export function DateTimeToTimestamp(arg1, arg2) {
