@@ -66,87 +66,95 @@ func (s *Service) runTool(mode, sessionID, workingDir, name, arguments string) (
 	}
 	switch name {
 	case "list_working_directory":
-		if s.commands == nil {
-			return "command runner unavailable", "工具失败"
-		}
-		cmd, ok := WorkingDirectoryCommand(workingDir)
-		if !ok {
-			return "当前工作目录不可用", "工具失败"
-		}
-		stdout, stderr, err := s.commands.ExecuteCommand(sessionID, cmd, sshProbeTimeout)
-		if err != nil {
-			msg := err.Error()
-			if stderr != "" {
-				msg = stderr + "\n" + msg
-			}
-			return msg, "工具失败"
-		}
-		if stderr != "" {
-			return stdout + "\n" + stderr, ""
-		}
-		return stdout, ""
+		return s.listWorkingDirectory(sessionID, workingDir)
 	case "list_databases":
-		if s.schema == nil {
-			return schemaReaderUnavailable, "工具失败"
-		}
-		dbs, err := s.schema.ListDatabases(sessionID)
-		if err != nil {
-			return err.Error(), "工具失败"
-		}
-		return marshalToolJSON(dbs), ""
+		return s.listDatabases(sessionID)
 	case "list_tables":
-		if s.schema == nil {
-			return schemaReaderUnavailable, "工具失败"
-		}
-		tables, err := s.schema.ListTables(sessionID)
-		if err != nil {
-			return err.Error(), "工具失败"
-		}
-		return marshalToolJSON(tables), ""
+		return s.listTables(sessionID)
 	case "get_table_schema":
-		if s.schema == nil {
-			return schemaReaderUnavailable, "工具失败"
-		}
-		var args struct {
-			Table string `json:"table"`
-		}
-		_ = json.Unmarshal([]byte(arguments), &args)
-		schema, err := s.schema.GetTableSchema(sessionID, args.Table)
-		if err != nil {
-			return err.Error(), "工具失败"
-		}
-		if schema == nil {
-			schema = &config.TableSchema{}
-		}
-		return marshalToolJSON(schema), ""
+		return s.getTableSchema(sessionID, arguments)
 	case "ssh_probe":
-		var args struct {
-			Command string `json:"command"`
-		}
-		_ = json.Unmarshal([]byte(arguments), &args)
-		cmd := strings.TrimSpace(args.Command)
-		if !AllowSSHProbe(cmd) {
-			return "工具被拒绝", "工具被拒绝"
-		}
-		if s.commands == nil {
-			return "command runner unavailable", "工具失败"
-		}
-		stdout, stderr, err := s.commands.ExecuteCommand(sessionID, cmd, sshProbeTimeout)
-		if err != nil {
-			msg := err.Error()
-			if stderr != "" {
-				msg = stderr + "\n" + msg
-			}
-			return msg, "工具失败"
-		}
-		out := stdout
-		if stderr != "" {
-			out = stdout + "\n" + stderr
-		}
-		return out, ""
+		return s.sshProbe(sessionID, arguments)
 	default:
 		return "工具被拒绝", "工具被拒绝"
 	}
+}
+
+func (s *Service) listWorkingDirectory(sessionID, workingDir string) (string, string) {
+	cmd, ok := WorkingDirectoryCommand(workingDir)
+	if !ok {
+		return "当前工作目录不可用", "工具失败"
+	}
+	return s.executeToolCommand(sessionID, cmd)
+}
+
+func (s *Service) listDatabases(sessionID string) (string, string) {
+	if s.schema == nil {
+		return schemaReaderUnavailable, "工具失败"
+	}
+	dbs, err := s.schema.ListDatabases(sessionID)
+	if err != nil {
+		return err.Error(), "工具失败"
+	}
+	return marshalToolJSON(dbs), ""
+}
+
+func (s *Service) listTables(sessionID string) (string, string) {
+	if s.schema == nil {
+		return schemaReaderUnavailable, "工具失败"
+	}
+	tables, err := s.schema.ListTables(sessionID)
+	if err != nil {
+		return err.Error(), "工具失败"
+	}
+	return marshalToolJSON(tables), ""
+}
+
+func (s *Service) getTableSchema(sessionID, arguments string) (string, string) {
+	if s.schema == nil {
+		return schemaReaderUnavailable, "工具失败"
+	}
+	var args struct {
+		Table string `json:"table"`
+	}
+	_ = json.Unmarshal([]byte(arguments), &args)
+	schema, err := s.schema.GetTableSchema(sessionID, args.Table)
+	if err != nil {
+		return err.Error(), "工具失败"
+	}
+	if schema == nil {
+		schema = &config.TableSchema{}
+	}
+	return marshalToolJSON(schema), ""
+}
+
+func (s *Service) sshProbe(sessionID, arguments string) (string, string) {
+	var args struct {
+		Command string `json:"command"`
+	}
+	_ = json.Unmarshal([]byte(arguments), &args)
+	cmd := strings.TrimSpace(args.Command)
+	if !AllowSSHProbe(cmd) {
+		return "工具被拒绝", "工具被拒绝"
+	}
+	return s.executeToolCommand(sessionID, cmd)
+}
+
+func (s *Service) executeToolCommand(sessionID, command string) (string, string) {
+	if s.commands == nil {
+		return "command runner unavailable", "工具失败"
+	}
+	stdout, stderr, err := s.commands.ExecuteCommand(sessionID, command, sshProbeTimeout)
+	if err != nil {
+		if stderr != "" {
+			return stderr + "\n" + err.Error(), "工具失败"
+		}
+		return err.Error(), "工具失败"
+	}
+	if stderr != "" {
+		return stdout + "\n" + stderr, ""
+	}
+	return stdout, ""
 }
 
 func marshalToolJSON(v any) string {

@@ -50,28 +50,12 @@ func (s *DriverInstallService) ConfigureArtifactFetcher(fetcher ArtifactFetcher)
 }
 
 func (s *DriverInstallService) InstallProfile(ctx context.Context, driver config.JDBCDriver, profile config.JDBCDriverProfile) (*DriverInstallResult, error) {
-	if driver.ID == "" || profile.ID == "" || profile.Version == "" || len(profile.Jars) == 0 {
-		return nil, &JDBCError{Code: JDBCErrorDriverInvalid, Message: "JDBC 驱动 profile 不完整"}
+	if err := s.validateInstallProfile(driver, profile); err != nil {
+		return nil, err
 	}
-	for _, jar := range profile.Jars {
-		if jar.URL == "" {
-			return nil, &JDBCError{Code: JDBCErrorDriverMissing, Message: fmt.Sprintf("%s %s 没有可用的官方在线下载地址，请离线导入驱动包", driver.Name, profile.Version)}
-		}
-		if jar.Name == "" || filepath.Base(jar.Name) != jar.Name {
-			return nil, &JDBCError{Code: JDBCErrorDriverInvalid, Message: "JDBC 驱动 jar 名称无效"}
-		}
-	}
-	if s.fetcher == nil {
-		return nil, &JDBCError{Code: JDBCErrorDriverInvalid, Message: "JDBC 驱动下载器未配置"}
-	}
-
-	driverDir := filepath.Join(s.paths.DriversDir, driver.ID)
-	if err := os.MkdirAll(driverDir, 0o700); err != nil {
-		return nil, fmt.Errorf("创建 JDBC 驱动目录失败: %w", err)
-	}
-	temporaryDir, err := os.MkdirTemp(driverDir, ".install-*")
+	temporaryDir, err := s.createInstallDirectory(driver.ID)
 	if err != nil {
-		return nil, fmt.Errorf("创建 JDBC 驱动临时目录失败: %w", err)
+		return nil, err
 	}
 	committed := false
 	defer func() {
@@ -80,12 +64,63 @@ func (s *DriverInstallService) InstallProfile(ctx context.Context, driver config
 		}
 	}()
 
+	if err := s.downloadProfileJars(ctx, temporaryDir, profile.Jars); err != nil {
+		return nil, err
+	}
+	metadata := offlinePackageFromProfile(driver, profile)
+	if err := writeDriverPackageMetadata(temporaryDir, metadata); err != nil {
+		return nil, err
+	}
+
+	targetDir := filepath.Join(s.paths.DriversDir, driver.ID, profile.Version)
+	if err := replaceDriverVersionDirectory(temporaryDir, targetDir); err != nil {
+		return nil, fmt.Errorf("提交 JDBC 驱动安装失败: %w", err)
+	}
+	committed = true
+	return &DriverInstallResult{DriverID: driver.ID, ProfileID: profile.ID, Version: profile.Version, InstallPath: targetDir}, nil
+}
+
+func (s *DriverInstallService) validateInstallProfile(driver config.JDBCDriver, profile config.JDBCDriverProfile) error {
+	if driver.ID == "" || profile.ID == "" || profile.Version == "" || len(profile.Jars) == 0 {
+		return &JDBCError{Code: JDBCErrorDriverInvalid, Message: "JDBC 驱动 profile 不完整"}
+	}
+	if s.fetcher == nil {
+		return &JDBCError{Code: JDBCErrorDriverInvalid, Message: "JDBC 驱动下载器未配置"}
+	}
 	for _, jar := range profile.Jars {
-		target := filepath.Join(temporaryDir, "jars", jar.Name)
-		if err := s.fetcher.Download(ctx, jar.URL, jar.SHA256, target); err != nil {
-			return nil, &JDBCError{Code: JDBCErrorDriverInvalid, Message: fmt.Sprintf("下载 JDBC 驱动 %s 失败", jar.Name), Err: err}
+		if jar.URL == "" {
+			return &JDBCError{Code: JDBCErrorDriverMissing, Message: fmt.Sprintf("%s %s 没有可用的官方在线下载地址，请离线导入驱动包", driver.Name, profile.Version)}
+		}
+		if jar.Name == "" || filepath.Base(jar.Name) != jar.Name {
+			return &JDBCError{Code: JDBCErrorDriverInvalid, Message: "JDBC 驱动 jar 名称无效"}
 		}
 	}
+	return nil
+}
+
+func (s *DriverInstallService) createInstallDirectory(driverID string) (string, error) {
+	driverDir := filepath.Join(s.paths.DriversDir, driverID)
+	if err := os.MkdirAll(driverDir, 0o700); err != nil {
+		return "", fmt.Errorf("创建 JDBC 驱动目录失败: %w", err)
+	}
+	temporaryDir, err := os.MkdirTemp(driverDir, ".install-*")
+	if err != nil {
+		return "", fmt.Errorf("创建 JDBC 驱动临时目录失败: %w", err)
+	}
+	return temporaryDir, nil
+}
+
+func (s *DriverInstallService) downloadProfileJars(ctx context.Context, temporaryDir string, jars []config.JDBCJar) error {
+	for _, jar := range jars {
+		target := filepath.Join(temporaryDir, "jars", jar.Name)
+		if err := s.fetcher.Download(ctx, jar.URL, jar.SHA256, target); err != nil {
+			return &JDBCError{Code: JDBCErrorDriverInvalid, Message: fmt.Sprintf("下载 JDBC 驱动 %s 失败", jar.Name), Err: err}
+		}
+	}
+	return nil
+}
+
+func offlinePackageFromProfile(driver config.JDBCDriver, profile config.JDBCDriverProfile) *offlineDriverPackage {
 	metadata := &offlineDriverPackage{
 		ID: driver.ID, Name: driver.Name, Version: profile.Version,
 		DriverClass: profile.DriverClass, URLTemplate: profile.URLTemplate,
@@ -95,16 +130,7 @@ func (s *DriverInstallService) InstallProfile(ctx context.Context, driver config
 	for _, jar := range profile.Jars {
 		metadata.Jars = append(metadata.Jars, jar.Name)
 	}
-	if err := writeDriverPackageMetadata(temporaryDir, metadata); err != nil {
-		return nil, err
-	}
-
-	targetDir := filepath.Join(driverDir, profile.Version)
-	if err := replaceDriverVersionDirectory(temporaryDir, targetDir); err != nil {
-		return nil, fmt.Errorf("提交 JDBC 驱动安装失败: %w", err)
-	}
-	committed = true
-	return &DriverInstallResult{DriverID: driver.ID, ProfileID: profile.ID, Version: profile.Version, InstallPath: targetDir}, nil
+	return metadata
 }
 
 func replaceDriverVersionDirectory(sourceDir, targetDir string) error {

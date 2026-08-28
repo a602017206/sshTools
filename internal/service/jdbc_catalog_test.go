@@ -108,28 +108,36 @@ func TestDriverCatalogProvidesVerifiedOnlineProfiles(t *testing.T) {
 		{driverID: "kingbase", version: "8.6.1", class: "com.kingbase8.Driver"},
 		{driverID: "kingbase", version: "9.0.1", class: "com.kingbase8.Driver"},
 	} {
-		_, profile, err := catalog.GetProfile(wanted.driverID, wanted.version)
-		if err != nil {
-			t.Fatalf("get profile %s %s failed: %v", wanted.driverID, wanted.version, err)
+		assertVerifiedOnlineProfile(t, catalog, wanted.driverID, wanted.version, wanted.class, wanted.jars)
+	}
+}
+
+func assertVerifiedOnlineProfile(t *testing.T, catalog *DriverCatalogService, driverID, version, driverClass string, jarNames []string) {
+	t.Helper()
+	_, profile, err := catalog.GetProfile(driverID, version)
+	if err != nil {
+		t.Fatalf("get profile %s %s failed: %v", driverID, version, err)
+	}
+	if profile.DriverClass != driverClass {
+		t.Fatalf("profile %s driver class = %q, want %q", profile.ID, profile.DriverClass, driverClass)
+	}
+	assertVerifiedProfileJars(t, profile, jarNames)
+}
+
+func assertVerifiedProfileJars(t *testing.T, profile *config.JDBCDriverProfile, jarNames []string) {
+	t.Helper()
+	if len(jarNames) > 0 && len(profile.Jars) != len(jarNames) {
+		t.Fatalf("profile %s jar count = %d, want %d", profile.ID, len(profile.Jars), len(jarNames))
+	}
+	for index, jar := range profile.Jars {
+		if !strings.HasPrefix(jar.URL, "https://repo.maven.apache.org/") {
+			t.Fatalf("profile %s jar URL = %q", profile.ID, jar.URL)
 		}
-		if profile.DriverClass != wanted.class {
-			t.Fatalf("profile %s driver class = %q, want %q", profile.ID, profile.DriverClass, wanted.class)
+		if len(jar.SHA256) != 64 {
+			t.Fatalf("profile %s jar SHA-256 = %q", profile.ID, jar.SHA256)
 		}
-		if len(wanted.jars) > 0 && len(profile.Jars) != len(wanted.jars) {
-			t.Fatalf("profile %s jar count = %d, want %d", profile.ID, len(profile.Jars), len(wanted.jars))
-		}
-		for _, jar := range profile.Jars {
-			if !strings.HasPrefix(jar.URL, "https://repo.maven.apache.org/") {
-				t.Fatalf("profile %s jar URL = %q", profile.ID, jar.URL)
-			}
-			if len(jar.SHA256) != 64 {
-				t.Fatalf("profile %s jar SHA-256 = %q", profile.ID, jar.SHA256)
-			}
-		}
-		for index, name := range wanted.jars {
-			if profile.Jars[index].Name != name {
-				t.Fatalf("profile %s jar %d = %q, want %q", profile.ID, index, profile.Jars[index].Name, name)
-			}
+		if index < len(jarNames) && jar.Name != jarNames[index] {
+			t.Fatalf("profile %s jar %d = %q, want %q", profile.ID, index, jar.Name, jarNames[index])
 		}
 	}
 }

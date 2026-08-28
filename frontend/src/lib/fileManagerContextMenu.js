@@ -142,20 +142,30 @@ export function matchFileManagerShortcut(event, { isMac = false } = {}) {
   const { altKey: alt, shiftKey: shift, key: rawKey } = event;
   const key = String(rawKey || '').toLowerCase();
 
-  if (rawKey === 'Enter') return 'openLocal';
-  if (rawKey === 'F2') return 'rename';
-  if (rawKey === 'Backspace' || rawKey === 'Delete') return 'delete';
+  const directAction = directFileManagerShortcut(rawKey);
+  if (directAction) return directAction;
   if (alt && shift && !meta) {
-    if (key === 'c') return 'copyPath';
-    if (key === 'n') return 'newFile';
-    if (key === 'm') return 'chmod';
-    return null;
+    return altShiftFileManagerShortcut(key);
   }
   if (meta && !alt && !shift) {
-    if (key === 'r') return 'refresh';
-    if (key === 'c') return 'copy';
-    if (key === 'x') return 'cut';
-    if (key === 'v') return 'paste';
+    return primaryFileManagerShortcut(key);
   }
   return null;
+}
+
+function directFileManagerShortcut(key) {
+  return {
+    Enter: 'openLocal',
+    F2: 'rename',
+    Backspace: 'delete',
+    Delete: 'delete',
+  }[key] || null;
+}
+
+function altShiftFileManagerShortcut(key) {
+  return { c: 'copyPath', n: 'newFile', m: 'chmod' }[key] || null;
+}
+
+function primaryFileManagerShortcut(key) {
+  return { r: 'refresh', c: 'copy', x: 'cut', v: 'paste' }[key] || null;
 }

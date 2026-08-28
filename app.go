@@ -1029,27 +1029,9 @@ func (a *App) ExportConnections(encryptPasswords bool) (string, error) {
 
 // ExportConnectionsByIDs exports selected connections to JSON
 func (a *App) ExportConnectionsByIDs(connectionIDs []string, encryptPasswords bool) (string, error) {
-	if len(connectionIDs) == 0 {
-		return "", fmt.Errorf("no connections selected")
-	}
-
-	conns, err := a.connectionService.GetConnections()
+	filtered, err := a.selectedConnections(connectionIDs)
 	if err != nil {
 		return "", err
-	}
-
-	selected := make(map[string]struct{}, len(connectionIDs))
-	for _, id := range connectionIDs {
-		if id != "" {
-			selected[id] = struct{}{}
-		}
-	}
-
-	filtered := make([]config.ConnectionConfig, 0, len(selected))
-	for _, conn := range conns {
-		if _, ok := selected[conn.ID]; ok {
-			filtered = append(filtered, conn)
-		}
 	}
 
 	exportData := ExportData{
@@ -1090,24 +1072,9 @@ func (a *App) ExportConnectionsByIDsWithPassphrase(connectionIDs []string, passp
 	if strings.TrimSpace(passphrase) == "" {
 		return "", fmt.Errorf("passphrase required")
 	}
-
-	conns, err := a.connectionService.GetConnections()
+	filtered, err := a.selectedConnections(connectionIDs)
 	if err != nil {
 		return "", err
-	}
-
-	selected := make(map[string]struct{}, len(connectionIDs))
-	for _, id := range connectionIDs {
-		if id != "" {
-			selected[id] = struct{}{}
-		}
-	}
-
-	filtered := make([]config.ConnectionConfig, 0, len(selected))
-	for _, conn := range conns {
-		if _, ok := selected[conn.ID]; ok {
-			filtered = append(filtered, conn)
-		}
 	}
 
 	salt := make([]byte, 16)
@@ -1148,6 +1115,29 @@ func (a *App) ExportConnectionsByIDsWithPassphrase(connectionIDs []string, passp
 	}
 
 	return string(data), nil
+}
+
+func (a *App) selectedConnections(connectionIDs []string) ([]config.ConnectionConfig, error) {
+	if len(connectionIDs) == 0 {
+		return nil, fmt.Errorf("no connections selected")
+	}
+	connections, err := a.connectionService.GetConnections()
+	if err != nil {
+		return nil, err
+	}
+	selected := make(map[string]struct{}, len(connectionIDs))
+	for _, id := range connectionIDs {
+		if id != "" {
+			selected[id] = struct{}{}
+		}
+	}
+	filtered := make([]config.ConnectionConfig, 0, len(selected))
+	for _, connection := range connections {
+		if _, ok := selected[connection.ID]; ok {
+			filtered = append(filtered, connection)
+		}
+	}
+	return filtered, nil
 }
 
 // ImportConnections imports connections from JSON data
@@ -1518,31 +1508,49 @@ func (a *App) jdbcDriverProfile(driverID, version string) (*config.JDBCDriverPro
 }
 
 func (a *App) jdbcDriverUsers(driverID string, target config.JDBCDriverProfile) ([]string, error) {
-	users := make([]string, 0)
-	if a.connectionService != nil {
-		connections, err := a.connectionService.GetConnections()
-		if err != nil {
-			return nil, fmt.Errorf("检查 JDBC 驱动连接引用失败: %w", err)
-		}
-		for _, connection := range connections {
-			if !isJDBCDriverProfileInUse(driverID, target, connection.Metadata["db_type"], connection.Metadata["driver_profile_id"], a.jdbcCatalog) {
-				continue
-			}
-			name := strings.TrimSpace(connection.Name)
-			if name == "" {
-				name = connection.ID
-			}
-			users = append(users, "已保存连接 "+name)
-		}
+	users, err := a.savedJDBCDriverUsers(driverID, target)
+	if err != nil {
+		return nil, err
 	}
-	if a.jdbcGateway != nil {
-		for sessionID, session := range a.jdbcGateway.ActiveSessionConfigs() {
-			if isJDBCDriverProfileInUse(driverID, target, session.DBType, session.DriverProfileID, a.jdbcCatalog) {
-				users = append(users, "活动会话 "+sessionID)
-			}
+	users = append(users, a.activeJDBCDriverUsers(driverID, target)...)
+	return users, nil
+}
+
+func (a *App) savedJDBCDriverUsers(driverID string, target config.JDBCDriverProfile) ([]string, error) {
+	if a.connectionService == nil {
+		return nil, nil
+	}
+	connections, err := a.connectionService.GetConnections()
+	if err != nil {
+		return nil, fmt.Errorf("检查 JDBC 驱动连接引用失败: %w", err)
+	}
+	users := make([]string, 0)
+	for _, connection := range connections {
+		if isJDBCDriverProfileInUse(driverID, target, connection.Metadata["db_type"], connection.Metadata["driver_profile_id"], a.jdbcCatalog) {
+			users = append(users, "已保存连接 "+jdbcConnectionName(connection))
 		}
 	}
 	return users, nil
+}
+
+func (a *App) activeJDBCDriverUsers(driverID string, target config.JDBCDriverProfile) []string {
+	if a.jdbcGateway == nil {
+		return nil
+	}
+	users := make([]string, 0)
+	for sessionID, session := range a.jdbcGateway.ActiveSessionConfigs() {
+		if isJDBCDriverProfileInUse(driverID, target, session.DBType, session.DriverProfileID, a.jdbcCatalog) {
+			users = append(users, "活动会话 "+sessionID)
+		}
+	}
+	return users
+}
+
+func jdbcConnectionName(connection config.ConnectionConfig) string {
+	if name := strings.TrimSpace(connection.Name); name != "" {
+		return name
+	}
+	return connection.ID
 }
 
 func isJDBCDriverProfileInUse(driverID string, target config.JDBCDriverProfile, databaseType, profileID string, catalog *service.DriverCatalogService) bool {

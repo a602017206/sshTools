@@ -523,54 +523,24 @@ func splitShellCommands(input string) []string {
 
 	commands := []string{}
 	var buf strings.Builder
-	var inSingle bool
-	var inDouble bool
-	var escaped bool
+	state := shellQuoteState{}
 
 	for i := 0; i < len(input); i++ {
 		ch := input[i]
-		if escaped {
+		if state.escaped {
 			buf.WriteByte(ch)
-			escaped = false
+			state.escaped = false
 			continue
 		}
-
-		if ch == '\\' && !inSingle {
-			escaped = true
+		if state.consume(ch) {
 			continue
 		}
-
-		if ch == '\'' && !inDouble {
-			inSingle = !inSingle
-			buf.WriteByte(ch)
+		if separatorWidth := shellCommandSeparatorWidth(input, i, state); separatorWidth > 0 {
+			commands = append(commands, buf.String())
+			buf.Reset()
+			i += separatorWidth - 1
 			continue
 		}
-		if ch == '"' && !inSingle {
-			inDouble = !inDouble
-			buf.WriteByte(ch)
-			continue
-		}
-
-		if !inSingle && !inDouble {
-			if ch == ';' {
-				commands = append(commands, buf.String())
-				buf.Reset()
-				continue
-			}
-			if ch == '&' && i+1 < len(input) && input[i+1] == '&' {
-				commands = append(commands, buf.String())
-				buf.Reset()
-				i++
-				continue
-			}
-			if ch == '|' && i+1 < len(input) && input[i+1] == '|' {
-				commands = append(commands, buf.String())
-				buf.Reset()
-				i++
-				continue
-			}
-		}
-
 		buf.WriteByte(ch)
 	}
 
@@ -581,6 +551,40 @@ func splitShellCommands(input string) []string {
 	return commands
 }
 
+type shellQuoteState struct {
+	inSingle bool
+	inDouble bool
+	escaped  bool
+}
+
+func (s *shellQuoteState) consume(ch byte) bool {
+	if ch == '\\' && !s.inSingle {
+		s.escaped = true
+		return true
+	}
+	if ch == '\'' && !s.inDouble {
+		s.inSingle = !s.inSingle
+		return false
+	}
+	if ch == '"' && !s.inSingle {
+		s.inDouble = !s.inDouble
+	}
+	return false
+}
+
+func shellCommandSeparatorWidth(input string, index int, state shellQuoteState) int {
+	if state.inSingle || state.inDouble {
+		return 0
+	}
+	if input[index] == ';' {
+		return 1
+	}
+	if index+1 < len(input) && (input[index:index+2] == "&&" || input[index:index+2] == "||") {
+		return 2
+	}
+	return 0
+}
+
 func splitShellTokens(input string) []string {
 	if input == "" {
 		return nil
@@ -588,9 +592,7 @@ func splitShellTokens(input string) []string {
 
 	var tokens []string
 	var buf strings.Builder
-	var inSingle bool
-	var inDouble bool
-	var escaped bool
+	state := shellQuoteState{}
 
 	flush := func() {
 		if buf.Len() > 0 {
@@ -601,27 +603,16 @@ func splitShellTokens(input string) []string {
 
 	for i := 0; i < len(input); i++ {
 		ch := input[i]
-		if escaped {
+		if state.escaped {
 			buf.WriteByte(ch)
-			escaped = false
+			state.escaped = false
 			continue
 		}
 
-		if ch == '\\' && !inSingle {
-			escaped = true
+		if state.consumeTokenQuote(ch) {
 			continue
 		}
-
-		if ch == '\'' && !inDouble {
-			inSingle = !inSingle
-			continue
-		}
-		if ch == '"' && !inSingle {
-			inDouble = !inDouble
-			continue
-		}
-
-		if !inSingle && !inDouble && (ch == ' ' || ch == '\t') {
+		if !state.inSingle && !state.inDouble && isShellTokenWhitespace(ch) {
 			flush()
 			continue
 		}
@@ -631,6 +622,26 @@ func splitShellTokens(input string) []string {
 
 	flush()
 	return tokens
+}
+
+func (s *shellQuoteState) consumeTokenQuote(ch byte) bool {
+	if ch == '\\' && !s.inSingle {
+		s.escaped = true
+		return true
+	}
+	if ch == '\'' && !s.inDouble {
+		s.inSingle = !s.inSingle
+		return true
+	}
+	if ch == '"' && !s.inSingle {
+		s.inDouble = !s.inDouble
+		return true
+	}
+	return false
+}
+
+func isShellTokenWhitespace(ch byte) bool {
+	return ch == ' ' || ch == '\t'
 }
 
 func (sm *SessionManager) syncSftpPath(sessionID, nextPath string) {

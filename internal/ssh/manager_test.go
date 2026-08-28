@@ -79,3 +79,31 @@ func TestClientRequestedCloseDoesNotNotifyRemoteExit(t *testing.T) {
 		t.Fatal("expected client-requested close to skip remote-exit notification")
 	}
 }
+
+func TestSplitShellCommandsPreservesQuotedAndEscapedSeparators(t *testing.T) {
+	input := `cd '/srv;logs'; cd /tmp\;cache && cd "~/work|draft" || pwd`
+	want := []string{"cd '/srv;logs'", " cd /tmp;cache ", " cd \"~/work|draft\" ", " pwd"}
+	if got := splitShellCommands(input); !equalStringSlices(got, want) {
+		t.Fatalf("splitShellCommands(%q) = %#v, want %#v", input, got, want)
+	}
+}
+
+func TestSplitShellTokensPreservesQuotedAndEscapedValues(t *testing.T) {
+	input := `cd -- "/srv/with space" escaped\ value 'single quoted'`
+	want := []string{"cd", "--", "/srv/with space", "escaped value", "single quoted"}
+	if got := splitShellTokens(input); !equalStringSlices(got, want) {
+		t.Fatalf("splitShellTokens(%q) = %#v, want %#v", input, got, want)
+	}
+}
+
+func equalStringSlices(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}

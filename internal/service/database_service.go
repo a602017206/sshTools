@@ -502,29 +502,40 @@ func (ds *DatabaseService) GetTableSchema(sessionID, table string) (*config.Tabl
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	var (
-		rows *sql.Rows
-		qErr error
-	)
-
-	switch session.Config.DBType {
-	case "mysql":
-		query := "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION"
-		rows, qErr = session.DB.QueryContext(ctx, query, table)
-	case "postgresql":
-		query := "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position"
-		rows, qErr = session.DB.QueryContext(ctx, query, table)
-	default:
-		return nil, fmt.Errorf("unsupported database type: %s", session.Config.DBType)
+	query, err := tableSchemaQuery(session.Config.DBType)
+	if err != nil {
+		return nil, err
 	}
-
-	if qErr != nil {
-		return nil, fmt.Errorf("failed to get table schema: %w", qErr)
+	rows, err := session.DB.QueryContext(ctx, query, table)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table schema: %w", err)
 	}
 	defer rows.Close()
 
+	columns, err := scanTableSchemaRows(rows, session.Config.DBType)
+	if err != nil {
+		return nil, err
+	}
+	if len(columns) == 0 {
+		return nil, fmt.Errorf("no columns found for table: %s", table)
+	}
+	return &config.TableSchema{TableName: table, Columns: columns}, nil
+}
+
+func tableSchemaQuery(databaseType string) (string, error) {
+	switch databaseType {
+	case "mysql":
+		return "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION", nil
+	case "postgresql":
+		return "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position", nil
+	default:
+		return "", fmt.Errorf("unsupported database type: %s", databaseType)
+	}
+}
+
+func scanTableSchemaRows(rows *sql.Rows, databaseType string) ([]config.ColumnSchema, error) {
 	columns := make([]config.ColumnSchema, 0)
-	switch session.Config.DBType {
+	switch databaseType {
 	case "mysql":
 		for rows.Next() {
 			var columnName, dataType, nullable, columnKey string
@@ -557,15 +568,7 @@ func (ds *DatabaseService) GetTableSchema(sessionID, table string) (*config.Tabl
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("row iteration failed: %w", err)
 	}
-
-	if len(columns) == 0 {
-		return nil, fmt.Errorf("no columns found for table: %s", table)
-	}
-
-	return &config.TableSchema{
-		TableName: table,
-		Columns:   columns,
-	}, nil
+	return columns, nil
 }
 
 // GetTableSchemaInSchema returns structured column metadata scoped to a schema when supported by the active gateway.

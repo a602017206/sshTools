@@ -18,13 +18,13 @@ type redisSetPayload struct {
 }
 
 type redisSavePayload struct {
-	Type       string             `json:"type"`
-	Value      string             `json:"value"`
-	Fields     map[string]string  `json:"fields"`
-	Items      []string           `json:"items"`
-	Members    []string           `json:"members"`
-	Entries    []redisZSetEntry   `json:"entries"`
-	TTLSeconds *int64             `json:"ttlSeconds"`
+	Type       string            `json:"type"`
+	Value      string            `json:"value"`
+	Fields     map[string]string `json:"fields"`
+	Items      []string          `json:"items"`
+	Members    []string          `json:"members"`
+	Entries    []redisZSetEntry  `json:"entries"`
+	TTLSeconds *int64            `json:"ttlSeconds"`
 }
 
 type redisZSetEntry struct {
@@ -127,10 +127,22 @@ func (c *redisGoClient) SaveKeyValue(ctx context.Context, name, payload string) 
 		return NativeMutationResult{}, err
 	}
 	pipe := c.client.Pipeline()
+	if err := writeRedisValue(ctx, pipe, name, parsed); err != nil {
+		return NativeMutationResult{}, err
+	}
+	if parsed.Type != "string" && parsed.TTLSeconds != nil && *parsed.TTLSeconds > 0 {
+		pipe.Expire(ctx, name, time.Duration(*parsed.TTLSeconds)*time.Second)
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return NativeMutationResult{}, err
+	}
+	return NativeMutationResult{Summary: fmt.Sprintf("%s 键已保存", parsed.Type)}, nil
+}
+
+func writeRedisValue(ctx context.Context, pipe redis.Pipeliner, name string, parsed redisSavePayload) error {
 	switch parsed.Type {
 	case "string":
-		ttl := redisDuration(parsed.TTLSeconds)
-		pipe.Set(ctx, name, parsed.Value, ttl)
+		pipe.Set(ctx, name, parsed.Value, redisDuration(parsed.TTLSeconds))
 	case "hash":
 		pipe.Del(ctx, name)
 		if len(parsed.Fields) > 0 {
@@ -148,28 +160,23 @@ func (c *redisGoClient) SaveKeyValue(ctx context.Context, name, payload string) 
 		}
 	case "zset":
 		pipe.Del(ctx, name)
-		if len(parsed.Entries) > 0 {
-			members := make([]redis.Z, 0, len(parsed.Entries))
-			for _, entry := range parsed.Entries {
-				if strings.TrimSpace(entry.Member) == "" {
-					continue
-				}
-				members = append(members, redis.Z{Score: entry.Score, Member: entry.Member})
-			}
-			if len(members) > 0 {
-				pipe.ZAdd(ctx, name, members...)
-			}
+		if members := redisZSetMembers(parsed.Entries); len(members) > 0 {
+			pipe.ZAdd(ctx, name, members...)
 		}
 	default:
-		return NativeMutationResult{}, fmt.Errorf("不支持的 Redis 类型: %s", parsed.Type)
+		return fmt.Errorf("不支持的 Redis 类型: %s", parsed.Type)
 	}
-	if parsed.Type != "string" && parsed.TTLSeconds != nil && *parsed.TTLSeconds > 0 {
-		pipe.Expire(ctx, name, time.Duration(*parsed.TTLSeconds)*time.Second)
+	return nil
+}
+
+func redisZSetMembers(entries []redisZSetEntry) []redis.Z {
+	members := make([]redis.Z, 0, len(entries))
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.Member) != "" {
+			members = append(members, redis.Z{Score: entry.Score, Member: entry.Member})
+		}
 	}
-	if _, err := pipe.Exec(ctx); err != nil {
-		return NativeMutationResult{}, err
-	}
-	return NativeMutationResult{Summary: fmt.Sprintf("%s 键已保存", parsed.Type)}, nil
+	return members
 }
 
 func redisDuration(ttlSeconds *int64) time.Duration {
@@ -190,61 +197,86 @@ func redisStringArgs(values []string) []any {
 func (c *redisGoClient) readKeyPreview(ctx context.Context, kind, name string, data map[string]any) error {
 	switch kind {
 	case "string":
-		value, err := c.client.Get(ctx, name).Result()
-		if err != nil && err != redis.Nil {
-			return err
-		}
-		if len(value) > redisPreviewLimit {
-			value = value[:redisPreviewLimit]
-			data["truncated"] = true
-		}
-		data["value"] = value
+		return c.readStringPreview(ctx, name, data)
 	case "hash":
-		fields, err := c.client.HGetAll(ctx, name).Result()
-		if err != nil {
-			return err
-		}
-		data["fields"] = limitRedisMap(fields, redisCollectionPreviewLimit)
+		return c.readHashPreview(ctx, name, data)
 	case "list":
-		items, err := c.client.LRange(ctx, name, 0, redisCollectionPreviewLimit-1).Result()
-		if err != nil {
-			return err
-		}
-		length, _ := c.client.LLen(ctx, name).Result()
-		data["items"] = items
-		data["length"] = length
-		if length > int64(len(items)) {
-			data["truncated"] = true
-		}
+		return c.readListPreview(ctx, name, data)
 	case "set":
-		members, err := c.client.SMembers(ctx, name).Result()
-		if err != nil {
-			return err
-		}
-		count, _ := c.client.SCard(ctx, name).Result()
-		if len(members) > redisCollectionPreviewLimit {
-			members = members[:redisCollectionPreviewLimit]
-			data["truncated"] = true
-		}
-		data["members"] = members
-		data["length"] = count
+		return c.readSetPreview(ctx, name, data)
 	case "zset":
-		items, err := c.client.ZRangeWithScores(ctx, name, 0, redisCollectionPreviewLimit-1).Result()
-		if err != nil {
-			return err
-		}
-		pairs := make([]map[string]any, 0, len(items))
-		for _, item := range items {
-			pairs = append(pairs, map[string]any{"member": item.Member, "score": item.Score})
-		}
-		count, _ := c.client.ZCard(ctx, name).Result()
-		data["entries"] = pairs
-		data["length"] = count
-		if count > int64(len(items)) {
-			data["truncated"] = true
-		}
+		return c.readZSetPreview(ctx, name, data)
 	default:
 		data["unsupportedPreview"] = true
+	}
+	return nil
+}
+
+func (c *redisGoClient) readStringPreview(ctx context.Context, name string, data map[string]any) error {
+	value, err := c.client.Get(ctx, name).Result()
+	if err != nil && err != redis.Nil {
+		return err
+	}
+	if len(value) > redisPreviewLimit {
+		value = value[:redisPreviewLimit]
+		data["truncated"] = true
+	}
+	data["value"] = value
+	return nil
+}
+
+func (c *redisGoClient) readHashPreview(ctx context.Context, name string, data map[string]any) error {
+	fields, err := c.client.HGetAll(ctx, name).Result()
+	if err != nil {
+		return err
+	}
+	data["fields"] = limitRedisMap(fields, redisCollectionPreviewLimit)
+	return nil
+}
+
+func (c *redisGoClient) readListPreview(ctx context.Context, name string, data map[string]any) error {
+	items, err := c.client.LRange(ctx, name, 0, redisCollectionPreviewLimit-1).Result()
+	if err != nil {
+		return err
+	}
+	length, _ := c.client.LLen(ctx, name).Result()
+	data["items"] = items
+	data["length"] = length
+	if length > int64(len(items)) {
+		data["truncated"] = true
+	}
+	return nil
+}
+
+func (c *redisGoClient) readSetPreview(ctx context.Context, name string, data map[string]any) error {
+	members, err := c.client.SMembers(ctx, name).Result()
+	if err != nil {
+		return err
+	}
+	count, _ := c.client.SCard(ctx, name).Result()
+	if len(members) > redisCollectionPreviewLimit {
+		members = members[:redisCollectionPreviewLimit]
+		data["truncated"] = true
+	}
+	data["members"] = members
+	data["length"] = count
+	return nil
+}
+
+func (c *redisGoClient) readZSetPreview(ctx context.Context, name string, data map[string]any) error {
+	items, err := c.client.ZRangeWithScores(ctx, name, 0, redisCollectionPreviewLimit-1).Result()
+	if err != nil {
+		return err
+	}
+	pairs := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		pairs = append(pairs, map[string]any{"member": item.Member, "score": item.Score})
+	}
+	count, _ := c.client.ZCard(ctx, name).Result()
+	data["entries"] = pairs
+	data["length"] = count
+	if count > int64(len(items)) {
+		data["truncated"] = true
 	}
 	return nil
 }

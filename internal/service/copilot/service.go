@@ -120,33 +120,59 @@ func (s *Service) WithRuntimeSettings(v RuntimeSettings) *Service {
 }
 
 func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	ctx, finish, err := s.beginChat(ctx, req.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
+
+	messages := initialMessages(req)
+	last, notes, messages, err := s.runChatRounds(ctx, req, messages)
+	if err != nil {
+		return nil, err
+	}
+	if len(last.ToolCalls) > 0 {
+		last, err = s.requestFinalReply(ctx, req.Model, messages, last)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return buildChatResponse(last, notes), nil
+}
+
+func (s *Service) beginChat(ctx context.Context, sessionID string) (context.Context, func(), error) {
 	ctx, cancel := context.WithCancel(ctx)
 	s.gate.mu.Lock()
-	if _, busy := s.gate.inflight[req.SessionID]; busy {
+	if _, busy := s.gate.inflight[sessionID]; busy {
 		s.gate.mu.Unlock()
 		cancel()
-		return nil, fmt.Errorf("已有生成进行中")
+		return nil, nil, fmt.Errorf("已有生成进行中")
 	}
-	s.gate.inflight[req.SessionID] = cancel
+	s.gate.inflight[sessionID] = cancel
 	s.gate.mu.Unlock()
-	defer func() {
+	return ctx, func() {
 		s.gate.mu.Lock()
-		delete(s.gate.inflight, req.SessionID)
+		delete(s.gate.inflight, sessionID)
 		s.gate.mu.Unlock()
 		cancel()
-	}()
+	}, nil
+}
 
-	tools := toolsForMode(req.Mode)
+func initialMessages(req ChatRequest) []Message {
 	messages := []Message{{Role: "system", Content: systemPrompt}}
 	messages = append(messages, req.History...)
 	messages = append(messages, Message{Role: "user", Content: buildUserPrompt(req)})
+	return messages
+}
 
+func (s *Service) runChatRounds(ctx context.Context, req ChatRequest, messages []Message) (Message, []string, []Message, error) {
+	tools := toolsForMode(req.Mode)
 	var notes []string
 	var last Message
 	for round := 0; round < s.runtime.MaxToolRounds; round++ {
 		msg, err := s.provider.Chat(ctx, req.Model, messages, tools)
 		if err != nil {
-			return nil, err
+			return Message{}, nil, nil, err
 		}
 		last = msg
 		if len(msg.ToolCalls) == 0 {
@@ -166,17 +192,19 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, err
 			})
 		}
 	}
+	return last, notes, messages, nil
+}
 
-	// 触顶后仍带 tool_calls：再请求一次不带工具的 Chat，让模型基于已有工具结果产出最终产物。
-	if len(last.ToolCalls) > 0 {
-		messages = append(messages, last)
-		finalMsg, err := s.provider.Chat(ctx, req.Model, messages, nil)
-		if err != nil {
-			return nil, err
-		}
-		last = finalMsg
+func (s *Service) requestFinalReply(ctx context.Context, model string, messages []Message, last Message) (Message, error) {
+	messages = append(messages, last)
+	finalMsg, err := s.provider.Chat(ctx, model, messages, nil)
+	if err != nil {
+		return Message{}, err
 	}
+	return finalMsg, nil
+}
 
+func buildChatResponse(last Message, notes []string) *ChatResponse {
 	reply := last.Content
 	var artifact *Artifact
 	if len(last.ToolCalls) == 0 {
@@ -190,7 +218,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, err
 	if notes == nil {
 		notes = []string{}
 	}
-	return &ChatResponse{Reply: reply, Artifact: artifact, ToolNotes: notes}, nil
+	return &ChatResponse{Reply: reply, Artifact: artifact, ToolNotes: notes}
 }
 
 func (s *Service) Cancel(sessionID string) {

@@ -29,6 +29,17 @@
 - 将制品下载拆分为地址校验、HTTP 响应校验和临时文件提交步骤；HTTPS/重定向、大小限制、哈希校验和权限收紧逻辑保持不变。
 - 将 JSON 格式化、压缩和转义的表驱动测试断言提取为共享辅助函数；测试用例与覆盖的行为保持不变。
 - 将 Adoptium 运行时发现拆分为平台解析、URL 构造、响应解码和候选包选择；HTTP 请求头、查询条件及无匹配时的错误保持不变。
+- 将在线 JDBC Driver Profile 校验测试拆分为 Profile 与 JAR 断言辅助函数；测试数据和校验条件保持不变。
+- 将 JDBC 在线驱动安装拆分为 Profile 校验、临时目录创建、JAR 下载和离线元数据组装；原有原子提交与失败清理逻辑保持不变。
+- 将 Copilot 工具分派拆分为工作目录、Schema、SSH 探测和共享命令执行路径；工具拒绝、错误说明和输出拼接保持不变。
+- 将 Copilot 对话拆分为会话占用、初始消息、工具轮次、最终回复和响应构建；并发拒绝、取消与工具轮次上限保持不变。
+- 将文件管理器快捷键的直接键、主修饰键和 Alt+Shift 组合键分派为独立映射；原有平台修饰键规则与操作名称保持不变。
+- 将表结构变更 SQL 的新增字段、MySQL/PostgreSQL 字段变更与主键变更拆分为辅助函数；MySQL、PostgreSQL 的 SQL 顺序和转义规则保持不变。
+- 将两个“按 ID 导出连接”入口共享为筛选连接辅助函数；空选择、服务读取失败与导出顺序保持不变。
+- 将 Redis 保存与预览的类型分派拆分为类型专用函数；管道事务、TTL、预览上限和不支持类型的错误保持不变。
+- 将 JDBC 驱动占用检查拆分为已保存连接、活动会话和显示名称解析；驱动 Profile 匹配与返回文案保持不变。
+- 将本地数据库表字段读取拆分为数据库类型查询选择和结果行解析；SQL、错误文案与 `ColumnSchema` 字段映射保持不变。
+- 将 SSH 输入的命令分隔与 token 解析拆分为引号/转义状态和分隔符判断；保留单引号、双引号、反斜杠、`;`、`&&` 与 `||` 的原有语义。
 
 已执行的验证：
 
@@ -37,3 +48,11 @@
 - `go test ./internal/service -run '^TestArchiveExtractor'`：通过。
 - `go test ./internal/service -run '^(TestFormatJSON|TestMinifyJSON|TestEscapeJSON)$'`：通过。
 - `go test ./internal/service -run '^TestAdoptiumRuntimeProvider'`：通过。
+- `go test ./internal/service -run '^TestDriverCatalogProvidesVerifiedOnlineProfiles$'`：通过。
+- `go test ./internal/service -run '^TestDriverInstall'`：通过。
+- `go test ./internal/service/copilot`：通过。
+- 前端纯函数 Node 校验（文件管理器快捷键与 MySQL/PostgreSQL 表变更 SQL）：通过。
+- `go test ./internal/service -run '^TestRedisNative'`：通过。
+- `go test . -run '^TestRemoveJDBCDriver'`：通过。
+- `go test ./internal/service -run '^TestDatabaseService(GetTableSchema|GetTableDDLInSchema)'`：通过。
+- `go test ./internal/ssh`：通过。
