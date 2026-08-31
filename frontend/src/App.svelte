@@ -772,6 +772,7 @@
 
     let cleanupEvents = null;
     let handleDatabaseConnectEvent = null;
+    let handleDatabaseDisconnectEvent = null;
     let handleDatabaseEditEvent = null;
 
     try {
@@ -791,6 +792,18 @@
         handleDatabaseConnect(event.detail);
       };
 
+      handleDatabaseDisconnectEvent = async (event) => {
+        const asset = event.detail?.asset || event.detail;
+        if (!asset) return;
+        if (terminalPanelRef && typeof terminalPanelRef.closeDatabaseSessionsForAsset === 'function') {
+          try {
+            await terminalPanelRef.closeDatabaseSessionsForAsset(asset);
+          } catch (error) {
+            showDatabaseError(error, '断开失败');
+          }
+        }
+      };
+
       handleDatabaseEditEvent = (event) => {
         if (event.detail) {
           handleEditAsset(event.detail);
@@ -798,6 +811,7 @@
       };
 
       window.addEventListener('database:connect', handleDatabaseConnectEvent);
+      window.addEventListener('database:disconnect', handleDatabaseDisconnectEvent);
       window.addEventListener('database:edit-connection', handleDatabaseEditEvent);
 
       // Listen for about dialog event from backend
@@ -821,6 +835,9 @@
       window.removeEventListener('assets-changed', loadAssetsFromBackend);
       if (handleDatabaseConnectEvent) {
         window.removeEventListener('database:connect', handleDatabaseConnectEvent);
+      }
+      if (handleDatabaseDisconnectEvent) {
+        window.removeEventListener('database:disconnect', handleDatabaseDisconnectEvent);
       }
       if (handleDatabaseEditEvent) {
         window.removeEventListener('database:edit-connection', handleDatabaseEditEvent);

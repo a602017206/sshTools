@@ -58,10 +58,9 @@
   });
 
   $: connectionSessions = Array.from($connectionsStore?.values?.() || []);
-
-  function resolveAssetLinkState(asset) {
-    return getAssetLinkState(asset, connectionSessions);
-  }
+  $: assetLinkStateById = Object.fromEntries(
+    ($assetsStore || []).map((asset) => [asset.id, getAssetLinkState(asset, connectionSessions)])
+  );
 
   function showMessage(title, message) {
     const showDialog = window.wailsBindings?.ShowMessageDialog;
@@ -102,43 +101,30 @@
   }
 
   async function handleDisconnectDatabase() {
-    if (!dbContextMenuAsset || !dbContextMenuAsset.dbSessionId) {
+    if (!dbContextMenuAsset) {
       showDbContextMenu = false;
       return;
     }
 
-    if (!window.wailsBindings || typeof window.wailsBindings.CloseDatabase !== 'function') {
-      showError('断开失败', '断开数据库功能不可用');
-      showDbContextMenu = false;
-      return;
-    }
+    const asset = dbContextMenuAsset;
+    showDbContextMenu = false;
 
     try {
-      await window.wailsBindings.CloseDatabase(dbContextMenuAsset.dbSessionId);
-      assetsStore.update(items => items.map(item => {
-        if (item.id === dbContextMenuAsset.id) {
-          return {
-            ...item,
-            dbConnected: false,
-            dbSessionId: null
-          };
-        }
-        return item;
+      window.dispatchEvent(new CustomEvent('database:disconnect', {
+        detail: { asset }
       }));
 
-      expandedDatabaseAssets.delete(dbContextMenuAsset.id);
+      expandedDatabaseAssets.delete(asset.id);
       expandedDatabaseAssets = new Set(expandedDatabaseAssets);
-      delete databaseLists[dbContextMenuAsset.id];
+      delete databaseLists[asset.id];
       Object.keys(tableLists).forEach(key => {
-        if (key.startsWith(`${dbContextMenuAsset.id}:`)) {
+        if (key.startsWith(`${asset.id}:`)) {
           delete tableLists[key];
         }
       });
-      expandedDatabaseNames = { ...expandedDatabaseNames, [dbContextMenuAsset.id]: new Set() };
+      expandedDatabaseNames = { ...expandedDatabaseNames, [asset.id]: new Set() };
     } catch (error) {
       showError('断开失败', error.message || '断开数据库失败');
-    } finally {
-      showDbContextMenu = false;
     }
   }
 
@@ -739,8 +725,8 @@
                     {/if}
                   </div>
                   <span
-                    class={`ops-pulse is-${resolveAssetLinkState(asset)}`}
-                    title={assetLinkStateLabel(resolveAssetLinkState(asset))}
+                    class={`ops-pulse is-${assetLinkStateById[asset.id] || 'idle'}`}
+                    title={assetLinkStateLabel(assetLinkStateById[asset.id] || 'idle')}
                     aria-hidden="true"
                   ></span>
                   <div class="flex-shrink-0">

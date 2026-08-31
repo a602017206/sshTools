@@ -10,6 +10,11 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
   import { isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
+  import {
+    listDatabaseSessionsToClose,
+    resolveDatabaseCloseBinding,
+    resolveDatabaseSessionId
+  } from '../lib/databaseSessionClose.js';
   import { resolveMode, sessionMatchesMode } from '../lib/workspaceTabs.js';
   import { copilotStore } from '../stores/copilot.js';
 
@@ -123,6 +128,39 @@
       return conns;
     });
     activeSessionIdStore.set(sessionId);
+  }
+
+  /** 断开数据库连接：先关闭右侧全部相关标签，再关闭后端会话 */
+  export async function closeDatabaseSessionsForAsset(asset) {
+    if (!asset) return;
+
+    const sessionId = resolveDatabaseSessionId(asset);
+    if (!sessionId) return;
+
+    const sessions = Array.from($connectionsStore.values());
+    const toClose = listDatabaseSessionsToClose(sessions, asset);
+
+    for (const id of toClose) {
+      await removeSession(id, { closeBackend: true });
+    }
+
+    // 无右侧父面板时仍需关闭后端连接并清理资产状态
+    if (!$connectionsStore.has(sessionId)) {
+      const stillLinked = ($assetsStore || []).some(
+        (item) => item.id === asset.id && item.dbConnected && item.dbSessionId === sessionId
+      );
+      if (stillLinked) {
+        const close = resolveDatabaseCloseBinding(asset, window.wailsBindings || {});
+        if (typeof close === 'function') {
+          try {
+            await close(sessionId);
+          } catch (error) {
+            console.error('Failed to close database backend session:', error);
+          }
+        }
+        updateAssetDbStateBySession(sessionId, false);
+      }
+    }
   }
 
   function openDatabaseTablePanel({ sessionId, databaseName, schemaName = '', tableName }) {
