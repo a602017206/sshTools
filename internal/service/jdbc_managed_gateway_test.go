@@ -156,6 +156,35 @@ func TestManagedJDBCGatewayListsPostgreSQLSchemaObjectsWithoutCatalog(t *testing
 	}
 }
 
+func TestManagedJDBCGatewayReopensSessionAfterOracleClosedConnection(t *testing.T) {
+	client := &managedGatewayClient{
+		columnErr: status.Error(codes.Unknown, "ORA-17008: 已关闭连接"),
+	}
+	supervisor := &managedGatewaySupervisor{
+		current: &JDBCAgentConnection{Client: client, Token: "token"},
+	}
+	gateway := NewManagedJDBCGateway(supervisor)
+	gateway.SetProfileResolver(func(context.Context, config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return config.JDBCDriverProfile{ID: "oracle", DriverClass: "oracle.jdbc.OracleDriver"}, nil
+	})
+	if err := gateway.ConnectDatabase(context.Background(), "oracle-session", config.DatabaseConfig{DBType: "oracle", Database: "pdb"}); err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+
+	if _, err := gateway.GetTableSchemaInDatabaseAndSchema(context.Background(), "oracle-session", "pdb", "PEMS", "DW_CP_CONTROL_TYPE"); err != nil {
+		t.Fatalf("schema recovery failed: %v", err)
+	}
+	if supervisor.restartCalls != 0 {
+		t.Fatalf("stale Oracle session should reopen without restarting the agent, got %d restarts", supervisor.restartCalls)
+	}
+	if client.columnCalls != 2 {
+		t.Fatalf("expected ListColumns to retry once after reconnect, got %d", client.columnCalls)
+	}
+	if len(client.openRequests) != 2 {
+		t.Fatalf("expected original connect plus session reopen, got %d open requests", len(client.openRequests))
+	}
+}
+
 func TestManagedJDBCGatewayClearsOracleCatalogForMetadata(t *testing.T) {
 	client := &managedGatewayClient{}
 	supervisor := &managedGatewaySupervisor{
@@ -206,8 +235,10 @@ type managedGatewayClient struct {
 	columnRequests []*jdbcproto.ListColumnsRequest
 	tablesRequest  *jdbcproto.ListTablesRequest
 	queryErr       error
+	columnErr      error
 	queryResult    *jdbcproto.QueryResult
 	queryCalls     int
+	columnCalls    int
 }
 
 func (c *managedGatewayClient) OpenSession(_ context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error) {
@@ -241,7 +272,11 @@ func (c *managedGatewayClient) ListTables(_ context.Context, request *jdbcproto.
 }
 
 func (c *managedGatewayClient) ListColumns(_ context.Context, request *jdbcproto.ListColumnsRequest) (*jdbcproto.ListColumnsResponse, error) {
+	c.columnCalls++
 	c.columnRequests = append(c.columnRequests, request)
+	if c.columnErr != nil && c.columnCalls == 1 {
+		return nil, c.columnErr
+	}
 	return &jdbcproto.ListColumnsResponse{}, nil
 }
 

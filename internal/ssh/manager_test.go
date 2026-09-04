@@ -30,6 +30,29 @@ func TestExecuteCommandRejectsLocalSession(t *testing.T) {
 	}
 }
 
+func TestExecuteCommandAllowsSSHSessionWhenTypeUnset(t *testing.T) {
+	managed := &ManagedSession{
+		ID:      "remote",
+		Running: true,
+		Session: &Session{},
+	}
+
+	got, err := remoteCommandSession(managed)
+	if err != nil {
+		t.Fatalf("untyped SSH session was rejected: %v", err)
+	}
+	if got != managed.Session {
+		t.Fatal("expected the SSH session to be usable for remote commands")
+	}
+}
+
+func TestCreateSessionMarksRemoteSessionsAsSSH(t *testing.T) {
+	got := newManagedSSHSession("session-1", nil, &Session{})
+	if got.Type != SessionTypeSSH {
+		t.Fatalf("Type = %q, want %q", got.Type, SessionTypeSSH)
+	}
+}
+
 func TestCloseExitedSessionCleansUpAndNotifiesOnce(t *testing.T) {
 	sm := NewSessionManager()
 	sessionID := "session-exited"

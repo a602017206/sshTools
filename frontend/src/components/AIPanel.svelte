@@ -1,16 +1,27 @@
 <script>
   import { onMount, tick } from 'svelte';
-  import { connectionsStore } from '../stores.js';
+  import { connectionsStore, databaseNavigationStore } from '../stores.js';
   import { copilotStore } from '../stores/copilot.js';
   import {
     applySqlEvent,
     executeSqlEvent,
     peekSqlEvent,
     shouldUsePanelPath,
-    shellExecutePayload
+    shellExecutePayload,
+    applyNativeEvent,
+    executeNativeEvent,
+    isNativeArtifact
   } from '../lib/copilotApply.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
-  import { buildChatHistory } from '../lib/copilotContext.js';
+  import {
+    buildChatHistory,
+    buildCopilotWorkspaceContext,
+    copilotAssistantTitle,
+    copilotChatPayload,
+    formatCopilotWorkspaceLabel,
+    resolveWorkspaceFocus
+  } from '../lib/copilotContext.js';
+  import { isCopilotCancelError, shouldSubmitComposerOnEnter } from '../lib/composerKeys.js';
 
   export let sessionId = null;
   export let mode = 'ssh';
@@ -20,6 +31,7 @@
 
   let draft = '';
   let generating = false;
+  let generationToken = 0;
   let hasApiKey = false;
   let checkingKey = true;
   let errorMessage = '';
@@ -32,6 +44,29 @@
   $: terminalTail = $copilotStore.terminalTailsBySession?.[sessionId] || '';
   $: backendSessionId = resolveBackendSessionId(sessionId, $connectionsStore);
   $: copilotMode = mode === 'database' ? 'database' : 'ssh';
+  $: copilotSession = ($connectionsStore && typeof $connectionsStore.get === 'function')
+    ? $connectionsStore.get(sessionId)
+    : null;
+  $: copilotNavigation = $databaseNavigationStore?.[backendSessionId] || $databaseNavigationStore?.[sessionId] || null;
+  $: copilotFocus = resolveWorkspaceFocus($copilotStore.workspaceFocusBySession, sessionId, backendSessionId);
+  $: workspaceContext = buildCopilotWorkspaceContext({
+    session: copilotSession,
+    navigation: copilotNavigation,
+    focus: copilotFocus,
+    mode: copilotMode
+  });
+  $: workspaceLabel = formatCopilotWorkspaceLabel(workspaceContext);
+  $: assistantTitle = copilotAssistantTitle(workspaceContext, copilotMode);
+  $: composerPlaceholder = workspaceContext?.workspaceKind === 'native'
+    ? (assistantTitle.includes('搜索')
+      ? '描述要查的索引、DSL 或文档变更…'
+      : assistantTitle.includes('缓存')
+        ? '描述要 SCAN 的键、查看内容或起草删键…'
+        : '描述要查询或变更的资源…')
+    : (copilotMode === 'database' ? '描述要生成的 SQL…' : '描述要生成的命令…');
+  $: emptyHint = workspaceContext?.workspaceKind === 'native'
+    ? '可让我列出资源、解释 mapping、生成 DSL，或起草变更（需你确认后执行）。'
+    : '用自然语言描述你想查的数据或要跑的命令。';
 
   function resolveBackendSessionId(id, conns) {
     if (!id || !conns || typeof conns.get !== 'function') return id;
@@ -91,16 +126,24 @@
       return { reply: '', artifact: null, toolNotes: [] };
     }
     const artifact = raw.artifact || raw.Artifact || null;
+    let normalized = artifact && (artifact.content || artifact.Content)
+      ? {
+          type: artifact.type || artifact.Type || '',
+          content: artifact.content || artifact.Content || '',
+          summary: artifact.summary || artifact.Summary || '',
+          destructive: Boolean(artifact.destructive ?? artifact.Destructive)
+        }
+      : null;
+    // 原生会话若模型仍回 sql/shell，前端也改成 native_query，保证出现填入/执行。
+    if (normalized && workspaceContext?.workspaceKind === 'native') {
+      const type = String(normalized.type || '').toLowerCase();
+      if (type === 'sql' || type === 'shell') {
+        normalized = { ...normalized, type: 'native_query', destructive: false };
+      }
+    }
     return {
       reply: raw.reply || raw.Reply || '',
-      artifact: artifact && (artifact.content || artifact.Content)
-        ? {
-            type: artifact.type || artifact.Type || '',
-            content: artifact.content || artifact.Content || '',
-            summary: artifact.summary || artifact.Summary || '',
-            destructive: Boolean(artifact.destructive ?? artifact.Destructive)
-          }
-        : null,
+      artifact: normalized,
       toolNotes: raw.tool_notes || raw.ToolNotes || []
     };
   }
@@ -120,21 +163,23 @@
       return;
     }
 
+    const token = ++generationToken;
     generating = true;
     errorMessage = '';
     draft = '';
     const history = historyForRequest();
+    const requestSessionId = backendSessionId;
     copilotStore.appendMessage(sessionId, { role: 'user', content: text });
 
     try {
-      const response = await api.CopilotChat({
-        SessionID: backendSessionId,
-        Mode: copilotMode,
-        Message: text,
-        History: history,
-        EditorContent: '',
-        TerminalTail: terminalTail
-      });
+      const response = await api.CopilotChat(copilotChatPayload(workspaceContext, {
+        sessionID: requestSessionId,
+        mode: copilotMode,
+        message: text,
+        history,
+        terminalTail
+      }));
+      if (token !== generationToken) return;
       const normalized = normalizeChatResponse(response);
       copilotStore.appendMessage(sessionId, {
         role: 'assistant',
@@ -143,26 +188,55 @@
         toolNotes: normalized.toolNotes
       });
     } catch (error) {
+      if (token !== generationToken || isCopilotCancelError(error)) {
+        return;
+      }
       errorMessage = formatError(error);
       copilotStore.appendMessage(sessionId, {
         role: 'assistant',
         content: `生成失败：${formatError(error)}`
       });
     } finally {
-      generating = false;
+      if (token === generationToken) {
+        generating = false;
+      }
+    }
+  }
+
+  function stopGeneration() {
+    if (!generating) return;
+    generationToken += 1;
+    generating = false;
+    const api = getBindings();
+    const id = backendSessionId || sessionId;
+    if (typeof api.CopilotCancel === 'function' && id) {
+      try {
+        api.CopilotCancel(id);
+      } catch (error) {
+        console.warn('CopilotCancel failed', error);
+      }
+    }
+    if (sessionId) {
+      copilotStore.appendMessage(sessionId, {
+        role: 'assistant',
+        content: '已停止生成。'
+      });
     }
   }
 
   function handleComposerKeydown(event) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      sendMessage();
-    }
+    if (!shouldSubmitComposerOnEnter(event)) return;
+    event.preventDefault();
+    sendMessage();
   }
 
   function applyArtifact(artifact) {
     if (!artifact?.content || !backendSessionId) return;
-    if ((artifact.type || copilotMode) === 'sql' || copilotMode === 'database') {
+    if (isNativeArtifact(artifact)) {
+      window.dispatchEvent(applyNativeEvent(backendSessionId, artifact));
+      return;
+    }
+    if ((artifact.type || copilotMode) === 'sql' || (copilotMode === 'database' && artifact.type !== 'shell')) {
       window.dispatchEvent(applySqlEvent(backendSessionId, artifact.content));
       return;
     }
@@ -219,9 +293,24 @@
 
   async function executeArtifact(artifact) {
     if (!artifact?.content || !backendSessionId || generating) return;
-    const kind = copilotMode === 'database' || artifact.type === 'sql' ? 'sql' : 'shell';
 
     try {
+      if (isNativeArtifact(artifact)) {
+        const needsConfirm = artifact.type === 'native_mutation';
+        const confirmed = needsConfirm
+          ? await confirmDanger(artifact.summary || '确认执行该原生变更？')
+          : true;
+        if (!confirmed) return;
+        window.dispatchEvent(executeNativeEvent(backendSessionId, artifact));
+        copilotStore.appendMessage(sessionId, {
+          role: 'assistant',
+          content: needsConfirm ? '已确认并交给工作区执行。' : '已交给工作区执行（见 Redis / ES 面板）。'
+        });
+        return;
+      }
+
+      const kind = copilotMode === 'database' || artifact.type === 'sql' ? 'sql' : 'shell';
+
       if (kind === 'sql') {
         // 先 peek：有打开的查询/表面板时，由面板同步回填当前编辑器 query。
         const peek = { found: false, query: '' };
@@ -301,7 +390,10 @@
   <header class="ai-panel__header">
     <div>
       <p class="ai-panel__kicker">AI Copilot</p>
-      <h2>{copilotMode === 'database' ? 'SQL 助手' : 'Shell 助手'}</h2>
+      <h2>{assistantTitle}</h2>
+      {#if workspaceLabel}
+        <p class="ai-panel__context" title={workspaceLabel}>当前：{workspaceLabel}</p>
+      {/if}
     </div>
     <div class="ai-panel__header-actions">
     <button type="button" class="ai-panel__new-chat" disabled={generating || !sessionId} on:click={startNewChat}>新对话</button>
@@ -320,8 +412,8 @@
 
   {#if !hasSession}
     <div class="ai-panel__empty" role="status">
-      <strong>先连接主机或数据库</strong>
-      <span>侧栏会跟随当前标签生成 SQL 或 Shell。</span>
+      <strong>先连接主机或数据源</strong>
+      <span>侧栏会跟随当前标签生成 SQL、查询 DSL 或 Shell。</span>
     </div>
   {:else if checkingKey}
     <div class="ai-panel__empty" role="status">
@@ -336,7 +428,7 @@
   {:else}
     <div class="ai-panel__thread">
       {#if messages.length === 0}
-        <div class="ai-panel__hint">用自然语言描述你想查的数据或要跑的命令。</div>
+        <div class="ai-panel__hint">{emptyHint}</div>
       {/if}
       {#each messages as item, index (index)}
         <div class="ai-panel__bubble" class:ai-panel__bubble--user={item.role === 'user'}>
@@ -356,7 +448,7 @@
         </div>
       {/each}
       {#if generating}
-        <div class="ai-panel__hint">正在生成…</div>
+        <div class="ai-panel__hint">正在生成… <button type="button" class="ai-panel__stop-inline" on:click={stopGeneration}>停止</button></div>
       {/if}
       {#if errorMessage}
         <div class="ai-panel__error">{errorMessage}</div>
@@ -366,11 +458,14 @@
     <form class="ai-panel__composer" on:submit|preventDefault={sendMessage}>
       <textarea
         bind:value={draft}
-        placeholder={copilotMode === 'database' ? '描述要生成的 SQL…' : '描述要生成的命令…'}
-        disabled={generating}
+        placeholder={composerPlaceholder}
         on:keydown={handleComposerKeydown}
       ></textarea>
-      <button type="submit" disabled={generating || !draft.trim()}>发送</button>
+      {#if generating}
+        <button type="button" class="ai-panel__stop" on:click={stopGeneration}>停止</button>
+      {:else}
+        <button type="submit" disabled={!draft.trim()}>发送</button>
+      {/if}
     </form>
   {/if}
 </aside>
@@ -419,6 +514,16 @@
     margin: 2px 0 0;
     font-size: 14px;
     font-weight: 650;
+  }
+
+  .ai-panel__context {
+    margin: 4px 0 0;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--text-secondary);
   }
   .ai-panel__header-actions { display: flex; align-items: center; gap: 6px; }
   .ai-panel__new-chat { border: 1px solid var(--glass-border); border-radius: 6px; background: transparent; color: var(--text-secondary); padding: 4px 7px; font-size: 11px; cursor: pointer; }
@@ -578,5 +683,22 @@
     background: var(--accent-primary);
     border-color: var(--accent-primary);
     color: #fff;
+  }
+
+  .ai-panel__stop {
+    background: transparent !important;
+    border-color: #fecaca !important;
+    color: #b91c1c !important;
+  }
+
+  .ai-panel__stop-inline {
+    margin-left: 8px;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    background: transparent;
+    color: #b91c1c;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
   }
 </style>

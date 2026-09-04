@@ -1,6 +1,9 @@
 package copilot
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseArtifactRequiresJSON(t *testing.T) {
 	if _, ok := ParseArtifact("好的，我来写一条 SQL"); ok {
@@ -50,8 +53,34 @@ func TestParseArtifactRejectsEmptyContent(t *testing.T) {
 	}
 }
 
-func TestParseArtifactRejectsUnknownType(t *testing.T) {
-	if _, ok := ParseArtifact(`{"type":"python","content":"print(1)","summary":"x"}`); ok {
-		t.Fatal("unknown type must be rejected")
+func TestParseArtifactSkipsLeadingBareDSL(t *testing.T) {
+	raw := "说明：\n```json\n{\"query\":{\"match_all\":{}},\"size\":20}\n```\n" +
+		`{"type":"native_query","content":{"query":{"match_all":{}},"size":20},"summary":"最近一周","destructive":false}`
+	got, ok := ParseArtifact(raw)
+	if !ok {
+		t.Fatal("expected trailing native_query artifact")
+	}
+	if got.Type != "native_query" || got.Summary != "最近一周" {
+		t.Fatalf("unexpected artifact: %+v", got)
+	}
+}
+
+func TestExtractArtifactStripsEnvelopeAndPromotesBareQuery(t *testing.T) {
+	raw := "先看这个：\n{\"query\":{\"match_all\":{}},\"size\":5}\n"
+	art, display := ExtractArtifact(raw, "elasticsearch")
+	if art == nil || art.Type != "native_query" {
+		t.Fatalf("expected promoted native_query, got %+v", art)
+	}
+	if strings.Contains(display, `"query"`) {
+		t.Fatalf("display should drop bare query JSON, got %q", display)
+	}
+
+	wrapped := "说明文字\n{\"type\":\"native_query\",\"content\":\"GET k\",\"summary\":\"读键\",\"destructive\":false}\n"
+	art2, display2 := ExtractArtifact(wrapped, "redis")
+	if art2 == nil || art2.Content != "GET k" {
+		t.Fatalf("unexpected art: %+v", art2)
+	}
+	if strings.Contains(display2, `"type"`) {
+		t.Fatalf("display should strip artifact envelope, got %q", display2)
 	}
 }

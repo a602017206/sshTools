@@ -9,7 +9,8 @@ import {
   resolveMode,
   resolveSshToolTab,
   resolveWorkspace,
-  sessionMatchesMode
+  sessionMatchesMode,
+  sshToolPanelHidden
 } from './workspaceTabs.js';
 
 test('exposes ssh and database modes only', () => {
@@ -47,6 +48,14 @@ test('ssh tool tabs are files and performance', () => {
   );
   assert.equal(resolveSshToolTab('performance'), 'performance');
   assert.equal(resolveSshToolTab('nope'), 'files');
+});
+
+test('ssh tool panels hide the inactive tab without implying unmount', () => {
+  assert.equal(sshToolPanelHidden('files', 'files'), false);
+  assert.equal(sshToolPanelHidden('files', 'performance'), true);
+  assert.equal(sshToolPanelHidden('performance', 'files'), true);
+  assert.equal(sshToolPanelHidden('performance', 'performance'), false);
+  assert.equal(sshToolPanelHidden('nope', 'files'), false);
 });
 
 test('resolveWorkspace stays compatible as a mode alias', () => {

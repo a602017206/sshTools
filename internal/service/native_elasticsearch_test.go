@@ -132,6 +132,22 @@ func (c *fakeElasticsearchNativeClient) DeleteDocument(context.Context, string, 
 	return NativeMutationResult{Summary: "deleted"}, nil
 }
 
+func (c *fakeElasticsearchNativeClient) CreateIndex(context.Context, string, string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: "created"}, nil
+}
+
+func (c *fakeElasticsearchNativeClient) DeleteIndex(context.Context, string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: "deleted"}, nil
+}
+
+func (c *fakeElasticsearchNativeClient) RefreshIndex(context.Context, string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: "refreshed"}, nil
+}
+
+func (c *fakeElasticsearchNativeClient) PerformRequest(context.Context, string, string, string) (NativeQueryResult, error) {
+	return NativeQueryResult{Summary: "ok", Content: `{"status":200}`}, nil
+}
+
 func (c *fakeElasticsearchNativeClient) Close() error {
 	c.closed = true
 	return nil

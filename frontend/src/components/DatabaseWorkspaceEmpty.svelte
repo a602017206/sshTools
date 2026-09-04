@@ -5,12 +5,12 @@
 
 <div class="db-workspace-empty" role="status">
   <div class="empty-card">
-    <p class="kicker">数据库</p>
-    <h2>还没有数据库会话</h2>
-    <p class="detail">从左侧资源树连接实例，或新建数据库连接。</p>
+    <p class="kicker">数据</p>
+    <h2>还没有打开的数据会话</h2>
+    <p class="detail">从左侧资源树双击连接数据库、缓存或搜索实例；新建连接仍可在同一对话框里按类型选择。</p>
     <div class="actions">
       <button type="button" class="secondary" on:click={onFocusSidebar}>从资源树连接</button>
-      <button type="button" class="primary" on:click={onCreateConnection}>新建数据库连接</button>
+      <button type="button" class="primary" on:click={() => onCreateConnection()}>新建连接</button>
     </div>
   </div>
 </div>

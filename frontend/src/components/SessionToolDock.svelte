@@ -1,7 +1,7 @@
 <script>
   import FileManager from './FileManager.svelte';
   import ServerMonitor from './ServerMonitor.svelte';
-  import { SSH_TOOL_TABS, resolveSshToolTab } from '../lib/workspaceTabs.js';
+  import { SSH_TOOL_TABS, resolveSshToolTab, sshToolPanelHidden } from '../lib/workspaceTabs.js';
 
   export let activeTab = 'files';
   export let boundSessionName = '';
@@ -44,13 +44,20 @@
         <span>文件与性能都会跟随当前 SSH 会话。</span>
         <button type="button" on:click={onConnectHint}>打开资源树</button>
       </div>
-    {:else if toolTab === 'performance'}
-      <div class="dock-panel">
-        <ServerMonitor />
-      </div>
     {:else}
-      <div class="dock-panel">
+      <div
+        class="dock-panel"
+        hidden={sshToolPanelHidden(toolTab, 'files')}
+        aria-hidden={sshToolPanelHidden(toolTab, 'files')}
+      >
         <FileManager />
+      </div>
+      <div
+        class="dock-panel"
+        hidden={sshToolPanelHidden(toolTab, 'performance')}
+        aria-hidden={sshToolPanelHidden(toolTab, 'performance')}
+      >
+        <ServerMonitor panelVisible={!sshToolPanelHidden(toolTab, 'performance')} />
       </div>
     {/if}
   </div>
@@ -138,6 +145,10 @@
   .dock-panel {
     height: 100%;
     min-height: 0;
+  }
+
+  .dock-panel[hidden] {
+    display: none;
   }
 
   .dock-empty {

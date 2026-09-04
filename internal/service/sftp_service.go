@@ -1,8 +1,10 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	"AHaSSHTools/internal/ssh"
 )
@@ -14,6 +16,7 @@ type ProgressCallback func(progress ssh.TransferProgress)
 type SFTPService struct {
 	sessionManager  *ssh.SessionManager
 	transferManager *ssh.TransferManager
+	uploadGates     sync.Map
 }
 
 // NewSFTPService creates a new SFTP service
@@ -22,6 +25,13 @@ func NewSFTPService(sm *ssh.SessionManager, tm *ssh.TransferManager) *SFTPServic
 		sessionManager:  sm,
 		transferManager: tm,
 	}
+}
+
+func (s *SFTPService) lockSessionUpload(sessionID string) func() {
+	value, _ := s.uploadGates.LoadOrStore(sessionID, &sync.Mutex{})
+	mu := value.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // ListFiles lists files in a directory
@@ -73,41 +83,38 @@ func (s *SFTPService) UploadFile(sessionID string, localPath string, remotePath 
 		return "", fmt.Errorf("failed to get SFTP client: %w", err)
 	}
 
-	// Extract filename from local path and append to remote directory
 	localFilename := filepath.Base(localPath)
-	remoteFilePath := filepath.ToSlash(filepath.Join(remotePath, localFilename))
+	remoteFilePath := joinRemoteUploadPath(remotePath, localFilename)
+	return s.startFileUpload(sessionID, sftpClient, localPath, remoteFilePath, localFilename, progressCallback)
+}
 
-	// Create transfer context
+func (s *SFTPService) startFileUpload(sessionID string, sftpClient *ssh.SFTPClient, localPath, remoteFilePath, displayName string, progressCallback ProgressCallback) (string, error) {
 	transfer, err := s.transferManager.StartTransfer(sessionID, "upload", []string{localPath})
 	if err != nil {
 		return "", fmt.Errorf("failed to start transfer: %w", err)
 	}
 
-	// Start upload in goroutine
 	go func() {
-		// Progress callback wrapper
+		unlock := s.lockSessionUpload(sessionID)
+		defer unlock()
 		progressCb := func(progress ssh.TransferProgress) {
 			progress.TransferID = transfer.ID
 			progress.SessionID = sessionID
-			progress.Filename = localFilename
+			progress.Filename = displayName
 
-			// Update transfer manager
 			s.transferManager.UpdateProgress(transfer.ID, progress)
 
-			// Call external callback
 			if progressCallback != nil {
 				progressCallback(progress)
 			}
 		}
 
-		// Perform upload
 		err := sftpClient.UploadFile(localPath, remoteFilePath, progressCb)
 		if err != nil {
-			// Report error
 			errorProgress := ssh.TransferProgress{
 				TransferID: transfer.ID,
 				SessionID:  sessionID,
-				Filename:   localFilename,
+				Filename:   displayName,
 				Status:     "failed",
 				Error:      err.Error(),
 			}
@@ -123,19 +130,102 @@ func (s *SFTPService) UploadFile(sessionID string, localPath string, remotePath 
 	return transfer.ID, nil
 }
 
-// UploadFiles uploads multiple files
+// UploadFiles uploads files and directories. Directories are expanded into a
+// relative tree under remotePath (the folder name is preserved).
 func (s *SFTPService) UploadFiles(sessionID string, localPaths []string, remotePath string, progressCallback ProgressCallback) ([]string, error) {
-	transferIDs := make([]string, 0, len(localPaths))
+	items, err := ExpandLocalUploadPaths(localPaths)
+	if err != nil {
+		return nil, err
+	}
+	return s.UploadItems(sessionID, remotePath, items, progressCallback)
+}
 
-	for _, localPath := range localPaths {
-		transferID, err := s.UploadFile(sessionID, localPath, remotePath, progressCallback)
-		if err != nil {
-			return transferIDs, err
-		}
-		transferIDs = append(transferIDs, transferID)
+// UploadItems uploads an already expanded local tree, using each item's RelPath.
+// Directories and files share one transfer and run one at a time on the existing
+// SFTP channel so a large folder cannot fan out thousands of goroutines or stall sshd.
+func (s *SFTPService) UploadItems(sessionID, remotePath string, items []LocalUploadItem, progressCallback ProgressCallback) ([]string, error) {
+	if len(items) == 0 {
+		return []string{}, nil
 	}
 
-	return transferIDs, nil
+	sftpClient, err := s.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+
+	_, files := partitionLocalUploadItems(items)
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, file.LocalPath)
+	}
+	transfer, err := s.transferManager.StartTransfer(sessionID, "upload", paths)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transfer: %w", err)
+	}
+
+	go s.runItemUpload(sessionID, remotePath, items, sftpClient, transfer, progressCallback)
+	return []string{transfer.ID}, nil
+}
+
+func (s *SFTPService) runItemUpload(
+	sessionID, remotePath string,
+	items []LocalUploadItem,
+	sftpClient *ssh.SFTPClient,
+	transfer *ssh.TransferContext,
+	progressCallback ProgressCallback,
+) {
+	defer s.transferManager.CleanupTransfer(transfer.ID)
+	unlock := s.lockSessionUpload(sessionID)
+	defer unlock()
+
+	_, files := partitionLocalUploadItems(items)
+	total := len(files)
+	done := 0
+	emit := func(filename, status, errMsg string) {
+		percentage := 100.0
+		if total > 0 {
+			percentage = float64(done) / float64(total) * 100
+		}
+		progress := ssh.TransferProgress{
+			TransferID: transfer.ID,
+			SessionID:  sessionID,
+			Filename:   filename,
+			Percentage: percentage,
+			Status:     status,
+			Error:      errMsg,
+		}
+		s.transferManager.UpdateProgress(transfer.ID, progress)
+		if progressCallback != nil {
+			progressCallback(progress)
+		}
+	}
+
+	err := runFolderUpload(folderUploadRunner{
+		mkdir: sftpClient.EnsureDirectory,
+		upload: func(localPath, remotePath string) error {
+			rel := remotePath
+			if total > 0 {
+				rel = fmt.Sprintf("%s (%d/%d)", filepath.ToSlash(filepath.Base(remotePath)), done+1, total)
+			}
+			emit(rel, "running", "")
+			if err := sftpClient.UploadFile(localPath, remotePath, nil); err != nil {
+				return err
+			}
+			done++
+			emit(rel, "running", "")
+			return nil
+		},
+		cancelled: transfer.IsCancelled,
+	}, remotePath, items)
+
+	switch {
+	case errors.Is(err, errFolderUploadCancelled):
+		emit("已取消", "cancelled", err.Error())
+	case err != nil:
+		emit("上传失败", "failed", err.Error())
+	default:
+		emit("上传完成", "completed", "")
+	}
 }
 
 // DownloadFile downloads a single file

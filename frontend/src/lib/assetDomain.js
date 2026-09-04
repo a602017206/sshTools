@@ -10,7 +10,7 @@ export const ASSET_DOMAINS = [
 
 const CACHE_DB_TYPES = new Set(['redis', 'memcached', 'keydb']);
 const SEARCH_DB_TYPES = new Set(['elasticsearch', 'opensearch']);
-const MQ_DB_TYPES = new Set(['kafka']);
+const MQ_DB_TYPES = new Set(['kafka', 'rocketmq', 'rabbitmq']);
 const DATABASE_DB_TYPES = new Set([
   'mysql',
   'postgresql',

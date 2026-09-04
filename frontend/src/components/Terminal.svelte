@@ -4,12 +4,16 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import '@xterm/xterm/css/xterm.css';
-  import { themeStore } from '../stores.js';
   import { ClipboardGetText, ClipboardSetText } from '../../wailsjs/runtime/runtime.js';
-  import { getTerminalShortcutAction } from '../lib/terminalShortcuts.js';
-  import { get } from 'svelte/store';
+  import { getTerminalShortcutAction, shouldScrollToBottomBeforeArrowKey } from '../lib/terminalShortcuts.js';
+  import { getXtermTheme, resolveTerminalThemeFromSettings } from '../lib/terminalTheme.js';
+  import { decodeTerminalOutput, normalizeTerminalCharset, terminalContextMenuItems, TERMINAL_CHARSET_OPTIONS } from '../lib/terminalCharset.js';
+  import { getViewportMenuPosition, portalToBody } from '../lib/contextMenu.js';
 
   export let sessionId = null;
+  export let encoding = 'utf-8';
+  export let encodingEnabled = false;
+  export let onEncodingChange = null;
   export let onData = null;
   export let onResize = null;
   export let onZModemTransfer = null;
@@ -32,41 +36,24 @@
   let zmodemDownloadSavedPath = null;
   let zmodemTransferModal = null;
   let handleAppearanceUpdated = null;
-  // 从 themeStore 获取初始主题值（壳层明暗）；终端视口始终深色，对齐玻璃拟态高保真稿
-  let currentTheme = get(themeStore);
+  let contextMenu = null;
+  $: currentEncoding = normalizeTerminalCharset(encoding);
+  function readTerminalXtermTheme(settings) {
+    const resolved = settings
+      ? resolveTerminalThemeFromSettings(settings)
+      : (typeof document !== 'undefined' && document.documentElement.dataset.terminalTheme) || 'dark';
+    return getXtermTheme(resolved);
+  }
 
-  // 控制台视口主题：明暗 UI 下均保持深色可读区
-  const consoleTheme = {
-    background: '#050914',
-    foreground: '#d8e1ef',
-    cursor: '#39d5e8',
-    black: '#000000',
-    red: '#cd3131',
-    green: '#0dbc79',
-    yellow: '#e5e510',
-    blue: '#2472c8',
-    magenta: '#bc3fbc',
-    cyan: '#11a8cd',
-    white: '#e5e5e5',
-    brightBlack: '#666666',
-    brightRed: '#f14c4c',
-    brightGreen: '#23d18b',
-    brightYellow: '#f5f543',
-    brightBlue: '#3b8eea',
-    brightMagenta: '#d670d6',
-    brightCyan: '#29b8db',
-    selectionBackground: 'rgba(57, 213, 232, 0.28)',
-    selectionForeground: undefined,
-    selectionInactiveBackground: 'rgba(57, 213, 232, 0.14)',
-  };
-
-  // 订阅主题变化（字体等仍可跟随；颜色固定控制台主题）
-  const unsubscribe = themeStore.subscribe(state => {
-    currentTheme = state;
-    if (terminal) {
-      terminal.options.theme = consoleTheme;
+  function applyTerminalXtermTheme(settings) {
+    if (!terminal) {
+      return;
     }
-  });
+    terminal.options.theme = readTerminalXtermTheme(settings);
+    if (typeof terminal.refresh === 'function' && terminal.rows) {
+      terminal.refresh(0, terminal.rows - 1);
+    }
+  }
 
   function readTerminalTypography() {
     if (typeof document === 'undefined') {
@@ -149,12 +136,60 @@
     }
   }
 
-  function pasteFromClipboard() {
-    readClipboardText()
-      .then(pasteText)
-      .catch(error => {
-        console.error('Failed to read clipboard:', error);
+  async function pasteFromClipboard() {
+    try {
+      const text = await readClipboardText();
+      pasteText(text ?? '');
+    } catch (error) {
+      console.error('Failed to paste from clipboard:', error);
+    }
+  }
+
+  function writeDecoded(octets) {
+    if (!terminal) return;
+    const decoded = decodeTerminalOutput(octets, currentEncoding);
+    terminal.write(decoded);
+  }
+
+  function closeContextMenu() {
+    contextMenu = null;
+  }
+
+  function openContextMenu(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const selectedText = terminal?.getSelection?.() || '';
+    contextMenu = {
+      selectedText,
+      ...getViewportMenuPosition({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        menuWidth: 160,
+        menuHeight: 80,
+        viewWidth: typeof window !== 'undefined' ? window.innerWidth : Number.POSITIVE_INFINITY,
+        viewHeight: typeof window !== 'undefined' ? window.innerHeight : Number.POSITIVE_INFINITY,
+      })
+    };
+  }
+
+  function handleEncodingSelect(event) {
+    event.stopPropagation();
+    const next = normalizeTerminalCharset(event.currentTarget.value);
+    onEncodingChange?.(next);
+  }
+
+  function handleContextMenuAction(id) {
+    const selectedText = contextMenu?.selectedText || '';
+    closeContextMenu();
+    if (id === 'copy' && selectedText) {
+      copyToClipboard(selectedText).catch((error) => {
+        console.error('Failed to copy terminal selection:', error);
       });
+      return;
+    }
+    if (id === 'paste') {
+      pasteFromClipboard();
+    }
   }
 
   onMount(async () => {
@@ -164,11 +199,12 @@
       cursorBlink: true,
       fontSize: typography.fontSize,
       fontFamily: typography.fontFamily,
-      theme: consoleTheme,
+      theme: readTerminalXtermTheme(),
       allowProposedApi: true,
       scrollback: 1000,
+      scrollOnUserInput: true,
       convertEol: true, // 启用自动换行转换，确保 \n 转换为 \r\n，光标回到行首
-      rightClickSelectsWord: true, // 右键点击选择单词
+      rightClickSelectsWord: false,
       macOptionClickForcesSelection: true, // macOS Option+Click 强制选择
     });
 
@@ -185,6 +221,10 @@
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') {
         return true;
+      }
+
+      if (shouldScrollToBottomBeforeArrowKey(event, terminal.buffer.active.viewportY)) {
+        terminal.scrollToBottom();
       }
 
       const action = getTerminalShortcutAction(event, terminal.hasSelection());
@@ -223,6 +263,7 @@
         pasteText(text);
       }
     });
+    terminalElement.addEventListener('contextmenu', openContextMenu);
 
     // 动态导入 zmodem.js
     try {
@@ -233,9 +274,7 @@
       zsentry = new Zmodem.Sentry({
         to_terminal: (octets) => {
           // 非 ZMODEM 数据写入终端
-          if (terminal) {
-            terminal.write(new Uint8Array(octets));
-          }
+          writeDecoded(new Uint8Array(octets));
         },
         sender: (octets) => {
           // 发送 ZMODEM 数据到 SSH 会话
@@ -316,8 +355,9 @@
     });
     resizeObserver.observe(terminalElement);
 
-    handleAppearanceUpdated = () => {
+    handleAppearanceUpdated = (event) => {
       applyTerminalTypography();
+      applyTerminalXtermTheme(event?.detail);
     };
     window.addEventListener('app:appearance-updated', handleAppearanceUpdated);
 
@@ -330,9 +370,7 @@
   });
 
   onDestroy(() => {
-    if (unsubscribe) {
-      unsubscribe();
-    }
+    closeContextMenu();
     if (terminal) {
       terminal.dispose();
     }
@@ -691,7 +729,7 @@
     }
 
     // 如果跳过 ZMODEM 或 Sentry 未初始化，直接写入终端
-    terminal.write(octets);
+    writeDecoded(octets);
   }
 
   export function writeln(data) {
@@ -723,9 +761,47 @@
   }
 </script>
 
-<div class="terminal-container ops-terminal-canvas" bind:this={terminalElement}>
-  <!-- xterm 终端将在这里渲染 -->
+<svelte:window on:click={closeContextMenu} />
+
+<div class="terminal-shell">
+  <div
+    class="terminal-container ops-terminal-canvas"
+    bind:this={terminalElement}
+    on:click={closeContextMenu}
+  >
+    <!-- xterm 终端将在这里渲染 -->
+  </div>
+  {#if encodingEnabled}
+    <label class="terminal-encoding" on:click|stopPropagation on:mousedown|stopPropagation>
+      <span>编码</span>
+      <select value={currentEncoding} on:change={handleEncodingSelect}>
+        {#each TERMINAL_CHARSET_OPTIONS as option}
+          <option value={option.id}>{option.label}</option>
+        {/each}
+      </select>
+    </label>
+  {/if}
 </div>
+
+{#if contextMenu}
+  <div
+    class="terminal-context-menu"
+    style={`left:${contextMenu.x}px; top:${contextMenu.y}px;`}
+    use:portalToBody
+    on:click|stopPropagation
+    role="menu"
+  >
+    {#each terminalContextMenuItems(Boolean(contextMenu.selectedText)) as item}
+      <button
+        type="button"
+        disabled={item.disabled}
+        on:click={() => handleContextMenuAction(item.id)}
+      >
+        {item.label}
+      </button>
+    {/each}
+  </div>
+{/if}
 
 <!-- ZMODEM 下载对话框（非阻塞） -->
 {#if zmodemDownloadOffer}
@@ -794,6 +870,13 @@
 
 
 <style>
+  .terminal-shell {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
   .terminal-container {
     width: 100%;
     height: 100%;
@@ -802,6 +885,63 @@
 
   .terminal-container.ops-terminal-canvas {
     position: relative;
+  }
+
+  .terminal-encoding {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+
+  .terminal-encoding select {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    padding: 1px 0;
+  }
+
+  .terminal-context-menu {
+    position: fixed;
+    z-index: 140;
+    min-width: 148px;
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    background: var(--bg-primary);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  }
+
+  .terminal-context-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .terminal-context-menu button:hover:not(:disabled) {
+    background: var(--bg-secondary);
+  }
+
+  .terminal-context-menu button:disabled {
+    opacity: 0.45;
+    cursor: default;
   }
 
   :global(.xterm) {

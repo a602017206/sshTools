@@ -2,12 +2,15 @@
   import Dialog from './ui/Dialog.svelte';
   import { assetsStore } from '../stores.js';
   import { buildJDBCConnectionOptions } from '../lib/jdbcConnectionOptions.js';
-  import { databaseTypeRequiresUsername, isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
+  import { databaseTypeRequiresUsername, databaseTypeRequiresPassword, databaseTypeSupportsAuthNone, isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
   import { createBlankConnectionFormData } from '../lib/connectionFormData.js';
   import { shouldApplyClone } from '../lib/cloneDialogState.js';
   import { shouldResetBlankConnectionForm } from '../lib/connectionDialogRequest.js';
   import { shouldApplyEditConnectionResult, shouldLoadEditConnection } from '../lib/editConnectionLoadState.js';
-  import { defaultAssetTypeForDomain, groupDatabaseTypesByDomain, resolveAssetDomain } from '../lib/assetDomain.js';
+  import { defaultAssetTypeForDomain, resolveAssetDomain } from '../lib/assetDomain.js';
+  import { groupDatabaseTypesByCategory } from '../lib/databaseTypeCatalog.js';
+  import { applyPreferredGroupToFormData, resolvePreferredConnectionGroup } from '../lib/assetGroupTree.js';
+  import { TERMINAL_CHARSET_OPTIONS, normalizeTerminalCharset } from '../lib/terminalCharset.js';
 
   export let isOpen = false;
   export let onAdd = () => {};
@@ -16,6 +19,7 @@
   export let cloningAsset = null;
   export let dialogRequestVersion = 0;
   export let preferredDomain = 'all';
+  export let preferredGroup = '';
 
   let assetType = 'ssh';
   let authType = 'password';
@@ -29,6 +33,7 @@
   let appliedCloningAsset = null;
   let resetEditingAssetId = null;
   let appliedDialogRequestVersion = 0;
+  let appliedPreferredGroupVersion = -1;
   const labelClass = 'block text-xs font-medium ops-field-label mb-1';
   const inputClass = 'w-full px-3 py-1.5 ops-input border rounded-md text-xs focus:outline-none focus:ring-2 transition-all';
   const passwordInputClass = `${inputClass} pr-10`;
@@ -51,9 +56,11 @@
     { value: 'couchbase', label: 'Couchbase', port: '8091' },
     { value: 'influxdb', label: 'InfluxDB', port: '8086' },
     { value: 'neo4j', label: 'Neo4j', port: '7687' },
-    { value: 'kafka', label: 'Kafka', port: '9092' }
+    { value: 'kafka', label: 'Kafka', port: '9092' },
+    { value: 'rocketmq', label: 'Apache RocketMQ', port: '9876' },
+    { value: 'rabbitmq', label: 'RabbitMQ', port: '5672' }
   ];
-  $: databaseTypeGroups = groupDatabaseTypesByDomain(databaseTypes);
+  $: databaseTypeGroups = groupDatabaseTypesByCategory(databaseTypes);
 
   // Group selector state
   let showGroupDropdown = false;
@@ -83,7 +90,17 @@
     : filteredGroups;
   $: isSQLiteDatabase = assetType === 'database' && formData.dbType === 'sqlite';
   $: isNativeDatabase = assetType === 'database' && isNativeDatabaseType(formData.dbType);
-  $: requiresDatabaseUsername = !isSQLiteDatabase && (!isNativeDatabase || databaseTypeRequiresUsername(formData.dbType));
+  $: supportsAuthNone = assetType === 'database' && databaseTypeSupportsAuthNone(formData.dbType);
+  $: requiresDatabaseUsername = !isSQLiteDatabase && authType !== 'none' && (!isNativeDatabase || databaseTypeRequiresUsername(formData.dbType));
+  $: requiresDatabasePassword = !isSQLiteDatabase && authType !== 'none' && (
+    assetType !== 'database' || databaseTypeRequiresPassword(formData.dbType)
+  );
+  $: showDatabasePasswordFields = authType === 'password' && !isSQLiteDatabase;
+  $: showDatabaseUsernameField = !isSQLiteDatabase && (
+    (assetType === 'ssh' && authType === 'password')
+    || assetType === 'docker'
+    || (assetType === 'database' && authType !== 'none' && (requiresDatabaseUsername || supportsAuthNone))
+  );
   $: selectedJDBCDriver = jdbcDrivers.find(driver => driver.id === formData.dbType);
   $: jdbcProfiles = selectedJDBCDriver?.profiles || [];
   $: selectedJDBCProfile =
@@ -120,12 +137,12 @@
       return;
     }
 
-    if (authType === 'password' && !isSQLiteDatabase && !formData.password) {
+    if (requiresDatabasePassword && !formData.password) {
       testResult = '请输入密码以测试连接';
       return;
     }
 
-    if (authType === 'password' && requiresDatabaseUsername && !formData.username) {
+    if (requiresDatabaseUsername && !formData.username) {
       testResult = '请填写用户名';
       return;
     }
@@ -219,13 +236,13 @@
       return;
     }
 
-    if (authType === 'password' && requiresDatabaseUsername && !formData.username) {
-      alert('密码认证需要填写用户名');
+    if (requiresDatabaseUsername && !formData.username) {
+      alert('请填写用户名');
       return;
     }
 
-    if (authType === 'password' && !isSQLiteDatabase && !formData.password) {
-      alert('密码认证需要输入密码');
+    if (requiresDatabasePassword && !formData.password) {
+      alert('请输入密码');
       return;
     }
 
@@ -250,12 +267,13 @@
         tags: [formData.group || '默认分组'],
         type: assetType,
         metadata: {
-          database: formData.database || undefined,
-          db_type: formData.dbType,
-          driver_profile_id: formData.driverProfileID || undefined,
-          oracle_connection_mode: formData.dbType === 'oracle' ? formData.oracleConnectionMode : undefined,
-          sqlserver_instance_name: formData.dbType === 'sqlserver' ? formData.sqlServerInstanceName || undefined : undefined,
-          domain: resolveAssetDomain({ type: assetType, metadata: { db_type: formData.dbType } })
+          database: assetType === 'database' ? (formData.database || undefined) : undefined,
+          db_type: assetType === 'database' ? formData.dbType : undefined,
+          driver_profile_id: assetType === 'database' ? (formData.driverProfileID || undefined) : undefined,
+          oracle_connection_mode: assetType === 'database' && formData.dbType === 'oracle' ? formData.oracleConnectionMode : undefined,
+          sqlserver_instance_name: assetType === 'database' && formData.dbType === 'sqlserver' ? formData.sqlServerInstanceName || undefined : undefined,
+          domain: resolveAssetDomain({ type: assetType, metadata: assetType === 'database' ? { db_type: formData.dbType } : {} }),
+          encoding: assetType === 'ssh' ? normalizeTerminalCharset(formData.encoding) : undefined
         }
       };
 
@@ -266,8 +284,8 @@
         // Save password if checkbox is checked
         if (authType === 'password' && formData.password && formData.savePassword) {
           await window.wailsBindings.SavePassword(connectionData.id, formData.password);
-        } else if (authType === 'password' && !formData.savePassword) {
-          // Remove saved password if checkbox is unchecked
+        } else if (authType === 'none' || (authType === 'password' && !formData.savePassword)) {
+          // 无认证或未勾选保存时清理已存密码
           await window.wailsBindings.DeletePassword(connectionData.id);
         }
 
@@ -306,6 +324,8 @@
     editingAssetLoaded = false; // Reset the loaded flag
     resetEditingAssetId = null;
     applyPreferredDomainDefaults();
+    formData = applyPreferredGroupToFormData(formData, preferredGroup);
+    groupSearchTerm = formData.group || '';
   }
 
   function applyPreferredDomainDefaults() {
@@ -364,6 +384,17 @@
 
   $: wasOpen = isOpen;
 
+  $: if (
+    isOpen
+    && !editingAsset
+    && !cloningAsset
+    && appliedPreferredGroupVersion !== dialogRequestVersion
+  ) {
+    formData = applyPreferredGroupToFormData(formData, preferredGroup);
+    groupSearchTerm = resolvePreferredConnectionGroup(preferredGroup) || formData.group || '';
+    appliedPreferredGroupVersion = dialogRequestVersion;
+  }
+
   function getDefaultPortFor(type, dbType) {
     switch (type) {
       case 'ssh': return '22';
@@ -399,6 +430,15 @@
     if (!editingAsset && assetType === 'database') {
       formData.port = getDefaultPortFor('database', event.currentTarget.value);
     }
+    if (databaseTypeSupportsAuthNone(databaseType)) {
+      if (!editingAsset) {
+        authType = 'none';
+      } else if (authType !== 'none' && authType !== 'password') {
+        authType = 'none';
+      }
+    } else if (authType === 'none') {
+      authType = 'password';
+    }
     testResult = '';
   }
 
@@ -406,8 +446,12 @@
     if (authType !== 'password' && authType !== 'key') {
       authType = 'password';
     }
-  } else {
-    // 数据库和 Docker 只支持密码认证
+  } else if (supportsAuthNone) {
+    if (authType !== 'none' && authType !== 'password') {
+      authType = 'none';
+    }
+  } else if (authType !== 'password') {
+    // 数据库和 Docker 默认密码认证；Kafka 等支持「无」时走上一分支
     authType = 'password';
   }
 
@@ -435,6 +479,7 @@
           database: conn.metadata?.database || '',
           oracleConnectionMode: conn.metadata?.oracle_connection_mode === 'sid' ? 'sid' : 'service',
           sqlServerInstanceName: conn.metadata?.sqlserver_instance_name || '',
+          encoding: conn.metadata?.encoding || 'utf-8',
         };
         assetType = conn.type || 'ssh';
         authType = conn.auth_type || 'password';
@@ -728,6 +773,18 @@
         </div>
       {/if}
 
+     {#if assetType === 'ssh'}
+       <div>
+         <label class={labelClass} for="connection-encoding">编码</label>
+         <select id="connection-encoding" bind:value={formData.encoding} class={inputClass}>
+           {#each TERMINAL_CHARSET_OPTIONS as option}
+             <option value={option.id}>{option.label}</option>
+           {/each}
+         </select>
+         <p class="mt-0.5 text-[10px] ops-help">远端终端为 GBK 等中文编码时请改这里，否则粘贴中文会乱码。已打开的会话会立即生效。</p>
+       </div>
+     {/if}
+
      {#if testResult}
        <div class={`p-2 rounded-md text-xs ${
          testResult.includes('成功') ? 'ops-status-success' : 'ops-status-error'
@@ -804,7 +861,30 @@
        </div>
      {/if}
 
-      {#if ((assetType === 'ssh' && authType === 'password') || assetType === 'docker' || (assetType === 'database' && requiresDatabaseUsername)) && !isSQLiteDatabase}
+     {#if supportsAuthNone}
+       <div>
+         <div class={labelClass}>认证方式</div>
+         <div class="flex gap-2">
+           <button
+             type="button"
+             on:click={() => { authType = 'none'; formData.password = ''; formData.username = ''; testResult = ''; }}
+             class={authChoiceClass(authType === 'none')}
+           >
+             <div class="text-xs font-medium">无</div>
+           </button>
+           <button
+             type="button"
+             on:click={() => { authType = 'password'; testResult = ''; }}
+             class={authChoiceClass(authType === 'password')}
+           >
+             <div class="text-xs font-medium">密码</div>
+           </button>
+         </div>
+         <p class="mt-0.5 text-[10px] ops-help">无认证 Broker 选择「无」即可测试与保存，不必填密码。</p>
+       </div>
+     {/if}
+
+      {#if showDatabaseUsernameField}
         <div>
           <label class={labelClass} for="connection-username">
             用户名 {#if requiresDatabaseUsername}<span class="ops-required">*</span>{/if}
@@ -817,16 +897,16 @@
             autocapitalize="off"
             autocorrect="off"
             spellcheck={false}
-            placeholder="root"
+            placeholder={supportsAuthNone ? '可选' : 'root'}
             class={inputClass}
           />
         </div>
       {/if}
 
-      {#if authType === 'password' && !isSQLiteDatabase}
+      {#if showDatabasePasswordFields}
         <div>
           <label class={labelClass} for="connection-password">
-            密码 <span class="ops-required">*</span>
+            密码 {#if requiresDatabasePassword}<span class="ops-required">*</span>{/if}
           </label>
           <div class="relative">
             {#if showPassword}
@@ -834,7 +914,7 @@
                 type="text"
                 id="connection-password"
                 bind:value={formData.password}
-                placeholder="输入密码"
+                placeholder={requiresDatabasePassword ? '输入密码' : '可选，无密码可留空'}
                 class={passwordInputClass}
               />
             {:else}
@@ -842,7 +922,7 @@
                 type="password"
                 id="connection-password"
                 bind:value={formData.password}
-                placeholder="输入密码"
+                placeholder={requiresDatabasePassword ? '输入密码' : '可选，无密码可留空'}
                 class={passwordInputClass}
               />
             {/if}
@@ -916,7 +996,7 @@
              on:input={handleGroupSearchInput}
              on:keydown={handleGroupKeydown}
              on:blur={handleGroupBlur}
-             placeholder="例如：生产环境"
+             placeholder="例如：生产环境 或 生产/华东"
              class={inputClass}
            />
            {#if showGroupDropdown && filteredGroups.length > 0}
@@ -944,6 +1024,7 @@
              </div>
            {/if}
          </div>
+         <p class="mt-0.5 text-[10px] ops-help">支持多级目录，使用 <code>/</code> 分隔，例如 <code>生产/华东</code>。</p>
       </div>
 
      <div class="flex gap-2 pt-3">

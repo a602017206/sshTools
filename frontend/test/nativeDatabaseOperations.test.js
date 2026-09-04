@@ -18,6 +18,30 @@ test('defaultElasticsearchQuery 提供 match_all 模板', () => {
   const parsed = JSON.parse(defaultElasticsearchQuery(10));
   assert.deepEqual(parsed.query, { match_all: {} });
   assert.equal(parsed.size, 10);
+  assert.equal(parsed.from, 0);
+});
+
+test('canSaveRedisEditor 在截断时禁止保存', async () => {
+  const { canSaveRedisEditor, buildRedisDeleteKeysPayload, buildRedisCLIQuery, parseNativeMutationArtifact } = await import('../src/lib/nativeDatabaseOperations.js');
+  assert.equal(canSaveRedisEditor({ type: 'string', truncated: true }), false);
+  assert.equal(canSaveRedisEditor({ type: 'string', truncated: false }), true);
+  assert.deepEqual(JSON.parse(buildRedisDeleteKeysPayload(['a', 'b'])), { keys: ['a', 'b'] });
+  assert.deepEqual(JSON.parse(buildRedisCLIQuery('GET k', { readOnly: true })), {
+    mode: 'cli',
+    command: 'GET k',
+    readOnly: true
+  });
+  assert.deepEqual(parseNativeMutationArtifact(JSON.stringify({
+    operation: 'delete',
+    parent: '0',
+    name: 'k',
+    payload: '{}'
+  })), {
+    operation: 'delete',
+    parent: '0',
+    name: 'k',
+    payload: '{}'
+  });
 });
 
 test('buildRedisSetPayload 作为 string save 兼容', () => {

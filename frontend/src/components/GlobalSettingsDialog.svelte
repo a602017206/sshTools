@@ -2,6 +2,7 @@
   import Dialog from './ui/Dialog.svelte';
   import JDBCDriverManager from './JDBCDriverManager.svelte';
   import { ACCENT_PRESETS, FONT_PRESETS, TERMINAL_FONT_PRESETS, getDefaultAppSettings } from '../settings/appearance.js';
+  import { TERMINAL_THEME_PRESETS } from '../lib/terminalTheme.js';
 
   export let isOpen = false;
   export let value = getDefaultAppSettings();
@@ -37,6 +38,7 @@
     return {
       ...rest,
       font_size: Number(rest.font_size) || 14,
+      terminal_theme: rest.terminal_theme === 'light' || rest.terminal_theme === 'follow' ? rest.terminal_theme : 'dark',
       terminal_font_size: Number(rest.terminal_font_size) || 14,
       copilot_provider: rest.copilot_provider || 'openai_compatible',
       copilot_base_url: rest.copilot_base_url || '',
@@ -216,7 +218,7 @@
 
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
       <div class="space-y-2">
-        <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">主题模式</div>
+        <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">整体外观</div>
         <div class="grid grid-cols-3 gap-2">
           <button type="button" class="px-3 py-2 rounded-lg text-xs font-medium transition-colors {draft.theme_mode === 'light' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.theme_mode === 'light' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));' : ''} on:click={() => { draft.theme_mode = 'light'; triggerPreview(); }}>浅色</button>
           <button type="button" class="px-3 py-2 rounded-lg text-xs font-medium transition-colors {draft.theme_mode === 'dark' ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}" style={draft.theme_mode === 'dark' ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));' : ''} on:click={() => { draft.theme_mode = 'dark'; triggerPreview(); }}>深色</button>
@@ -225,6 +227,24 @@
       </div>
 
       <div class="space-y-2">
+        <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">终端主题</div>
+        <div class="grid grid-cols-3 gap-2">
+          {#each TERMINAL_THEME_PRESETS as option}
+            <button
+              type="button"
+              class="px-3 py-2 rounded-lg text-xs font-medium transition-colors {draft.terminal_theme === option.id ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}"
+              style={draft.terminal_theme === option.id ? 'background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));' : ''}
+              on:click={() => { draft.terminal_theme = option.id; triggerPreview(); }}
+            >
+              {option.label}
+            </button>
+          {/each}
+        </div>
+        <p class="text-[11px] leading-5 text-slate-500 dark:text-slate-400">与整体外观分开保存。跟随界面时，终端颜色随浅色/深色外观一起切换。</p>
+      </div>
+    </div>
+
+    <div class="space-y-2">
         <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">主题色</div>
         <div class="grid grid-cols-5 gap-2">
           {#each Object.entries(ACCENT_PRESETS) as [id, preset]}
@@ -241,7 +261,6 @@
             </button>
           {/each}
         </div>
-      </div>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

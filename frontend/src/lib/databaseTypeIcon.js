@@ -15,7 +15,9 @@ const DATABASE_TYPE_LABELS = {
   couchbase: 'Couchbase',
   influxdb: 'InfluxDB',
   neo4j: 'Neo4j',
-  kafka: 'Kafka'
+  kafka: 'Kafka',
+  rocketmq: 'Apache RocketMQ',
+  rabbitmq: 'RabbitMQ'
 };
 
 const KNOWN_DATABASE_TYPES = Object.keys(DATABASE_TYPE_LABELS);

@@ -89,5 +89,6 @@ test('识别文件管理快捷键', () => {
   assert.equal(matchFileManagerShortcut({ key: 'F2' }), 'rename');
   assert.equal(matchFileManagerShortcut({ key: 'r', metaKey: true }, { isMac: true }), 'refresh');
   assert.equal(matchFileManagerShortcut({ key: 'c', altKey: true, shiftKey: true }), 'copyPath');
-  assert.equal(matchFileManagerShortcut({ key: 'c', metaKey: true }, { isMac: true }), 'copy');
+  assert.equal(matchFileManagerShortcut({ key: 'v', ctrlKey: true }, { isMac: false }), 'paste');
+  assert.equal(matchFileManagerShortcut({ key: 'v', metaKey: true }, { isMac: true }), 'paste');
 });

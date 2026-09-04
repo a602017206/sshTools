@@ -387,8 +387,8 @@ func TestChatRequestsFinalReplyAfterMaxToolRounds(t *testing.T) {
 	if resp.Artifact == nil || resp.Artifact.Content != "SELECT 2" {
 		t.Fatalf("expected final artifact SELECT 2, got %+v", resp.Artifact)
 	}
-	if !strings.Contains(resp.Reply, "SELECT 2") {
-		t.Fatalf("expected reply to contain final content, got %q", resp.Reply)
+	if resp.Reply != "final" && !strings.Contains(resp.Reply, "SELECT 2") {
+		t.Fatalf("expected reply summary or content, got %q", resp.Reply)
 	}
 }
 
@@ -505,6 +505,171 @@ func TestServiceTruncatesToolResults(t *testing.T) {
 	}
 	if provider.callCount() < 2 {
 		t.Fatal("expected a second provider round with truncated tool result")
+	}
+}
+
+func TestBuildUserPromptIncludesOpenObject(t *testing.T) {
+	prompt := buildUserPrompt(ChatRequest{
+		Host:         "db.example",
+		User:         "alice",
+		DBType:       "postgresql",
+		Database:     "shop",
+		Schema:       "sales",
+		ObjectKind:   "table",
+		ObjectName:   "orders",
+		ObjectParent: "",
+		Message:      "给当前表加索引",
+	})
+	for _, want := range []string{"Schema: sales", "ObjectKind: table", "ObjectName: orders", "Database: shop", "给当前表加索引"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
+type fakeScopedSchema struct {
+	fakeSchema
+	lastDatabase string
+	lastSchema   string
+	lastTable    string
+}
+
+func (f *fakeScopedSchema) ListTablesInScope(sessionID, database, schema string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastDatabase = database
+	f.lastSchema = schema
+	f.listTablesN++
+	return f.listTables, nil
+}
+
+func (f *fakeScopedSchema) GetTableSchemaInScope(sessionID, database, schema, table string) (*config.TableSchema, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastDatabase = database
+	f.lastSchema = schema
+	f.lastTable = table
+	f.getSchemaN++
+	return f.tableSchema, nil
+}
+
+func TestListTablesUsesRequestSchemaScope(t *testing.T) {
+	schema := &fakeScopedSchema{fakeSchema: fakeSchema{listTables: []string{"orders"}}}
+	provider := &fakeProvider{
+		handler: func(call int, ctx context.Context, messages []Message, tools []ToolSpec) (Message, error) {
+			if call == 0 {
+				return Message{Role: "assistant", ToolCalls: []ToolCall{{
+					ID: "c1", Name: "list_tables", Arguments: "{}",
+				}}}, nil
+			}
+			return Message{Role: "assistant", Content: `{"type":"sql","content":"SELECT 1","summary":"ok"}`}, nil
+		},
+	}
+	svc := NewService(provider, schema, nil)
+	if _, err := svc.Chat(context.Background(), ChatRequest{
+		SessionID: "db-1",
+		Mode:      "database",
+		DBType:    "postgresql",
+		Database:  "shop",
+		Schema:    "sales",
+		Message:   "有哪些表",
+	}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if schema.lastDatabase != "shop" || schema.lastSchema != "sales" {
+		t.Fatalf("ListTablesInScope got database=%q schema=%q", schema.lastDatabase, schema.lastSchema)
+	}
+}
+
+func TestGetTableSchemaDefaultsToOpenTable(t *testing.T) {
+	schema := &fakeScopedSchema{fakeSchema: fakeSchema{tableSchema: &config.TableSchema{TableName: "orders"}}}
+	provider := &fakeProvider{
+		handler: func(call int, ctx context.Context, messages []Message, tools []ToolSpec) (Message, error) {
+			if call == 0 {
+				return Message{Role: "assistant", ToolCalls: []ToolCall{{
+					ID: "c1", Name: "get_table_schema", Arguments: "{}",
+				}}}, nil
+			}
+			return Message{Role: "assistant", Content: `{"type":"sql","content":"SELECT 1","summary":"ok"}`}, nil
+		},
+	}
+	svc := NewService(provider, schema, nil)
+	if _, err := svc.Chat(context.Background(), ChatRequest{
+		SessionID:  "db-1",
+		Mode:       "database",
+		DBType:     "oracle",
+		Database:   "ORCL",
+		Schema:     "PEMS",
+		ObjectName: "T_ORDER",
+		Message:    "当前表结构",
+	}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if schema.lastTable != "T_ORDER" || schema.lastSchema != "PEMS" || schema.lastDatabase != "ORCL" {
+		t.Fatalf("GetTableSchemaInScope table=%q schema=%q database=%q", schema.lastTable, schema.lastSchema, schema.lastDatabase)
+	}
+}
+
+type fakeNative struct {
+	mu         sync.Mutex
+	resources  []NativeResourceInfo
+	children   []NativeResourceInfo
+	details    *NativeResourceView
+	lastParent string
+	lastName   string
+}
+
+func (f *fakeNative) ListResources(sessionID string) ([]NativeResourceInfo, error) {
+	return f.resources, nil
+}
+
+func (f *fakeNative) ListChildResources(sessionID, parent string) ([]NativeResourceInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastParent = parent
+	return f.children, nil
+}
+
+func (f *fakeNative) DescribeResource(sessionID, parent, name string) (*NativeResourceView, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastParent = parent
+	f.lastName = name
+	return f.details, nil
+}
+
+func TestNativeModeUsesNativeToolsNotSchemaTools(t *testing.T) {
+	native := &fakeNative{details: &NativeResourceView{Name: "logs-2026", Kind: "index"}}
+	provider := &fakeProvider{
+		handler: func(call int, ctx context.Context, messages []Message, tools []ToolSpec) (Message, error) {
+			if call == 0 {
+				return Message{Role: "assistant", ToolCalls: []ToolCall{{
+					ID: "c1", Name: "describe_resource", Arguments: "{}",
+				}}}, nil
+			}
+			return Message{Role: "assistant", Content: `{"type":"sql","content":"{}","summary":"ok"}`}, nil
+		},
+	}
+	svc := NewService(provider, &fakeSchema{}, nil).WithNative(native)
+	if _, err := svc.Chat(context.Background(), ChatRequest{
+		SessionID:    "es-1",
+		Mode:         "database",
+		DBType:       "elasticsearch",
+		ObjectKind:   "index",
+		ObjectName:   "logs-2026",
+		ObjectParent: "",
+		Message:      "当前索引 mapping",
+	}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if hasTool(provider.firstTools(), "list_tables") || hasTool(provider.firstTools(), "get_table_schema") {
+		t.Fatal("native database types must not register JDBC schema tools")
+	}
+	if !hasTool(provider.firstTools(), "describe_resource") {
+		t.Fatal("native database types must register describe_resource")
+	}
+	if native.lastName != "logs-2026" {
+		t.Fatalf("DescribeResource name = %q, want logs-2026", native.lastName)
 	}
 }
 

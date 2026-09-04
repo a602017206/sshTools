@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -189,6 +191,9 @@ type fakeJdbcGateway struct {
 	lastDBType   string
 	lastConfig   config.DatabaseConfig
 	lastQuery    string
+	queries      []string
+	queryErr     error
+	failContains string
 	queryResult  *QueryResult
 	tableSchema  *config.TableSchema
 	lastSchema   string
@@ -205,7 +210,14 @@ func (g *fakeJdbcGateway) ConnectDatabase(ctx context.Context, sessionID string,
 }
 
 func (g *fakeJdbcGateway) ExecuteQuery(ctx context.Context, sessionID string, query string) (*QueryResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	g.lastQuery = query
+	g.queries = append(g.queries, query)
+	if g.queryErr != nil && (g.failContains == "" || strings.Contains(query, g.failContains)) {
+		return nil, g.queryErr
+	}
 	if g.queryResult != nil {
 		return g.queryResult, nil
 	}
@@ -399,5 +411,75 @@ func TestDatabaseService_ListTablesInDatabase_PostgresCurrent(t *testing.T) {
 	}
 	if len(result) != 1 {
 		t.Fatalf("expected 1 table, got %d", len(result))
+	}
+}
+
+func TestDatabaseServiceExecuteSQLFileRunsPreambleAndStatements(t *testing.T) {
+	gateway := &fakeJdbcGateway{queryResult: &QueryResult{Affected: 1}}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+	ds.sessionStore["db-1"] = &DatabaseSession{
+		ID:        "db-1",
+		Config:    config.DatabaseConfig{DBType: "oracle"},
+		Connected: true,
+	}
+	path := filepath.Join(t.TempDir(), "init.sql")
+	if err := os.WriteFile(path, []byte("CREATE TABLE t (id number);\nINSERT INTO t VALUES (1);\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var first, last SQLFileProgress
+	n := 0
+	err := ds.ExecuteSQLFile(context.Background(), SQLFileRequest{
+		SessionID: "db-1",
+		Path:      path,
+		Database:  "ORCL",
+		Schema:    "PEMS",
+	}, func(progress SQLFileProgress) {
+		n++
+		if n == 1 {
+			first = progress
+		}
+		last = progress
+	})
+	if err != nil {
+		t.Fatalf("ExecuteSQLFile: %v", err)
+	}
+	if first.SessionID != "db-1" || first.FileSize == 0 || first.Done {
+		t.Fatalf("first progress = %+v, want session and file size before done", first)
+	}
+	if len(gateway.queries) < 3 {
+		t.Fatalf("queries = %#v, want preamble + 2 statements", gateway.queries)
+	}
+	if !strings.Contains(gateway.queries[0], "CURRENT_SCHEMA") {
+		t.Fatalf("first query should set schema, got %q", gateway.queries[0])
+	}
+	if !last.Done || last.Statements != 2 || last.Error != "" {
+		t.Fatalf("progress = %+v", last)
+	}
+}
+
+func TestDatabaseServiceExecuteSQLFileStopsOnFirstError(t *testing.T) {
+	gateway := &fakeJdbcGateway{queryErr: errors.New("ORA-00942"), failContains: "SELECT 1"}
+	ds := NewDatabaseServiceWithGateway(nil, gateway)
+	ds.sessionStore["db-1"] = &DatabaseSession{
+		ID:        "db-1",
+		Config:    config.DatabaseConfig{DBType: "mysql"},
+		Connected: true,
+	}
+	path := filepath.Join(t.TempDir(), "bad.sql")
+	if err := os.WriteFile(path, []byte("SELECT 1;\nSELECT 2;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ds.ExecuteSQLFile(context.Background(), SQLFileRequest{
+		SessionID: "db-1",
+		Path:      path,
+		Database:  "shop",
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "ORA-00942") {
+		t.Fatalf("expected first statement error, got %v", err)
+	}
+	if len(gateway.queries) != 2 {
+		t.Fatalf("should stop after preamble + first failure, got %#v", gateway.queries)
 	}
 }

@@ -3,9 +3,12 @@
   import { EventsOn, OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime.js';
   import {
     ListFiles,
-    UploadFiles,
+    UploadExpandedItems,
+    ExpandUploadPaths,
+    GetClipboardFilePaths,
     DownloadFiles,
     SelectUploadFiles,
+    SelectUploadDirectory,
     SelectDownloadDirectory,
     CancelTransfer,
     DeleteFiles,
@@ -25,13 +28,19 @@
   import InputDialog from './ui/InputDialog.svelte';
   import FileTypeIcon from './icons/FileTypeIcon.svelte';
   import FileManagerContextMenu from './FileManagerContextMenu.svelte';
+  import UploadConflictDialog from './UploadConflictDialog.svelte';
   import { formatFileModified } from '../lib/fileType.js';
   import { canUploadDroppedFiles, normalizeDroppedFilePaths } from '../lib/fileDropUpload.js';
+  import { resolveUploadDestination } from '../lib/uploadDestination.js';
+  import {
+    buildRemoteIndex,
+    normalizeUploadItems,
+    resolveUploadConflicts,
+  } from '../lib/uploadConflict.js';
   import {
     FILE_MANAGER_MENU_HEIGHT_BLANK,
     FILE_MANAGER_MENU_HEIGHT_FILE,
     FILE_MANAGER_MENU_WIDTH,
-    getContextMenuPosition,
     isMacPlatform,
     joinRemotePath,
     matchFileManagerShortcut,
@@ -40,6 +49,7 @@
     unixModeToOctal,
     isValidOctalMode,
   } from '../lib/fileManagerContextMenu.js';
+  import { clearWindowSelection, getViewportMenuPosition, viewSize } from '../lib/contextMenu.js';
 
   // Svelte action to focus element on mount
   function focus(node) {
@@ -115,6 +125,18 @@
   // Cancel upload confirmation dialog state
   let showCancelUploadConfirm = false;
   let pendingCancelTransfer = null;
+
+  let uploadConflictOpen = false;
+  let uploadConflict = {
+    mode: 'file',
+    name: '',
+    kind: 'file',
+    isDir: false,
+    conflictCount: 0,
+    remaining: 1,
+    suggestedName: '',
+    resolve: null,
+  };
 
   // Rename / create / chmod input dialog state
   let showRenameDialog = false;
@@ -336,8 +358,22 @@
     }
   }
 
-  async function uploadLocalPaths(localPaths) {
+  async function handleUploadFolder() {
+    if (!$activeSessionIdStore || !isSessionConnected || isLocalSession) return;
+
+    try {
+      const localDir = await SelectUploadDirectory();
+      if (!localDir) return;
+      await uploadLocalPaths([localDir]);
+    } catch (err) {
+      console.error('Folder upload failed:', err);
+      error = err.message || '文件夹上传失败';
+    }
+  }
+
+  async function uploadLocalPaths(localPaths, destPath = currentPath) {
     const paths = normalizeDroppedFilePaths(localPaths);
+    const remotePath = destPath || currentPath;
     if (!canUploadDroppedFiles({
       sessionId: $activeSessionIdStore,
       connected: isSessionConnected,
@@ -346,9 +382,61 @@
       return;
     }
 
-    const transferIDs = await UploadFiles($activeSessionIdStore, paths, currentPath);
+    const items = normalizeUploadItems(await ExpandUploadPaths(paths));
+    if (items.length === 0) return;
+
+    const remoteIndex = await buildRemoteIndex(items, async (relDir) => {
+      const dirPath = relDir ? joinRemotePath(remotePath, relDir) : remotePath;
+      return await ListFiles($activeSessionIdStore, dirPath) || [];
+    });
+
+    const plan = await resolveUploadConflicts(items, remoteIndex, {
+      promptFolder: (spec) => askUploadConflict({ mode: 'folder', ...spec }),
+      promptFile: (spec) => askUploadConflict({ mode: 'file', ...spec }),
+    });
+    if (plan.items.length === 0) return;
+
+    for (const rel of plan.deleteRemote) {
+      await DeleteFiles($activeSessionIdStore, [joinRemotePath(remotePath, rel)]);
+    }
+
+    const transferIDs = await UploadExpandedItems(
+      $activeSessionIdStore,
+      remotePath,
+      plan.items.map((item) => ({
+        localPath: item.localPath,
+        relPath: item.relPath,
+        isDir: item.isDir,
+        LocalPath: item.localPath,
+        RelPath: item.relPath,
+        IsDir: item.isDir,
+      })),
+    );
     transferIDs.forEach((id) => subscribeToTransfer(id, 'upload'));
     setTimeout(() => loadDirectory(currentPath), 2000);
+  }
+
+  function askUploadConflict(spec) {
+    return new Promise((resolve) => {
+      uploadConflict = {
+        mode: spec.mode || 'file',
+        name: spec.name || '',
+        kind: spec.kind || 'file',
+        isDir: Boolean(spec.isDir),
+        conflictCount: spec.conflictCount || 0,
+        remaining: spec.remaining || 1,
+        suggestedName: uniqueCopyName(new Set([spec.name]), spec.name),
+        resolve,
+      };
+      uploadConflictOpen = true;
+    });
+  }
+
+  function chooseUploadConflict(action) {
+    const resolve = uploadConflict.resolve;
+    uploadConflictOpen = false;
+    uploadConflict = { ...uploadConflict, resolve: null };
+    resolve?.(action);
   }
 
   function handleFileDrop(_x, _y, localPaths) {
@@ -391,6 +479,7 @@
   function handleContextMenu(event, file) {
     event.preventDefault();
     event.stopPropagation();
+    clearWindowSelection();
     if (file?.is_parent) {
       openContextMenu(event, null);
       return;
@@ -408,13 +497,12 @@
   function openContextMenu(event, file) {
     suppressListClick = true;
     moreOpen = false;
-    const root = fileManagerEl?.getBoundingClientRect();
-    const { x, y } = getContextMenuPosition({
+    const { x, y } = getViewportMenuPosition({
       clientX: event.clientX,
       clientY: event.clientY,
-      root,
       menuWidth: FILE_MANAGER_MENU_WIDTH,
       menuHeight: file ? FILE_MANAGER_MENU_HEIGHT_FILE : FILE_MANAGER_MENU_HEIGHT_BLANK,
+      ...viewSize(),
     });
     contextMenu = { open: true, x, y, file };
   }
@@ -471,6 +559,9 @@
       case 'uploadFiles':
         await handleUpload();
         break;
+      case 'uploadFolder':
+        await handleUploadFolder();
+        break;
       case 'rename':
         openInputDialog('rename', {
           title: '重命名',
@@ -496,7 +587,7 @@
         fileClipboard = { mode: 'cut', files: [file] };
         break;
       case 'paste':
-        await handlePaste();
+        await handleSmartPaste();
         break;
       case 'newFolder':
         openInputDialog('newFolder', {
@@ -552,7 +643,28 @@
     await handleSaveSettings();
   }
 
-  async function handlePaste() {
+  async function handleSmartPaste() {
+    if (!$activeSessionIdStore || !isSessionConnected || isLocalSession) return;
+    const destPath = resolveUploadDestination({
+      currentPath,
+      selectedPaths: [...selectedFiles],
+      files,
+    });
+    let localPaths = [];
+    try {
+      localPaths = await GetClipboardFilePaths();
+    } catch (err) {
+      console.error('Read clipboard files failed:', err);
+    }
+    localPaths = normalizeDroppedFilePaths(localPaths);
+    if (localPaths.length > 0) {
+      await uploadLocalPaths(localPaths, destPath);
+      return;
+    }
+    await handleRemotePaste(destPath);
+  }
+
+  async function handleRemotePaste(destPath = currentPath) {
     if (!$activeSessionIdStore || !fileClipboard?.files?.length) return;
     const names = new Set((files || []).filter((item) => !item.is_parent).map((item) => item.name));
     try {
@@ -560,13 +672,13 @@
         const destName = fileClipboard.mode === 'copy'
           ? uniqueCopyName(names, item.name)
           : item.name;
-        const destPath = joinRemotePath(currentPath, destName);
+        const destFilePath = joinRemotePath(destPath, destName);
         if (fileClipboard.mode === 'cut') {
-          if (item.path !== destPath) {
-            await RenameFile($activeSessionIdStore, item.path, destPath);
+          if (item.path !== destFilePath) {
+            await RenameFile($activeSessionIdStore, item.path, destFilePath);
           }
         } else {
-          await CopyFile($activeSessionIdStore, item.path, destPath);
+          await CopyFile($activeSessionIdStore, item.path, destFilePath);
         }
         names.add(destName);
       }
@@ -657,7 +769,7 @@
 
   function handleFileManagerKeydown(event) {
     if (!canUseFileManager) return;
-    if (showRenameDialog || showDeleteConfirm || showSettingsDialog || isEditingPath || isDirSearchOpen) return;
+    if (showRenameDialog || showDeleteConfirm || showSettingsDialog || isEditingPath || isDirSearchOpen || uploadConflictOpen) return;
     const tag = event.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable) return;
     const action = matchFileManagerShortcut(event, { isMac });
@@ -1046,10 +1158,21 @@
             on:click={handleUpload}
             disabled={isLocalSession}
             class="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="上传到服务器"
+            title="上传文件"
           >
             <svg class="w-4 h-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+          </button>
+          <button
+            on:click={handleUploadFolder}
+            disabled={isLocalSession}
+            class="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="上传文件夹"
+          >
+            <svg class="w-4 h-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h3l2 2h9a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 16V10m0 0l-2.5 2.5M12 10l2.5 2.5" />
             </svg>
           </button>
           <button
@@ -1314,6 +1437,7 @@
             }
           }}
           on:contextmenu={(event) => handleContextMenu(event, file)}
+          on:selectstart|preventDefault
         >
           {#if file.is_parent}
             <FileTypeIcon {file} size={18} />
@@ -1366,8 +1490,8 @@
       historyEnabled={fileManagerConfig.historyEnabled}
       clipboard={fileClipboard}
       moreOpen={moreOpen}
-      rootWidth={fileManagerEl?.clientWidth || 0}
-      rootHeight={fileManagerEl?.clientHeight || 0}
+      rootWidth={typeof window !== 'undefined' ? window.innerWidth : 0}
+      rootHeight={typeof window !== 'undefined' ? window.innerHeight : 0}
       on:action={handleMenuAction}
       on:more={(event) => { moreOpen = event.detail; }}
     />
@@ -1393,6 +1517,19 @@
     cancelText="继续上传"
     onConfirm={handleConfirmCancelUpload}
     onCancel={handleCancelCancelUpload}
+  />
+
+  <UploadConflictDialog
+    bind:isOpen={uploadConflictOpen}
+    mode={uploadConflict.mode}
+    name={uploadConflict.name}
+    kind={uploadConflict.kind}
+    isDir={uploadConflict.isDir}
+    conflictCount={uploadConflict.conflictCount}
+    remaining={uploadConflict.remaining}
+    suggestedName={uploadConflict.suggestedName}
+    onChoose={chooseUploadConflict}
+    onCancel={() => chooseUploadConflict('cancel')}
   />
 
   <InputDialog
@@ -1721,6 +1858,10 @@
     border-color: color-mix(in srgb, var(--ops-success) 40%, var(--glass-border));
     background: color-mix(in srgb, var(--ops-success) 14%, transparent);
     color: var(--ops-success);
+  }
+  :global(.file-manager__row) {
+    user-select: none;
+    -webkit-user-select: none;
   }
   :global(.file-manager__row:hover) {
     background: var(--accent-subtle) !important;

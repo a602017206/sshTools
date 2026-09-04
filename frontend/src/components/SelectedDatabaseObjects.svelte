@@ -7,6 +7,8 @@
   import { formatColumnLength, formatColumnType } from '../lib/tableStructureMetadata.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import InputDialog from './ui/InputDialog.svelte';
+  import { portalToBody, resolveContextMenuPoint } from '../lib/contextMenu.js';
+  import { copilotStore } from '../stores/copilot.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -92,6 +94,15 @@
   }
 
   $: mutationSupported = ['mysql', 'postgresql', 'kingbase'].includes(String(databaseType).toLowerCase());
+  $: if (sessionId) {
+    copilotStore.setWorkspaceFocus(sessionId, {
+      database: selected.databaseName || '',
+      schema: selected.schemaName || '',
+      objectKind: selectedTable ? 'table' : '',
+      objectName: selectedTable || '',
+      objectParent: ''
+    });
+  }
   $: selectedTableStructureKey = `${sessionId || ''}:${selected.databaseName || ''}:${selected.schemaName || ''}:${selectedTable || ''}`;
   $: if (!selectedTable) {
     selectedTableSchema = null;
@@ -208,10 +219,9 @@
   onDestroy(stopDetailsResize);
 
   function openTableContextMenu(event, tableName) {
-    event.preventDefault();
     selectedTable = tableName;
     actionMessage = '';
-    contextMenu = { tableName, x: event.clientX, y: event.clientY };
+    contextMenu = { tableName, ...resolveContextMenuPoint(event, { menuWidth: 220, menuHeight: 180 }) };
   }
 
   function closeContextMenu() {
@@ -411,7 +421,7 @@
   </div>
 
   {#if contextMenu}
-    <div class="object-browser__context-menu" style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`} on:click|stopPropagation>
+    <div class="object-browser__context-menu" style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`} use:portalToBody on:click|stopPropagation>
       <button type="button" on:click={() => { closeContextMenu(); openTableData(contextMenu.tableName); }}>打开表</button>
       <button type="button" on:click={() => designTable(contextMenu.tableName)}>设计表</button>
       <button type="button" on:click={createTable}>新建表</button>
@@ -476,7 +486,7 @@
   .object-browser__table-head, .object-browser__row { display: grid; grid-template-columns: minmax(240px, 1fr) 140px; align-items: center; min-height: 38px; }
   .object-browser__table-head { position: sticky; top: 0; z-index: 1; color: var(--text-secondary); background: var(--bg-secondary); border-bottom: 1px solid var(--border-primary); font-size: 12px; }
   .object-browser__table-head span, .object-browser__row span { padding: 0 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .object-browser__row { border-bottom: 1px solid var(--border-primary); font-size: 14px; }
+  .object-browser__row { border-bottom: 1px solid var(--border-primary); font-size: 14px; user-select: none; -webkit-user-select: none; }
   .object-browser__row--button { width: 100%; border-left: 0; border-right: 0; border-top: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
   .object-browser__row:hover { background: color-mix(in srgb, #1687d4 7%, transparent); }
   .object-browser__row--selected { background: color-mix(in srgb, #1687d4 12%, transparent); }
@@ -486,7 +496,7 @@
   .object-browser__status { min-height: 28px; padding: 6px 18px; border-top: 1px solid var(--border-primary); color: var(--text-secondary); font-size: 12px; }
   .object-browser__context-menu {
     position: fixed;
-    z-index: 30;
+    z-index: 120;
     width: 200px;
     padding: 5px;
     border: 1px solid var(--glass-border);

@@ -63,6 +63,10 @@ type App struct {
 	copilotService        *copilot.Service
 	copilotMetaMu         sync.Mutex
 	copilotMeta           map[string]copilotSessionMeta
+	sqlFileMu             sync.Mutex
+	sqlFileCancel         map[string]context.CancelFunc
+	sessionCharsetMu      sync.Mutex
+	sessionCharset        map[string]string
 }
 
 type copilotSessionMeta struct {
@@ -155,11 +159,13 @@ func (a *App) startup(ctx context.Context) {
 		service.NativeDatabaseTypeInfluxDB:      service.NewDefaultInfluxDBNativeProvider(),
 		service.NativeDatabaseTypeNeo4j:         service.NewDefaultNeo4jNativeProvider(),
 		service.NativeDatabaseTypeKafka:         service.NewDefaultKafkaNativeProvider(),
+		service.NativeDatabaseTypeRocketMQ:      service.NewDefaultRocketMQNativeProvider(),
+		service.NativeDatabaseTypeRabbitMQ:      service.NewDefaultRabbitMQNativeProvider(),
 	})
 	if a.copilotMeta == nil {
 		a.copilotMeta = make(map[string]copilotSessionMeta)
 	}
-	a.copilotService = copilot.NewService(nil, a.databaseService, a.sessionService)
+	a.copilotService = copilot.NewService(nil, a.databaseService, a.sessionService).WithNative(nativeCopilotReader{svc: a.nativeDatabaseService})
 }
 
 func (a *App) initJDBCServices(agentJar []byte) error {
@@ -316,6 +322,39 @@ func (a *App) TestConnection(host string, port int, user, authType, authValue, p
 	return a.connectionService.TestConnection(host, port, user, authType, authValue, passphrase)
 }
 
+func (a *App) SetSessionCharset(sessionID, charset string) {
+	if a == nil || sessionID == "" {
+		return
+	}
+	a.sessionCharsetMu.Lock()
+	defer a.sessionCharsetMu.Unlock()
+	if a.sessionCharset == nil {
+		a.sessionCharset = map[string]string{}
+	}
+	a.sessionCharset[sessionID] = ssh.NormalizeCharset(charset)
+}
+
+func (a *App) sessionCharsetFor(sessionID string) string {
+	if a == nil {
+		return "utf-8"
+	}
+	a.sessionCharsetMu.Lock()
+	defer a.sessionCharsetMu.Unlock()
+	if charset := a.sessionCharset[sessionID]; charset != "" {
+		return charset
+	}
+	return "utf-8"
+}
+
+func (a *App) clearSessionCharset(sessionID string) {
+	if a == nil || sessionID == "" {
+		return
+	}
+	a.sessionCharsetMu.Lock()
+	defer a.sessionCharsetMu.Unlock()
+	delete(a.sessionCharset, sessionID)
+}
+
 func (a *App) ConnectSSH(sessionID, host string, port int, user, authType, authValue, passphrase string, cols, rows int) error {
 	err := a.sessionService.ConnectSSH(sessionID, host, port, user, authType, authValue, passphrase, cols, rows, func(data []byte) {
 		cwd := a.parseCWDFromOutput(sessionID, data)
@@ -364,7 +403,11 @@ func (a *App) setupCWDTracking(sessionID string) {
 
 // SendSSHData sends data to an SSH session
 func (a *App) SendSSHData(sessionID string, data string) error {
-	return a.sessionService.SendData(sessionID, data)
+	encoded, err := ssh.EncodeFromUTF8(a.sessionCharsetFor(sessionID), data)
+	if err != nil {
+		return err
+	}
+	return a.sessionService.SendDataBytes(sessionID, encoded)
 }
 
 // SendSSHDataBinary sends base64-encoded binary data to an SSH session
@@ -387,6 +430,7 @@ func (a *App) CloseSSH(sessionID string) error {
 		a.copilotService.Cancel(sessionID)
 	}
 	a.clearCopilotSession(sessionID)
+	a.clearSessionCharset(sessionID)
 	err := a.sessionService.CloseSession(sessionID)
 	if err != nil {
 		return err
@@ -586,6 +630,14 @@ func (a *App) CopilotChat(req copilot.ChatRequest) (*copilot.ChatResponse, error
 	return a.copilotService.WithProvider(provider).WithRuntimeSettings(copilot.RuntimeSettings{MaxToolRounds: settings.CopilotMaxToolRounds, MaxToolResultChars: settings.CopilotMaxToolResultChars}).Chat(ctx, req)
 }
 
+// CopilotCancel stops an in-flight chat for the session.
+func (a *App) CopilotCancel(sessionID string) {
+	if a.copilotService == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	a.copilotService.Cancel(sessionID)
+}
+
 func (a *App) CopilotClassify(kind, content string) copilot.Result {
 	return copilot.Classify(kind, content)
 }
@@ -615,26 +667,37 @@ func (a *App) ClearCopilotAPIKey() error {
 	return a.credentialStore.Delete(copilot.APIKeyCredentialID)
 }
 
+func fillIfEmpty(dst *string, src string) {
+	if dst == nil || strings.TrimSpace(*dst) != "" || src == "" {
+		return
+	}
+	*dst = src
+}
+
 func (a *App) fillCopilotRequest(req *copilot.ChatRequest) {
 	if req == nil {
 		return
 	}
 	if a.databaseService != nil {
 		if sess, err := a.databaseService.GetSession(req.SessionID); err == nil && sess != nil {
-			req.Host = sess.Config.Host
-			req.User = sess.Config.User
-			req.DBType = sess.Config.DBType
-			req.Database = sess.Config.Database
+			fillIfEmpty(&req.Host, sess.Config.Host)
+			fillIfEmpty(&req.User, sess.Config.User)
+			fillIfEmpty(&req.DBType, sess.Config.DBType)
+			fillIfEmpty(&req.Database, sess.Config.Database)
+		}
+	}
+	if a.nativeDatabaseService != nil && (req.Host == "" || req.DBType == "") {
+		if cfg, ok := a.nativeDatabaseService.SessionConfig(req.SessionID); ok {
+			fillIfEmpty(&req.Host, cfg.Host)
+			fillIfEmpty(&req.User, cfg.User)
+			fillIfEmpty(&req.DBType, string(cfg.Type))
+			fillIfEmpty(&req.Database, cfg.Database)
 		}
 	}
 	if (req.Host == "" || req.User == "") && a.connectionService != nil {
 		if conn, err := a.connectionService.GetConnection(req.SessionID); err == nil {
-			if req.Host == "" {
-				req.Host = conn.Host
-			}
-			if req.User == "" {
-				req.User = conn.User
-			}
+			fillIfEmpty(&req.Host, conn.Host)
+			fillIfEmpty(&req.User, conn.User)
 		}
 	}
 	if meta, ok := a.lookupCopilotSession(req.SessionID); ok {
@@ -763,6 +826,18 @@ func (a *App) UploadFiles(sessionID string, localPaths []string, remotePath stri
 	})
 }
 
+// ExpandUploadPaths walks local files and folders into a remote-relative tree.
+func (a *App) ExpandUploadPaths(localPaths []string) ([]service.LocalUploadItem, error) {
+	return service.ExpandLocalUploadPaths(localPaths)
+}
+
+// UploadExpandedItems uploads a previously expanded local tree, including renamed RelPaths.
+func (a *App) UploadExpandedItems(sessionID string, remotePath string, items []service.LocalUploadItem) ([]string, error) {
+	return a.sftpService.UploadItems(sessionID, remotePath, items, func(progress ssh.TransferProgress) {
+		runtime.EventsEmit(a.ctx, sftpProgressEventPrefix+progress.TransferID, progress)
+	})
+}
+
 // DownloadFile downloads a single file
 func (a *App) DownloadFile(sessionID string, remotePath string, localPath string) (string, error) {
 	// Use service with Wails-specific progress callback
@@ -835,6 +910,11 @@ func (a *App) GetTransferStatus(transferID string) (*ssh.TransferProgress, error
 	return a.sftpService.GetTransferStatus(transferID)
 }
 
+// GetClipboardFilePaths returns local file and folder paths on the OS clipboard.
+func (a *App) GetClipboardFilePaths() ([]string, error) {
+	return service.ReadClipboardFilePaths()
+}
+
 // SelectUploadFiles opens a file picker for selecting files to upload
 func (a *App) SelectUploadFiles() ([]string, error) {
 	filePaths, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
@@ -846,6 +926,17 @@ func (a *App) SelectUploadFiles() ([]string, error) {
 	}
 
 	return filePaths, nil
+}
+
+// SelectUploadDirectory opens a directory picker for uploading a local folder.
+func (a *App) SelectUploadDirectory() (string, error) {
+	dirPath, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择要上传的文件夹",
+	})
+	if err != nil {
+		return "", err
+	}
+	return dirPath, nil
 }
 
 // SelectDownloadDirectory opens a directory picker for selecting download destination
@@ -1389,6 +1480,16 @@ func (a *App) ListNativeDatabaseChildResources(sessionID, parent string) ([]serv
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return a.nativeDatabaseService.ListSecondaryResources(ctx, sessionID, parent)
+}
+
+// ListNativeDatabaseChildResourcesPage lists child resources with pattern + cursor pagination.
+func (a *App) ListNativeDatabaseChildResourcesPage(sessionID, parent, pattern, cursor string, limit int) (service.NativeResourcePage, error) {
+	if a.nativeDatabaseService == nil {
+		return service.NativeResourcePage{}, fmt.Errorf("原生数据库服务尚未初始化")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.nativeDatabaseService.ListSecondaryResourcesPage(ctx, sessionID, parent, pattern, cursor, limit)
 }
 
 // DescribeNativeDatabaseResource returns a bounded, read-only resource preview.

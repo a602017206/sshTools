@@ -22,6 +22,7 @@ public final class JdbcAgentApplication {
         }
 
         Server server = ServerBuilder.forPort(port)
+                .maxInboundMessageSize(64 * 1024 * 1024)
                 .addService(new MetadataServiceImpl(token, new ConnectionRegistry(), new DriverLoader()))
                 .build()
                 .start();

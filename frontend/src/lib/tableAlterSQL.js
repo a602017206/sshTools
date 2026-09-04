@@ -1,6 +1,7 @@
 function dialectOf(databaseType) {
   const dialect = String(databaseType).toLowerCase();
-  if (dialect === 'kingbase') return 'postgresql';
+  if (dialect === 'kingbase' || dialect === 'opengauss') return 'postgresql';
+  if (dialect === 'oracle') return 'oracle';
   return ['mysql', 'postgresql'].includes(dialect) ? dialect : '';
 }
 
@@ -11,7 +12,7 @@ function quoteIdentifier(value, dialect) {
 
 function qualifiedTableName({ databaseType, databaseName = '', schemaName = '', tableName }) {
   const dialect = dialectOf(databaseType);
-  const parts = dialect === 'postgresql' ? [schemaName, tableName] : [databaseName, tableName];
+  const parts = dialect === 'postgresql' || dialect === 'oracle' ? [schemaName, tableName] : [databaseName, tableName];
   return parts.filter(Boolean).map(part => quoteIdentifier(part, dialect)).join('.');
 }
 
@@ -22,8 +23,9 @@ function sqlLiteral(value) {
 function fieldType(field, dialect) {
   const type = String(field.type || 'VARCHAR').trim().toUpperCase();
   const length = String(field.length || '').trim();
-  if (!length || (dialect === 'postgresql' && /^(BIGINT|INT|INTEGER|SMALLINT|TIMESTAMP|DATE|BOOLEAN|TEXT)$/i.test(type))) return type;
-  return /^(VARCHAR|CHAR|DECIMAL|NUMERIC|INT|INTEGER|BIGINT|SMALLINT)$/i.test(type) ? `${type}(${length})` : type;
+  const skipLength = (dialect === 'postgresql' || dialect === 'oracle') && /^(BIGINT|INT|INTEGER|SMALLINT|TIMESTAMP|DATE|BOOLEAN|TEXT|CLOB|BLOB)$/i.test(type);
+  if (!length || skipLength) return type;
+  return /^(VARCHAR2?|CHAR|NVARCHAR2?|DECIMAL|NUMERIC|NUMBER|INT|INTEGER|BIGINT|SMALLINT)$/i.test(type) ? `${type}(${length})` : type;
 }
 
 function defaultClause(field) {
@@ -62,8 +64,12 @@ function sameNameSet(left, right) {
 }
 
 function appendAddedColumn(statements, table, field, dialect) {
-  statements.push(`ALTER TABLE ${table} ADD COLUMN ${fieldDefinition(field, dialect)};`);
-  if (dialect === 'postgresql' && String(field.comment || '').trim()) {
+  if (dialect === 'oracle') {
+    statements.push(`ALTER TABLE ${table} ADD (${fieldDefinition(field, dialect)});`);
+  } else {
+    statements.push(`ALTER TABLE ${table} ADD COLUMN ${fieldDefinition(field, dialect)};`);
+  }
+  if ((dialect === 'postgresql' || dialect === 'oracle') && String(field.comment || '').trim()) {
     statements.push(`COMMENT ON COLUMN ${table}.${quoteIdentifier(field.name.trim(), dialect)} IS ${sqlLiteral(field.comment)};`);
   }
 }
@@ -76,6 +82,19 @@ function appendMySQLColumnChanges(statements, table, originalName, original, fie
   const commentChanged = String(original.comment || '').trim() !== String(field.comment || '').trim();
   const includeComment = commentChanged || Boolean(String(field.comment || '').trim());
   statements.push(`ALTER TABLE ${table} ${keyword} ${source}${fieldDefinition(field, dialect, { includeComment })};`);
+}
+
+function appendOracleColumnChanges(statements, table, originalName, original, field, dialect) {
+  const name = String(field.name || '').trim();
+  if (originalName !== name) {
+    statements.push(`ALTER TABLE ${table} RENAME COLUMN ${quoteIdentifier(originalName, dialect)} TO ${quoteIdentifier(name, dialect)};`);
+  }
+  if (!same(original.type, field.type) || !same(original.length, field.length) || Boolean(original.nullable) !== Boolean(field.nullable) || String(original.defaultValue || '').trim() !== String(field.defaultValue || '').trim()) {
+    statements.push(`ALTER TABLE ${table} MODIFY (${fieldDefinition({ ...field, name }, dialect)});`);
+  }
+  if (String(original.comment || '').trim() !== String(field.comment || '').trim()) {
+    statements.push(`COMMENT ON COLUMN ${table}.${quoteIdentifier(name, dialect)} IS ${String(field.comment || '').trim() ? sqlLiteral(field.comment) : 'NULL'};`);
+  }
 }
 
 function appendPostgreSQLColumnChanges(statements, table, originalName, original, field, dialect) {
@@ -94,7 +113,7 @@ function appendPrimaryKeyChanges(statements, table, tableName, dialect, original
   const originalPrimary = currentPrimaryNames(originalFields, fields);
   const nextPrimary = fields.filter(field => field.primary && String(field.name || '').trim()).map(field => field.name.trim());
   if (sameNameSet(originalPrimary, nextPrimary)) return;
-  if (dialect === 'mysql') {
+  if (dialect === 'mysql' || dialect === 'oracle') {
     if (originalPrimary.length) statements.push(`ALTER TABLE ${table} DROP PRIMARY KEY;`);
   } else if (originalPrimary.length) {
     statements.push(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${quoteIdentifier(`${tableName}_pkey`, dialect)};`);
@@ -123,6 +142,9 @@ export function buildAlterTableStatements({ databaseType, databaseName = '', sch
     if (dialect === 'mysql') appendMySQLColumnChanges(statements, table, originalName, original, field, dialect);
     if (dialect === 'postgresql') {
       appendPostgreSQLColumnChanges(statements, table, originalName, original, field, dialect);
+    }
+    if (dialect === 'oracle') {
+      appendOracleColumnChanges(statements, table, originalName, original, field, dialect);
     }
   }
 

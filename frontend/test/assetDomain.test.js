@@ -13,6 +13,8 @@ test('按 db_type 推导资产域', () => {
   assert.equal(resolveAssetDomain({ type: 'database', metadata: { db_type: 'redis' } }), 'cache');
   assert.equal(resolveAssetDomain({ type: 'database', metadata: { db_type: 'elasticsearch' } }), 'search');
   assert.equal(resolveAssetDomain({ type: 'database', metadata: { db_type: 'kafka' } }), 'mq');
+  assert.equal(resolveAssetDomain({ type: 'database', metadata: { db_type: 'rocketmq' } }), 'mq');
+  assert.equal(resolveAssetDomain({ type: 'database', metadata: { db_type: 'rabbitmq' } }), 'mq');
   assert.equal(resolveAssetDomain({ type: 'database', metadata: { db_type: 'mysql' } }), 'database');
   assert.equal(resolveAssetDomain({ type: 'database', metadata: { db_type: 'mongodb' } }), 'database');
 });

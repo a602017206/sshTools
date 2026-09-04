@@ -4,6 +4,7 @@
   import TerminalPanel from './components/TerminalPanel.svelte';
   import DevToolsPanel from './components/DevToolsPanel.svelte';
   import UploadTaskDialog from './components/UploadTaskDialog.svelte';
+  import SQLFileProgressDialog from './components/SQLFileProgressDialog.svelte';
   import AddAssetDialog from './components/AddAssetDialog.svelte';
   import AboutDialog from './components/AboutDialog.svelte';
   import GlobalSettingsDialog from './components/GlobalSettingsDialog.svelte';
@@ -16,7 +17,8 @@
   import { CancelTransfer } from '../wailsjs/go/main/App.js';
   import { WindowToggleMaximise } from '../wailsjs/runtime/runtime.js';
   import { applyAppearanceSettings, getDefaultAppSettings, resolveTheme } from './settings/appearance.js';
-  import { isNativeDatabaseType } from './lib/nativeDatabaseTypes.js';
+  import { connectionAllowsEmptyPassword, isNativeDatabaseType } from './lib/nativeDatabaseTypes.js';
+  import { domainLabel, resolveAssetDomain } from './lib/assetDomain.js';
   import { buildJDBCConnectionOptions } from './lib/jdbcConnectionOptions.js';
   import WorkspaceNavigation from './components/WorkspaceNavigation.svelte';
   import SessionToolDock from './components/SessionToolDock.svelte';
@@ -25,7 +27,10 @@
   import { modeForAsset, resolveMode, resolveSshToolTab } from './lib/workspaceTabs.js';
   import { formatConnectionError } from './lib/formatConnectionError.js';
   import { createClonedConnectionFormData } from './lib/connectionFormData.js';
+  import { resolvePreferredConnectionGroup } from './lib/assetGroupTree.js';
   import { copilotStore } from './stores/copilot.js';
+  import { sqlFileProgressFromEvent } from './lib/databaseSchemaMenu.js';
+  import { applyCharsetToSessionMap, normalizeTerminalCharset } from './lib/terminalCharset.js';
 
   const DOMAIN_RAIL_WIDTH = 52;
 
@@ -37,6 +42,7 @@
   let isRightPanelCollapsed = true;
   let editingAsset = null;
   let cloningAsset = null;
+  let preferredGroup = '';
   let connectionDialogRequestVersion = 0;
   let terminalPanelRef;
   let activeMode = 'ssh';
@@ -62,6 +68,7 @@
   let dbErrorMessage = '';
   let appSettings = getDefaultAppSettings();
   let settingsDraftSnapshot = null;
+  let sqlFileProgress = null;
 
   $: connectionsArray = $connectionsStore ? Array.from($connectionsStore.values()) : [];
   $: sshSessions = connectionsArray.filter((session) => session?.type !== 'database');
@@ -127,6 +134,7 @@
       font_family: settings.font_family,
       font_size: settings.font_size,
       accent_color: settings.accent_color,
+      terminal_theme: settings.terminal_theme || 'dark',
       terminal_font_family: settings.terminal_font_family,
       terminal_font_size: settings.terminal_font_size,
       compact_mode: settings.compact_mode,
@@ -283,9 +291,10 @@
     }
   }
 
-  function openAddConnection() {
+  function openAddConnection(group) {
     editingAsset = null;
     cloningAsset = null;
+    preferredGroup = resolvePreferredConnectionGroup(group);
     connectionDialogRequestVersion += 1;
     isAddDialogOpen = true;
   }
@@ -481,14 +490,19 @@
       );
 
       let password = '';
+      const credentialDomain = domainLabel(resolveAssetDomain(asset));
+      const passwordPrompt = `请输入${credentialDomain}密码：`;
+      const allowEmptyPassword = connectionAllowsEmptyPassword(asset);
       try {
         const hasSaved = typeof HasPassword === 'function' && await HasPassword(asset.id);
         if (hasSaved) {
           password = await GetPassword(asset.id);
+        } else if (allowEmptyPassword) {
+          password = '';
         } else {
           password = await requestDbInput({
             title: `连接到 ${asset.name}`,
-            message: '请输入数据库密码：',
+            message: passwordPrompt,
             placeholder: '密码',
             inputType: 'password',
             allowEmpty: false,
@@ -504,20 +518,24 @@
         }
       } catch (error) {
         console.error('Failed to get saved password:', error);
-        password = await requestDbInput({
-          title: `连接到 ${asset.name}`,
-          message: '请输入数据库密码：',
-          placeholder: '密码',
-          inputType: 'password',
-          allowEmpty: false,
-          trimValue: false
-        });
-        if (password === null) {
-          return;
+        if (allowEmptyPassword) {
+          password = '';
+        } else {
+          password = await requestDbInput({
+            title: `连接到 ${asset.name}`,
+            message: passwordPrompt,
+            placeholder: '密码',
+            inputType: 'password',
+            allowEmpty: false,
+            trimValue: false
+          });
+          if (password === null) {
+            return;
+          }
         }
       }
 
-      if (!password) {
+      if (!password && !allowEmptyPassword) {
         console.log('Database connection cancelled - no password provided');
         return;
       }
@@ -629,6 +647,18 @@
     showDbErrorDialog = false;
   }
 
+  function applyLiveSessionCharset(connectionId, encoding) {
+    const charset = normalizeTerminalCharset(encoding);
+    connectionsStore.update((conns) => {
+      const { sessions, sessionIds } = applyCharsetToSessionMap(conns, connectionId, charset);
+      const setCharset = window.wailsBindings?.SetSessionCharset;
+      if (typeof setCharset === 'function') {
+        sessionIds.forEach((sessionId) => setCharset(sessionId, charset));
+      }
+      return sessions;
+    });
+  }
+
   async function handleAddAsset(connectionData) {
     if (!window.wailsBindings) {
       console.error('Wails bindings not loaded');
@@ -720,6 +750,7 @@
           return asset;
         });
       });
+      applyLiveSessionCharset(connectionData.id, connectionData.metadata?.encoding);
     } catch (error) {
       console.error('Failed to update asset:', error);
       throw error;
@@ -774,6 +805,7 @@
     let handleDatabaseConnectEvent = null;
     let handleDatabaseDisconnectEvent = null;
     let handleDatabaseEditEvent = null;
+    let handleDatabaseNewQueryEvent = null;
 
     try {
       const wails = await import('../wailsjs/go/main/App.js');
@@ -810,15 +842,30 @@
         }
       };
 
+      handleDatabaseNewQueryEvent = () => {
+        activeMode = 'database';
+      };
+
       window.addEventListener('database:connect', handleDatabaseConnectEvent);
       window.addEventListener('database:disconnect', handleDatabaseDisconnectEvent);
       window.addEventListener('database:edit-connection', handleDatabaseEditEvent);
+      window.addEventListener('database:new-query', handleDatabaseNewQueryEvent);
 
       // Listen for about dialog event from backend
       const runtime = await import('../wailsjs/runtime/runtime.js');
-      cleanupEvents = runtime.EventsOn('app:show-about', () => {
-        isAboutDialogOpen = true;
-      });
+      const unsubscribers = [
+        runtime.EventsOn('app:show-about', () => {
+          isAboutDialogOpen = true;
+        }),
+        runtime.EventsOn('sqlfile:progress', (payload) => {
+          sqlFileProgress = sqlFileProgressFromEvent(payload);
+        })
+      ];
+      cleanupEvents = () => {
+        unsubscribers.forEach((unsubscribe) => {
+          if (typeof unsubscribe === 'function') unsubscribe();
+        });
+      };
 
       // Listen for assets changed event (from import)
       window.addEventListener('assets-changed', loadAssetsFromBackend);
@@ -841,6 +888,9 @@
       }
       if (handleDatabaseEditEvent) {
         window.removeEventListener('database:edit-connection', handleDatabaseEditEvent);
+      }
+      if (handleDatabaseNewQueryEvent) {
+        window.removeEventListener('database:new-query', handleDatabaseNewQueryEvent);
       }
       if (cleanupEvents) {
         cleanupEvents();
@@ -1129,6 +1179,7 @@
       bind:cloningAsset={cloningAsset}
       dialogRequestVersion={connectionDialogRequestVersion}
       preferredDomain={activeDomain}
+      preferredGroup={preferredGroup}
       onAdd={handleAddAsset}
       onUpdate={handleUpdateAsset}
     />
@@ -1188,6 +1239,16 @@
   />
 
   <UploadTaskDialog />
+  <SQLFileProgressDialog
+    progress={sqlFileProgress}
+    onCancel={() => {
+      const sessionId = sqlFileProgress?.sessionId;
+      if (sessionId && typeof window.wailsBindings?.CancelSQLFile === 'function') {
+        window.wailsBindings.CancelSQLFile(sessionId);
+      }
+    }}
+    onDismiss={() => { sqlFileProgress = null; }}
+  />
   <!-- 已迁移到 UploadTaskDialog。 -->
   {#if false}
     <div>

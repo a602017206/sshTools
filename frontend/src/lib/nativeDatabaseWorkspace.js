@@ -1,3 +1,5 @@
+import { isNativeDatabaseType } from './nativeDatabaseTypes.js';
+
 const workspaceByType = {
   redis: {
     title: 'Redis 键空间',
@@ -73,6 +75,22 @@ const workspaceByType = {
     description: '可查看 Topic 分区元数据；不消费或生产消息。',
     canExpand: false,
     canDescribe: true
+  },
+  rocketmq: {
+    title: 'RocketMQ Topic',
+    resourceLabel: 'Topic',
+    childLabel: '',
+    description: '通过 NameServer 浏览 Topic；不生产或消费消息。',
+    canExpand: false,
+    canDescribe: true
+  },
+  rabbitmq: {
+    title: 'RabbitMQ 队列',
+    resourceLabel: 'Queue',
+    childLabel: '',
+    description: '浏览 Queue 与基础指标；不生产或消费消息。',
+    canExpand: false,
+    canDescribe: true
   }
 };
 
@@ -86,7 +104,9 @@ const fallbackWorkspace = {
 };
 
 export function nativeDatabaseWorkspace(databaseType) {
-  return workspaceByType[String(databaseType || '').toLowerCase()] || fallbackWorkspace;
+  const type = String(databaseType || '').toLowerCase();
+  if (type === 'opensearch') return workspaceByType.elasticsearch;
+  return workspaceByType[type] || fallbackWorkspace;
 }
 
 /** @returns {'redis'|'elasticsearch'|'kafka'|'generic'} */
@@ -94,6 +114,16 @@ export function resolveNativeWorkspaceKind(databaseType) {
   const type = String(databaseType || '').toLowerCase();
   if (type === 'redis') return 'redis';
   if (type === 'elasticsearch' || type === 'opensearch') return 'elasticsearch';
-  if (type === 'kafka') return 'kafka';
+  if (type === 'kafka' || type === 'rocketmq' || type === 'rabbitmq') return 'kafka';
   return 'generic';
+}
+
+/** 会话标签文案：原生类型用工作区标题，避免一律写成「数据库」。 */
+export function databaseSessionTabLabel(asset) {
+  const name = String(asset?.name || '').trim() || '连接';
+  const dbType = String(asset?.metadata?.db_type || asset?.dbType || asset?.db_type || '').toLowerCase();
+  if (isNativeDatabaseType(dbType)) {
+    return `${name} · ${nativeDatabaseWorkspace(dbType).title}`;
+  }
+  return `${name} · 数据库`;
 }

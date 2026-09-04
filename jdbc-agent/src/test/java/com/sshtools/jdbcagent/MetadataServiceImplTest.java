@@ -22,7 +22,17 @@ import io.grpc.stub.StreamObserver;
 import org.h2.Driver;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.file.Path;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -35,6 +45,33 @@ class MetadataServiceImplTest {
     @Test
     void primaryKeyIdentifierComparisonIgnoresCase() {
         assertTrue(MetadataServiceImpl.sameIdentifier("id", "ID"));
+    }
+
+    @Test
+    void readColumnMetadataReadsRemarksBeforeDefaultAndOnlyOnce() throws Exception {
+        RecordingColumnResultSet rows = RecordingColumnResultSet.sample();
+        Column column = MetadataServiceImpl.readColumnMetadata(rows.proxy(), java.util.Set.of("ID_"));
+
+        assertEquals(java.util.List.of(
+                "COLUMN_NAME", "TYPE_NAME", "COLUMN_SIZE", "DECIMAL_DIGITS", "NULLABLE", "REMARKS", "COLUMN_DEF"
+        ), rows.accessedColumns());
+        assertEquals(1, rows.accessCount("COLUMN_DEF"));
+        assertEquals(1, rows.accessCount("REMARKS"));
+        assertEquals("ID_", column.getName());
+        assertEquals("NUMBER", column.getType());
+        assertTrue(column.getPrimaryKey());
+        assertEquals("显示名称", column.getDescription());
+        assertEquals("0", column.getDefaultValue());
+        assertTrue(column.getHasDefault());
+    }
+
+    @Test
+    void readColumnMetadataDoesNotRereadOracleLongDefault() throws Exception {
+        RecordingColumnResultSet rows = RecordingColumnResultSet.sample();
+        rows.failOnSecondAccess("COLUMN_DEF");
+        Column column = MetadataServiceImpl.readColumnMetadata(rows.proxy(), java.util.Set.of());
+        assertEquals("0", column.getDefaultValue());
+        assertTrue(column.getHasDefault());
     }
 
     @Test
@@ -163,6 +200,67 @@ class MetadataServiceImplTest {
         @Override
         public void onCompleted() {
             // Test observers only need the value or error callback.
+        }
+    }
+
+    private static final class RecordingColumnResultSet implements InvocationHandler {
+        private final Map<String, Object> values;
+        private final List<String> accessedColumns = new ArrayList<>();
+        private final Map<String, Integer> accessCounts = new HashMap<>();
+        private String failOnSecond;
+        private boolean wasNull;
+
+        private RecordingColumnResultSet(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        static RecordingColumnResultSet sample() {
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("COLUMN_NAME", "ID_");
+            values.put("TYPE_NAME", "NUMBER");
+            values.put("COLUMN_SIZE", 19);
+            values.put("DECIMAL_DIGITS", 0);
+            values.put("NULLABLE", DatabaseMetaData.columnNoNulls);
+            values.put("REMARKS", "显示名称");
+            values.put("COLUMN_DEF", "0");
+            return new RecordingColumnResultSet(values);
+        }
+
+        ResultSet proxy() {
+            return (ResultSet) Proxy.newProxyInstance(ResultSet.class.getClassLoader(), new Class<?>[]{ResultSet.class}, this);
+        }
+
+        void failOnSecondAccess(String column) {
+            failOnSecond = column;
+        }
+
+        List<String> accessedColumns() {
+            return List.copyOf(accessedColumns);
+        }
+
+        int accessCount(String column) {
+            return accessCounts.getOrDefault(column, 0);
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws SQLException {
+            if ("wasNull".equals(method.getName())) {
+                return wasNull;
+            }
+            if (args == null || args.length == 0 || !(args[0] instanceof String column)) {
+                throw new UnsupportedOperationException(method.getName());
+            }
+            accessedColumns.add(column);
+            int count = accessCounts.merge(column, 1, Integer::sum);
+            if (column.equals(failOnSecond) && count > 1) {
+                throw new SQLException("ORA-17027: 流已被关闭", "HY000", 17027);
+            }
+            Object value = values.get(column);
+            wasNull = value == null;
+            if ("getInt".equals(method.getName())) {
+                return ((Number) value).intValue();
+            }
+            return value;
         }
     }
 }

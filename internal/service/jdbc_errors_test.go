@@ -40,3 +40,18 @@ func TestJDBCErrorMapsOracleSyntaxToQueryFailed(t *testing.T) {
 		t.Fatalf("unexpected code: %s", jdbcErr.Code)
 	}
 }
+
+func TestJDBCClosedOracleConnectionIsStaleSession(t *testing.T) {
+	err := MapJDBCAgentError("rpc error: code = Unknown desc = ORA-17008: 已关闭连接")
+	if !isJDBCSessionStale(err) {
+		t.Fatalf("ORA-17008 should be treated as a stale JDBC session, got %v", err)
+	}
+	streamErr := MapJDBCAgentError("rpc error: code = Unknown desc = ORA-17027: 流已被关闭")
+	if !isJDBCSessionStale(streamErr) {
+		t.Fatalf("ORA-17027 should be treated as a stale JDBC session, got %v", streamErr)
+	}
+	syntaxErr := MapJDBCAgentError("rpc error: code = Unknown desc = ORA-00933: SQL 命令未正确结束")
+	if isJDBCSessionStale(syntaxErr) {
+		t.Fatal("SQL syntax errors must not trigger session reconnect")
+	}
+}

@@ -8,6 +8,7 @@ type JDBCManifest struct {
 type JDBCDriver struct {
 	ID                 string              `json:"id"`
 	Name               string              `json:"name"`
+	Category           string              `json:"category,omitempty"`
 	RecommendedVersion string              `json:"recommendedVersion"`
 	Profiles           []JDBCDriverProfile `json:"profiles"`
 }

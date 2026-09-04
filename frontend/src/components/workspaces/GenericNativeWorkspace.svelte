@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import { nativeDatabaseWorkspace } from '../../lib/nativeDatabaseWorkspace.js';
+  import { nativeCopilotObjectKind } from '../../lib/copilotContext.js';
+  import { copilotStore } from '../../stores/copilot.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -17,6 +19,13 @@
 
   $: databaseType = dbConfig?.metadata?.db_type || '';
   $: workspace = nativeDatabaseWorkspace(databaseType);
+  $: if (sessionId) {
+    copilotStore.setWorkspaceFocus(sessionId, {
+      objectKind: selectedResource ? nativeCopilotObjectKind(databaseType) : '',
+      objectName: selectedResource || '',
+      objectParent: selectedParent || ''
+    });
+  }
 
   onMount(loadResources);
 

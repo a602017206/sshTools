@@ -19,6 +19,7 @@
   } from '../../wailsjs/go/main/App.js';
   import { jdbcProfileActionState } from '../lib/jdbcDriverProfileState.js';
   import { jdbcDriverRemovalConfirmation } from '../lib/jdbcDriverRemovalState.js';
+  import { JDBC_DRIVER_CATEGORIES, categoryLabel } from '../lib/databaseTypeCatalog.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
 
   let drivers = [];
@@ -28,6 +29,7 @@
   let selectedProfileId = '';
   let search = '';
   let filter = 'all';
+  let categoryFilter = 'all';
   let isBusy = false;
   let activeTaskMessage = '';
   let errorMessage = '';
@@ -46,14 +48,28 @@
   let pendingRemoval = null;
 
   $: filteredDrivers = drivers.filter((driver) => {
-    const text = `${driver.name || ''} ${driver.id || ''}`.toLowerCase();
+    const text = `${driver.name || ''} ${driver.id || ''} ${driver.category || ''}`.toLowerCase();
     const matchesSearch = text.includes(search.trim().toLowerCase());
     const matchesFilter =
       filter === 'all' ||
       (filter === 'installed' && driver.installed) ||
       (filter === 'missing' && !driver.installed);
-    return matchesSearch && matchesFilter;
+    const matchesCategory =
+      categoryFilter === 'all' ||
+      String(driver.category || 'relational').toLowerCase() === categoryFilter;
+    return matchesSearch && matchesFilter && matchesCategory;
   });
+
+  $: categoryCounts = JDBC_DRIVER_CATEGORIES.reduce((acc, category) => {
+    if (category.id === 'all') {
+      acc[category.id] = drivers.length;
+      return acc;
+    }
+    acc[category.id] = drivers.filter(
+      (driver) => String(driver.category || 'relational').toLowerCase() === category.id
+    ).length;
+    return acc;
+  }, {});
 
   $: selectedDriver =
     drivers.find((driver) => driver.id === selectedDriverId) ||
@@ -389,9 +405,24 @@
   {/if}
 
   <div class="jdbc-manager__body">
+    <nav class="jdbc-manager__categories" aria-label="驱动分类">
+      {#each JDBC_DRIVER_CATEGORIES as category}
+        <button
+          type="button"
+          class="jdbc-manager__category"
+          class:active={categoryFilter === category.id}
+          on:click={() => (categoryFilter = category.id)}
+        >
+          <span>{category.label}</span>
+          <small>{categoryCounts[category.id] || 0}</small>
+        </button>
+      {/each}
+      <p class="jdbc-manager__category-hint">Kafka / RocketMQ / RabbitMQ 为内置原生连接，无需安装 JDBC 驱动。</p>
+    </nav>
+
     <aside class="jdbc-manager__list">
       <div class="jdbc-manager__filters">
-        <input bind:value={search} class="jdbc-manager__search" placeholder="搜索驱动" />
+        <input bind:value={search} class="jdbc-manager__search" placeholder="搜索驱动名称、类型、版本…" />
         <div class="jdbc-manager__segments">
           <button type="button" class:active={filter === 'all'} on:click={() => (filter = 'all')}>全部</button>
           <button type="button" class:active={filter === 'installed'} on:click={() => (filter = 'installed')}>已安装</button>
@@ -409,7 +440,7 @@
           >
             <span>
               <strong>{driver.name}</strong>
-              <small>{driver.id} · 推荐 {driver.recommendedVersion || '未指定'}</small>
+              <small>{categoryLabel(driver.category || 'relational')} · {driver.id} · 推荐 {driver.recommendedVersion || '未指定'}</small>
             </span>
             <em class:installed={driver.installed}>{driver.installed ? '已安装' : '未安装'}</em>
           </button>
@@ -685,9 +716,53 @@
 
   .jdbc-manager__body {
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: 168px 280px minmax(0, 1fr);
     min-height: 520px;
     overflow: hidden;
+  }
+
+  .jdbc-manager__categories {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 10px;
+    border-right: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    overflow: auto;
+  }
+
+  .jdbc-manager__category {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 8px 10px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 12px;
+  }
+
+  .jdbc-manager__category.active {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .jdbc-manager__category small {
+    color: var(--text-tertiary);
+    font-size: 11px;
+  }
+
+  .jdbc-manager__category-hint {
+    margin: 10px 4px 0;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    line-height: 1.5;
   }
 
   .jdbc-manager__list {

@@ -59,6 +59,17 @@ func NewSessionManager() *SessionManager {
 	}
 }
 
+func newManagedSSHSession(sessionID string, client *Client, session *Session) *ManagedSession {
+	return &ManagedSession{
+		ID:       sessionID,
+		Client:   client,
+		Session:  session,
+		Type:     SessionTypeSSH,
+		Running:  false,
+		stopChan: make(chan struct{}),
+	}
+}
+
 // CreateSession creates a new SSH session
 func (sm *SessionManager) CreateSession(sessionID string, cfg *Config) (*ManagedSession, error) {
 	sm.mu.Lock()
@@ -87,14 +98,7 @@ func (sm *SessionManager) CreateSession(sessionID string, cfg *Config) (*Managed
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	managed := &ManagedSession{
-		ID:       sessionID,
-		Client:   client,
-		Session:  session,
-		Running:  false,
-		stopChan: make(chan struct{}),
-	}
-
+	managed := newManagedSSHSession(sessionID, client, session)
 	sm.sessions[sessionID] = managed
 	return managed, nil
 }
@@ -275,14 +279,25 @@ func (sm *SessionManager) ExecuteCommand(sessionID string, cmd string, timeout t
 		return "", "", fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	if !managed.Running {
-		return "", "", fmt.Errorf("session not running: %s", sessionID)
-	}
-	if managed.Type != SessionTypeSSH || managed.Session == nil {
-		return "", "", fmt.Errorf("仅支持 SSH 会话执行独立命令: %s", sessionID)
+	session, err := remoteCommandSession(managed)
+	if err != nil {
+		return "", "", err
 	}
 
-	return managed.Session.ExecuteCommand(cmd, timeout)
+	return session.ExecuteCommand(cmd, timeout)
+}
+
+func remoteCommandSession(managed *ManagedSession) (*Session, error) {
+	if managed == nil {
+		return nil, fmt.Errorf("session not found")
+	}
+	if !managed.Running {
+		return nil, fmt.Errorf("session not running: %s", managed.ID)
+	}
+	if managed.Type == SessionTypeLocal || managed.Session == nil {
+		return nil, fmt.Errorf("仅支持 SSH 会话执行独立命令: %s", managed.ID)
+	}
+	return managed.Session, nil
 }
 
 // GetCurrentWorkingDirectory gets the current working directory from the SSH session

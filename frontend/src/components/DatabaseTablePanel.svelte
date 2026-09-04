@@ -11,9 +11,13 @@
   } from '../lib/tableQueryBuilder.js';
   import { formatColumnDescription, formatColumnLength, formatColumnType } from '../lib/tableStructureMetadata.js';
   import { buildGridTemplateColumns, clampColumnWidth, getInitialColumnWidth } from '../lib/tableGridColumns.js';
-  import { buildDeleteSQL, buildInsertSQL, buildUpdateSQL } from '../lib/tableDataMutations.js';
+  import { buildDeleteSQL, buildDeleteStatements, buildInsertSQL, buildInsertStatements, buildUpdateSQL, buildBatchUpdateStatements } from '../lib/tableDataMutations.js';
+  import { allRowsSelected, rowsFromIndexes, toggleAllRowSelection, toggleRowSelection } from '../lib/tableRowSelection.js';
+  import { formatRowsAsTsv } from '../lib/tableGridSelection.js';
   import { formatConnectionError } from '../lib/formatConnectionError.js';
   import { getRowContextMenuPosition, shouldCloseRowContextMenu } from '../lib/databaseRowContextMenu.js';
+  import { clearWindowSelection, portalToBody } from '../lib/contextMenu.js';
+  import { copilotStore } from '../stores/copilot.js';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
 
   export let sessionId = null;
@@ -24,6 +28,15 @@
   export let initialQuery = '';
 
   let query = '';
+  $: if (sessionId) {
+    copilotStore.setWorkspaceFocus(sessionId, {
+      database: databaseName || '',
+      schema: schemaName || '',
+      objectKind: tableName ? 'table' : 'query',
+      objectName: tableName || '',
+      editorContent: query || ''
+    });
+  }
   let resultData = null;
   let isLoading = false;
   let errorMessage = '';
@@ -47,8 +60,11 @@
   let contextMenu = null;
   let isMutating = false;
   let pendingDelete = null;
+  let bulkUpdateOpen = false;
+  let bulkUpdateColumn = '';
+  let bulkUpdateValue = '';
+  let selectedRowIndexes = new Set();
   let contextMenuElement;
-  let contextMenuPortal;
 
   const historyLimit = 50;
 
@@ -61,18 +77,26 @@
     });
   }
 
-  function buildDefaultQuery(page = 1) {
+  function buildBrowseQuery(page = 1) {
     const qualifiedName = buildQualifiedTableName();
     if (!qualifiedName) return '';
     const size = Number(pageSize) > 0 ? Number(pageSize) : 100;
     return buildTableBrowseSQL({
       fromSQL: qualifiedName,
       databaseType: String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase(),
-      filters: [],
-      sorters: [],
+      filters: filterRules,
+      sorters: sortRules,
       limit: size,
       offset: Math.max(0, (page - 1) * size)
     });
+  }
+
+  async function refreshTableData(page = currentPage) {
+    currentPage = page;
+    query = buildBrowseQuery(page);
+    selectedRowIndexes = new Set();
+    selectedCell = { row: -1, column: -1 };
+    await executeQuery();
   }
 
   function createFilterRule() {
@@ -122,24 +146,15 @@
   async function applyQueryBuilder() {
     const qualifiedName = buildQualifiedTableName();
     if (!qualifiedName) return;
-    const size = Number(pageSize) > 0 ? Number(pageSize) : 100;
-    query = buildTableBrowseSQL({
-      fromSQL: qualifiedName,
-      databaseType,
-      filters: filterRules,
-      sorters: sortRules,
-      limit: size,
-      offset: (currentPage - 1) * size
-    });
     sortState = { key: '', direction: 'desc' };
-    await executeQuery();
+    await refreshTableData(currentPage);
   }
 
   async function resetQueryBuilder() {
     filterRules = [];
     sortRules = [];
     sortState = { key: '', direction: 'desc' };
-    await runDefaultQuery();
+    await refreshTableData(1);
   }
 
   function hasOrderBy(sql) {
@@ -225,9 +240,35 @@
   }
 
   async function runDefaultQuery(page = 1) {
-    currentPage = page;
-    query = buildDefaultQuery(page);
-    await executeQuery();
+    await refreshTableData(page);
+  }
+
+  function mutationBaseInput() {
+    return { databaseType, table: titleName, columns: resultData.columns, primaryKeys: primaryKeys() };
+  }
+
+  function selectedRows() {
+    return rowsFromIndexes(filteredRows, selectedRowIndexes);
+  }
+
+  function handleToggleRowSelection(rowIndex) {
+    selectedRowIndexes = toggleRowSelection(selectedRowIndexes, rowIndex);
+  }
+
+  function handleToggleAllRows(event) {
+    selectedRowIndexes = toggleAllRowSelection(selectedRowIndexes, filteredRows.length, event.currentTarget.checked);
+  }
+
+  function copySelectedRows() {
+    const rows = selectedRows();
+    if (!rows.length) return;
+    copyText(formatRowsAsTsv(rows));
+  }
+
+  function copySelectedRowsAsInsert() {
+    const rows = selectedRows();
+    if (!rows.length) return;
+    copyText(buildInsertStatements(mutationBaseInput(), rows).join('\n'));
   }
 
   async function loadColumnMetadata() {
@@ -251,6 +292,7 @@
     resultData = null;
     errorMessage = '';
     warningMessage = '';
+    selectedRowIndexes = new Set();
     selectedCell = { row: -1, column: -1 };
   }
 
@@ -279,6 +321,7 @@
 
   function openContextMenu(event, rowIndex, row) {
     event.preventDefault();
+    clearWindowSelection();
     const { x, y } = getRowContextMenuPosition(event.currentTarget.getBoundingClientRect());
     contextMenu = { x, y, rowIndex, row };
     tick().then(() => contextMenuElement?.focus());
@@ -288,14 +331,6 @@
     if (contextMenu && shouldCloseRowContextMenu({ menuContainsTarget: contextMenuElement?.contains(event.target) })) {
       contextMenu = null;
     }
-  }
-
-  function mountContextMenuPortal(node) {
-    if (typeof document === 'undefined') return {};
-    contextMenuPortal = document.createElement('div');
-    document.body.appendChild(contextMenuPortal);
-    contextMenuPortal.appendChild(node);
-    return { destroy() { contextMenuPortal?.remove(); contextMenuPortal = null; } };
   }
 
   onMount(() => {
@@ -316,19 +351,66 @@
       errorMessage = '无法为当前记录生成删除条件。';
       return;
     }
-    pendingDelete = { sql, message };
+    pendingDelete = { statements: [sql], message };
     contextMenu = null;
   }
 
-  async function deleteRow() {
-    const sql = pendingDelete?.sql;
-    if (!sql) return;
+  function requestBatchDelete() {
+    const rows = selectedRows();
+    const statements = buildDeleteStatements(mutationBaseInput(), rows);
+    if (!statements.length) {
+      errorMessage = '无法为选中记录生成删除条件。';
+      return;
+    }
+    const message = hasPrimaryKey
+      ? `删除选中的 ${statements.length} 条记录？此操作无法撤销。`
+      : `当前表未识别到主键，将按整行原始值删除选中的 ${statements.length} 条记录；重复行可能会同时受影响。是否继续？`;
+    pendingDelete = { statements, message };
+  }
+
+  function openBulkUpdateDialog() {
+    if (!selectedRowIndexes.size || !availableColumns.length) return;
+    bulkUpdateColumn = availableColumns[0];
+    bulkUpdateValue = '';
+    bulkUpdateOpen = true;
+  }
+
+  async function applyBulkUpdate() {
+    const rows = selectedRows();
+    const statements = buildBatchUpdateStatements(mutationBaseInput(), rows, bulkUpdateColumn, bulkUpdateValue);
+    if (!statements.length) {
+      errorMessage = '请选择字段并确保选中记录有效。';
+      return;
+    }
     isMutating = true;
     try {
-      const result = JSON.parse(await window.wailsBindings.ExecuteDatabaseQuery(sessionId, sql));
-      await runDefaultQuery(currentPage);
-      warningMessage = Number(result?.affected || 0) > 0
-        ? `删除结果：已删除 ${result.affected} 条记录。`
+      for (const statement of statements) {
+        await window.wailsBindings.ExecuteDatabaseQuery(sessionId, statement);
+      }
+      editedCells = {};
+      bulkUpdateOpen = false;
+      await refreshTableData(currentPage);
+      warningMessage = `批量更新完成：已更新 ${statements.length} 条记录。`;
+    } catch (error) {
+      errorMessage = `批量更新失败: ${formatConnectionError(error, '未知错误')}`;
+    } finally {
+      isMutating = false;
+    }
+  }
+
+  async function deleteRow() {
+    const statements = pendingDelete?.statements || [];
+    if (!statements.length) return;
+    isMutating = true;
+    try {
+      let affected = 0;
+      for (const sql of statements) {
+        const result = JSON.parse(await window.wailsBindings.ExecuteDatabaseQuery(sessionId, sql));
+        affected += Number(result?.affected || 0);
+      }
+      await refreshTableData(currentPage);
+      warningMessage = affected > 0
+        ? `删除结果：已删除 ${affected} 条记录。`
         : '删除结果：未匹配到记录，数据未发生变化。';
     } catch (error) {
       errorMessage = `删除记录失败: ${formatConnectionError(error, '未知错误')}`;
@@ -343,7 +425,7 @@
     const statements = Object.entries(groups).map(([rowIndex, changes]) => buildUpdateSQL(mutationInput(filteredRows[Number(rowIndex)], changes))).filter(Boolean);
     if (!statements.length) return;
     isMutating = true;
-    try { for (const statement of statements) await window.wailsBindings.ExecuteDatabaseQuery(sessionId, statement); editedCells = {}; await runDefaultQuery(currentPage); } catch (error) { errorMessage = `保存失败: ${formatConnectionError(error, '未知错误')}`; } finally { isMutating = false; }
+    try { for (const statement of statements) await window.wailsBindings.ExecuteDatabaseQuery(sessionId, statement); editedCells = {}; await refreshTableData(currentPage); } catch (error) { errorMessage = `保存失败: ${formatConnectionError(error, '未知错误')}`; } finally { isMutating = false; }
   }
 
   function discardChanges() { editedCells = {}; }
@@ -435,6 +517,9 @@
   $: gridTemplateColumns = buildGridTemplateColumns(resultData?.columns || [], columnWidths, columnMetadata);
   $: hasPrimaryKey = primaryKeys().length > 0;
   $: hasEdits = Object.keys(editedCells).length > 0;
+  $: selectionCount = selectedRowIndexes.size;
+  $: allVisibleRowsSelected = allRowsSelected(selectedRowIndexes, filteredRows.length);
+  $: gridWithSelection = `36px ${gridTemplateColumns}`;
 </script>
 
 <div class="table-workspace">
@@ -455,11 +540,20 @@
 
   <div class="table-workspace__toolbar table-workspace__query-strip">
     <button type="button" class="table-workspace__tool table-workspace__tool--primary" title="运行" on:click={executeQuery} disabled={isLoading}>▶</button>
-    <button type="button" class="table-workspace__tool" title="重新加载当前页" on:click={() => runDefaultQuery(currentPage)} disabled={isLoading || !tableName}>↻</button>
+    <button type="button" class="table-workspace__tool" title="重新加载当前页" on:click={() => refreshTableData(currentPage)} disabled={isLoading || !tableName}>↻</button>
     <button type="button" class:table-workspace__tool--active={queryBuilderOpen} class="table-workspace__tool" title="筛选与排序" on:click={() => queryBuilderOpen = !queryBuilderOpen} disabled={!tableName}>⏷</button>
     <button type="button" class="table-workspace__tool" title="清空结果" on:click={clearResult}>⌫</button>
     <button type="button" class="table-workspace__tool" title={hasEdits ? '保存' : '修改单元格后可保存'} disabled={!hasEdits || isMutating} on:click={saveChanges}>✓</button>
     <button type="button" class="table-workspace__tool" title={hasEdits ? '放弃修改' : '当前没有待放弃的修改'} disabled={!hasEdits || isMutating} on:click={discardChanges}>↶</button>
+    {#if selectionCount > 0}
+      <div class="table-workspace__selection-bar">
+        <span class="table-workspace__selection-count">已选 {selectionCount} 行</span>
+        <button type="button" class="table-workspace__selection-action" title="复制选中行" on:click={copySelectedRows}>复制</button>
+        <button type="button" class="table-workspace__selection-action" title="复制为 INSERT 语句" on:click={copySelectedRowsAsInsert}>INSERT</button>
+        <button type="button" class="table-workspace__selection-action" title="批量修改字段" disabled={isMutating} on:click={openBulkUpdateDialog}>改字段</button>
+        <button type="button" class="table-workspace__selection-action table-workspace__selection-action--danger" title="删除选中行" disabled={isMutating} on:click={requestBatchDelete}>删除</button>
+      </div>
+    {/if}
     <span class="table-workspace__divider"></span>
     <button type="button" class="table-workspace__tool" title="打开 SQL 编辑器" on:click={() => activeMode = 'sql'}>{'</>'}</button>
     <span class="table-workspace__toolbar-title">{isLoading ? '正在执行...' : titleName || '未选择表'}</span>
@@ -474,7 +568,7 @@
       <div class="table-workspace__query-builder-head">
         <div>
           <strong>筛选与排序</strong>
-          <span>应用后重新读取前 100 条数据</span>
+          <span>应用后按当前筛选与排序重新读取数据</span>
         </div>
         <div class="table-workspace__query-builder-actions">
           <button type="button" on:click={resetQueryBuilder} disabled={isLoading}>重置</button>
@@ -565,7 +659,10 @@
     <main class="table-workspace__grid-wrap">
       <div class="table-workspace__grid" role="table" aria-label="表数据结果">
         {#if resultData?.columns?.length}
-          <div class="table-workspace__grid-head" role="row" style={`grid-template-columns: ${gridTemplateColumns};`}>
+          <div class="table-workspace__grid-head" role="row" style={`grid-template-columns: ${gridWithSelection};`}>
+            <label class="table-workspace__check-head" title="全选当前页">
+              <input type="checkbox" class="table-workspace__check" checked={allVisibleRowsSelected} on:change={handleToggleAllRows} aria-label="全选当前页" />
+            </label>
             <span class="table-workspace__row-number" role="columnheader">#</span>
             {#each resultData.columns as column}
               {@const metadata = columnMetadata[column]}
@@ -586,7 +683,10 @@
             {/each}
           </div>
           {#each filteredRows as row, rowIndex}
-            <div class="table-workspace__grid-row" class:table-workspace__grid-row--selected={selectedCell.row === rowIndex} role="row" style={`grid-template-columns: ${gridTemplateColumns};`}>
+            <div class="table-workspace__grid-row" class:table-workspace__grid-row--selected={selectedRowIndexes.has(rowIndex)} role="row" style={`grid-template-columns: ${gridWithSelection};`}>
+              <label class="table-workspace__check-cell" on:click|stopPropagation>
+                <input type="checkbox" class="table-workspace__check" checked={selectedRowIndexes.has(rowIndex)} on:change={() => handleToggleRowSelection(rowIndex)} aria-label={`选择第 ${rowIndex + 1} 行`} />
+              </label>
               <span class="table-workspace__row-number" role="cell">{rowIndex + 1}</span>
               {#each row as cell, columnIndex}
                 <input
@@ -635,23 +735,58 @@
 
   <footer class="table-workspace__status">
     <span>{filteredRows.length} / {resultData?.rows?.length || 0} 行</span>
-    <div class="table-workspace__pagination"><button type="button" title="上一页" disabled={currentPage <= 1 || isLoading} on:click={() => runDefaultQuery(currentPage - 1)}>‹</button><span>{currentPage}</span><button type="button" title="下一页" disabled={filteredRows.length < pageSize || isLoading} on:click={() => runDefaultQuery(currentPage + 1)}>›</button><select aria-label="每页显示条数" bind:value={pageSize} on:change={() => runDefaultQuery(1)}><option value={25}>25 / 页</option><option value={50}>50 / 页</option><option value={100}>100 / 页</option><option value={200}>200 / 页</option></select></div>
-    <span>{selectedValue === null || selectedValue === undefined ? '未选择单元格' : `当前值：${String(selectedValue)}`}</span>
+    <div class="table-workspace__pagination"><button type="button" title="上一页" disabled={currentPage <= 1 || isLoading} on:click={() => refreshTableData(currentPage - 1)}>‹</button><span>{currentPage}</span><button type="button" title="下一页" disabled={filteredRows.length < pageSize || isLoading} on:click={() => refreshTableData(currentPage + 1)}>›</button><select aria-label="每页显示条数" bind:value={pageSize} on:change={() => refreshTableData(1)}><option value={25}>25 / 页</option><option value={50}>50 / 页</option><option value={100}>100 / 页</option><option value={200}>200 / 页</option></select></div>
+    <span>{selectionCount > 0 ? `已选 ${selectionCount} 行 · ` : ''}{selectedValue === null || selectedValue === undefined ? '未选择单元格' : `当前值：${String(selectedValue)}`}</span>
   </footer>
 
   {#if contextMenu}
-    <div bind:this={contextMenuElement} use:mountContextMenuPortal class="table-workspace__context-menu" style={`left:${contextMenu.x}px; top:${contextMenu.y}px;`} role="menu" tabindex="-1"><button type="button" on:click={() => copyText(contextMenu.row.join('\t'))}>复制行</button><button type="button" on:click={() => copyText(buildInsertSQL(mutationInput(contextMenu.row)))}>复制为 INSERT</button><button type="button" disabled={isMutating} on:click={() => requestDelete(contextMenu.row)}>删除记录</button></div>
+    <div bind:this={contextMenuElement} use:portalToBody class="table-workspace__context-menu" style={`left:${contextMenu.x}px; top:${contextMenu.y}px;`} role="menu" tabindex="-1">
+      <button type="button" on:click={() => copyText(contextMenu.row.join('\t'))}>复制行</button>
+      <button type="button" on:click={() => copyText(buildInsertSQL(mutationInput(contextMenu.row)))}>复制为 INSERT</button>
+      {#if selectionCount > 1}
+        <button type="button" on:click={copySelectedRows}>复制选中 {selectionCount} 行</button>
+        <button type="button" on:click={copySelectedRowsAsInsert}>复制选中为 INSERT</button>
+      {/if}
+      <button type="button" disabled={isMutating} on:click={() => requestDelete(contextMenu.row)}>删除记录</button>
+      {#if selectionCount > 1}
+        <button type="button" disabled={isMutating} on:click={requestBatchDelete}>删除选中 {selectionCount} 行</button>
+      {/if}
+    </div>
   {/if}
 
   <ConfirmDialog
     isOpen={Boolean(pendingDelete)}
-    title="删除记录"
+    title={pendingDelete?.statements?.length > 1 ? '批量删除记录' : '删除记录'}
     message={pendingDelete?.message || ''}
     confirmText="删除"
     type="danger"
     onConfirm={deleteRow}
     onCancel={() => pendingDelete = null}
   />
+
+  {#if bulkUpdateOpen}
+    <div class="table-workspace__bulk-modal" role="dialog" aria-modal="true" aria-label="批量修改字段">
+      <div class="table-workspace__bulk-backdrop" on:click={() => bulkUpdateOpen = false}></div>
+      <form class="table-workspace__bulk-panel" on:submit|preventDefault={applyBulkUpdate}>
+        <h2>批量修改字段</h2>
+        <p>将选中的 {selectionCount} 行同一字段更新为新值。</p>
+        <label>
+          <span>字段</span>
+          <select bind:value={bulkUpdateColumn} disabled={!availableColumns.length}>
+            {#each availableColumns as column}<option value={column}>{column}</option>{/each}
+          </select>
+        </label>
+        <label>
+          <span>新值</span>
+          <input bind:value={bulkUpdateValue} placeholder="留空表示写入空字符串" />
+        </label>
+        <div class="table-workspace__bulk-actions">
+          <button type="button" on:click={() => bulkUpdateOpen = false} disabled={isMutating}>取消</button>
+          <button type="submit" disabled={isMutating || !bulkUpdateColumn}>应用</button>
+        </div>
+      </form>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -671,6 +806,14 @@
   .table-workspace__tool { width: 28px; height: 28px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 15px; }
   .table-workspace__tool:hover:not(:disabled) { color: #1586d1; border-color: var(--border-primary); background: var(--bg-primary); }
   .table-workspace__tool--primary { color: #fff; background: #1687d4; border-color: #1687d4; }
+  .table-workspace__tool--danger { color: #c43832; border-color: #f0c7c5; background: #fff5f5; }
+  .table-workspace__tool--danger:hover:not(:disabled) { color: #fff; background: #c43832; border-color: #c43832; }
+  .table-workspace__selection-bar { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; padding: 3px 8px 3px 10px; border: 1px solid #c7d7e2; border-radius: 999px; background: linear-gradient(180deg, #f8fbfd 0%, #eef4f8 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.85); }
+  .table-workspace__selection-count { color: #475569; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .table-workspace__selection-action { min-height: 24px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 999px; background: #fff; color: #334155; cursor: pointer; font-size: 11px; font-weight: 600; }
+  .table-workspace__selection-action:hover:not(:disabled) { border-color: #0e6674; color: #0e6674; background: #f0f9fa; }
+  .table-workspace__selection-action--danger { border-color: #fecaca; color: #b91c1c; background: #fff5f5; }
+  .table-workspace__selection-action--danger:hover:not(:disabled) { border-color: #ef4444; color: #fff; background: #ef4444; }
   .table-workspace__tool--active { color: #1586d1; border-color: #1586d1; background: color-mix(in srgb, #1586d1 8%, transparent); }
   .table-workspace__tool:disabled { opacity: .5; cursor: not-allowed; }
   .table-workspace__divider { width: 1px; height: 20px; margin: 0 5px; background: var(--border-primary); }
@@ -717,9 +860,16 @@
   .table-workspace__grid-head { position: sticky; top: 0; z-index: 2; background: var(--bg-secondary); border-bottom: 1px solid var(--border-primary); }
   .table-workspace__grid-row { border-bottom: 1px solid var(--border-primary); }
   .table-workspace__grid-row:hover { background: var(--bg-hover); }
-  .table-workspace__grid-row--selected { background: var(--bg-active); }
-  .table-workspace__row-number { position: sticky; left: 0; z-index: 1; padding: 8px 9px; text-align: right; color: var(--text-secondary); background: var(--bg-secondary); border-right: 1px solid var(--border-primary); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .table-workspace__grid-head .table-workspace__row-number { z-index: 3; }
+  .table-workspace__grid-row--selected { background: #edf6ff; }
+  .table-workspace__check-head, .table-workspace__check-cell { position: sticky; left: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: inherit; border-right: 1px solid var(--border-primary); }
+  .table-workspace__check-head { z-index: 3; background: var(--bg-secondary); }
+  .table-workspace__grid-head .table-workspace__check-head { background: var(--bg-secondary); }
+  .table-workspace__grid-row .table-workspace__check-cell { background: inherit; }
+  .table-workspace__check { width: 14px; height: 14px; margin: 0; accent-color: #0e6674; cursor: pointer; }
+  .table-workspace__row-number { position: sticky; left: 36px; z-index: 1; padding: 8px 9px; text-align: right; color: var(--text-secondary); background: inherit; border-right: 1px solid var(--border-primary); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .table-workspace__grid-head .table-workspace__row-number { z-index: 3; background: var(--bg-secondary); }
+  .table-workspace__grid-row--selected .table-workspace__row-number,
+  .table-workspace__grid-row--selected .table-workspace__check-cell { background: #edf6ff; }
   .table-workspace__column { position: relative; min-width: 0; min-height: 54px; border-right: 1px solid var(--border-primary); }
   .table-workspace__column-sort { width: 100%; min-height: 54px; padding: 6px 10px; display: grid; align-content: center; gap: 3px; overflow: hidden; border: 0; background: transparent; color: var(--text-secondary); text-align: left; cursor: pointer; font-size: 12px; font-weight: 650; }
   .table-workspace__column-name { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
@@ -728,8 +878,8 @@
   .table-workspace__column:hover .table-workspace__column-sort, .table-workspace__column--sorted .table-workspace__column-sort { color: #1586d1; background: color-mix(in srgb, #1586d1 6%, transparent); }
   .table-workspace__column-resizer { position: absolute; top: 0; right: -5px; z-index: 4; width: 9px; height: 100%; padding: 0; border: 0; background: transparent; cursor: col-resize; }
   .table-workspace__column-resizer:hover, .table-workspace__column-resizer:focus-visible { background: color-mix(in srgb, #1586d1 42%, transparent); outline: 0; }
-  .table-workspace__cell { min-width: 0; overflow: hidden; padding: 8px 10px; border: 0; border-right: 1px solid var(--border-primary); background: transparent; color: var(--text-primary); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: cell; font-size: 12px; }
-  .table-workspace__cell--active { outline: 2px solid var(--accent-primary); outline-offset: -2px; background: var(--bg-active); }
+  .table-workspace__cell { min-width: 0; overflow: hidden; padding: 8px 10px; border: 0; border-right: 1px solid var(--border-primary); background: transparent; color: var(--text-primary); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: cell; font-size: 12px; width: 100%; outline: 0; }
+  .table-workspace__cell--active { box-shadow: inset 0 0 0 2px #2563eb; background: #f8fbff; z-index: 1; }
   .table-workspace__cell--null::placeholder,
   .table-workspace__cell--empty::placeholder {
     color: var(--text-tertiary);
@@ -778,10 +928,10 @@
   .table-workspace__column:nth-child(3n) .table-workspace__column-accent { background: #b58024; }
   .table-workspace__column:nth-child(4n) .table-workspace__column-accent { background: #8168a8; }
   .table-workspace__grid-row { border-bottom-color: #e1e6e8; }
-  .table-workspace__grid-row:hover { background: #f1f7f6; }
+  .table-workspace__grid-row:hover { background: #f8fbff; }
+  .table-workspace__grid-row--selected { background: #edf6ff; }
   .table-workspace__cell { padding: 9px 12px; border-right-color: #e1e6e8; font: 12px "SFMono-Regular", Menlo, Consolas, monospace; }
-  .table-workspace__cell--active { outline-color: #0e6674; background: #e9f4f3; }
-  .table-workspace__cell { width: 100%; outline: 0; }
+  .table-workspace__cell--active { background: #f8fbff; box-shadow: inset 0 0 0 2px #2563eb; }
   .table-workspace__cell--edited { background: #fff8e8; color: #8b5e12; }
   .table-workspace__pagination { display: flex; align-items: center; gap: 5px; }
   .table-workspace__pagination button, .table-workspace__pagination select { min-width: 26px; height: 24px; border: 1px solid #d9e0e4; border-radius: 3px; background: #fff; color: #31414d; font: inherit; }
@@ -814,6 +964,16 @@
     background: var(--accent-subtle);
     color: var(--ops-signal);
   }
+  .table-workspace__bulk-modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; }
+  .table-workspace__bulk-backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.35); }
+  .table-workspace__bulk-panel { position: relative; width: min(420px, calc(100vw - 32px)); padding: 18px; display: grid; gap: 12px; border: 1px solid var(--border-primary); border-radius: 12px; background: var(--bg-primary); box-shadow: var(--shadow-lg); }
+  .table-workspace__bulk-panel h2 { margin: 0; font-size: 15px; }
+  .table-workspace__bulk-panel p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+  .table-workspace__bulk-panel label { display: grid; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  .table-workspace__bulk-panel select, .table-workspace__bulk-panel input { min-height: 32px; padding: 6px 8px; border: 1px solid var(--border-primary); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; }
+  .table-workspace__bulk-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .table-workspace__bulk-actions button { min-height: 30px; padding: 0 12px; border: 1px solid var(--border-primary); border-radius: 4px; background: var(--bg-secondary); cursor: pointer; font-size: 12px; }
+  .table-workspace__bulk-actions button[type="submit"] { border-color: #1687d4; background: #1687d4; color: #fff; }
   .table-workspace__inspector { padding: 18px 16px; border-left-color: #d9e0e4; background: #f7f8f5; }
   .table-workspace__details h2 { margin-bottom: 10px; color: #31414d; font-size: 11px; letter-spacing: .04em; }
   .table-workspace__details section + section { margin-top: 28px; }

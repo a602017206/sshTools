@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -141,10 +142,18 @@ func (c *fakeRedisNativeClient) Keyspace(context.Context) (map[int]int, error) {
 	return c.keyspace, nil
 }
 
-func (c *fakeRedisNativeClient) Scan(_ context.Context, _ uint64, _ int, _ int64) ([]string, uint64, error) {
+func (c *fakeRedisNativeClient) Scan(_ context.Context, _ uint64, _ string, _ int, _ int64) ([]string, uint64, error) {
 	page := c.pages[c.scanCalls]
 	c.scanCalls++
 	return page.keys, page.cursor, page.err
+}
+
+func (c *fakeRedisNativeClient) DeleteKeys(_ context.Context, keys []string) (NativeMutationResult, error) {
+	return NativeMutationResult{Summary: fmt.Sprintf("已删除 %d 个键", len(keys))}, nil
+}
+
+func (c *fakeRedisNativeClient) DoCommand(context.Context, []any) (NativeQueryResult, error) {
+	return NativeQueryResult{Summary: "ok", Content: `{"result":"PONG"}`}, nil
 }
 
 func (c *fakeRedisNativeClient) Close() error {

@@ -6,7 +6,7 @@ type Result struct {
 	Reason      string
 }
 
-// Artifact is a structured SQL or shell payload extracted from a model reply.
+// Artifact is a structured SQL, shell, or native payload extracted from a model reply.
 type Artifact struct {
 	Type        string `json:"type"`
 	Content     string `json:"content"`

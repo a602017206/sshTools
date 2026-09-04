@@ -1,7 +1,7 @@
 export const FILE_MANAGER_MENU_WIDTH = 248;
 export const FILE_MANAGER_SUBMENU_WIDTH = 200;
-export const FILE_MANAGER_MENU_HEIGHT_FILE = 412;
-export const FILE_MANAGER_MENU_HEIGHT_BLANK = 300;
+export const FILE_MANAGER_MENU_HEIGHT_FILE = 448;
+export const FILE_MANAGER_MENU_HEIGHT_BLANK = 336;
 export const FILE_MANAGER_MORE_INLINE_HEIGHT = 136;
 export const FILE_MANAGER_SUBMENU_OVERLAP = 6;
 
@@ -118,7 +118,7 @@ export function getFileManagerMenuFlags({
   const hasFile = Boolean(file && !file.is_parent);
   const isDir = hasFile && Boolean(file.is_dir);
   const isFile = hasFile && !file.is_dir;
-  const canPaste = Boolean(clipboard?.files?.length);
+  const canPaste = true;
   return {
     hasFile,
     isDir,

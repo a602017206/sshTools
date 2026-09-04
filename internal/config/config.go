@@ -87,7 +87,7 @@ func DefaultSettings() AppSettings {
 		AccentColor:            "teal",
 		FontFamily:             "\"SF Pro Text\", \"Inter\", \"Avenir Next\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
 		FontSize:               14,
-		TerminalTheme:          "default",
+		TerminalTheme:          "dark",
 		TerminalFontFamily:     "\"JetBrains Mono\", Menlo, Monaco, \"Courier New\", monospace",
 		TerminalFontSize:       14,
 		CompactMode:            false,

@@ -17,6 +17,7 @@ import io.grpc.stub.StreamObserver;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -131,18 +132,7 @@ public class MetadataServiceImpl extends QueryServiceImpl {
                         request.getTable(),
                         null)) {
                     while (columns.next()) {
-                        String name = columns.getString("COLUMN_NAME");
-                        builder.addColumns(Column.newBuilder()
-                                .setName(name)
-                                .setType(columns.getString("TYPE_NAME"))
-                                .setNullable(columns.getInt("NULLABLE") == DatabaseMetaData.columnNullable)
-                                .setPrimaryKey(primaryKeys.stream().anyMatch(key -> sameIdentifier(key, name)))
-                                .setColumnSize(columns.getInt("COLUMN_SIZE"))
-                                .setDecimalDigits(columns.getInt("DECIMAL_DIGITS"))
-                                .setHasDefault(columns.getObject(COLUMN_DEFAULT) != null)
-                                .setDefaultValue(columns.getObject(COLUMN_DEFAULT) == null ? "" : columns.getString(COLUMN_DEFAULT))
-                                .setDescription(columns.getString("REMARKS") == null ? "" : columns.getString("REMARKS"))
-                                .build());
+                        builder.addColumns(readColumnMetadata(columns, primaryKeys));
                     }
                 }
                 return builder.build();
@@ -192,6 +182,55 @@ public class MetadataServiceImpl extends QueryServiceImpl {
             }
         }
         return keys;
+    }
+
+    static Column readColumnMetadata(ResultSet columns, Set<String> primaryKeys) throws Exception {
+        String name = columns.getString("COLUMN_NAME");
+        String type = columns.getString("TYPE_NAME");
+        int columnSize = columns.getInt("COLUMN_SIZE");
+        int decimalDigits = columns.getInt("DECIMAL_DIGITS");
+        boolean nullable = columns.getInt("NULLABLE") == DatabaseMetaData.columnNullable;
+        // Oracle JDBC exposes REMARKS/COLUMN_DEF as LONG. Read them in ResultSet
+        // order, once; a second getObject/getString throws ORA-17027.
+        String remarks = optionalString(columns, "REMARKS");
+        String defaultValue = optionalString(columns, COLUMN_DEFAULT);
+        boolean hasDefault = !columns.wasNull();
+        return Column.newBuilder()
+                .setName(name)
+                .setType(type == null ? "" : type)
+                .setNullable(nullable)
+                .setPrimaryKey(primaryKeys.stream().anyMatch(key -> sameIdentifier(key, name)))
+                .setColumnSize(columnSize)
+                .setDecimalDigits(decimalDigits)
+                .setHasDefault(hasDefault)
+                .setDefaultValue(defaultValue)
+                .setDescription(remarks)
+                .build();
+    }
+
+    static String optionalString(ResultSet rows, String column) throws Exception {
+        try {
+            String value = rows.getString(column);
+            return value == null ? "" : value;
+        } catch (SQLException e) {
+            if (isClosedStream(e)) {
+                return "";
+            }
+            throw e;
+        }
+    }
+
+    static boolean isClosedStream(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            String message = current.getMessage();
+            if (message != null) {
+                String normalized = message.toLowerCase();
+                if (normalized.contains("ora-17027") || normalized.contains("stream has already been closed") || normalized.contains("流已被关闭")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     static boolean sameIdentifier(String left, String right) {

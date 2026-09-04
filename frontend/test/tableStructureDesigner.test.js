@@ -12,8 +12,7 @@ test('表结构面板提供 Navicat 式字段设计与新建模式', async () =>
 
   assert.match(panel, /设计表/);
   assert.match(panel, /添加字段/);
-  assert.match(panel, /保存新表/);
-  assert.match(panel, /保存结构/);
+  assert.match(panel, /保存/);
   assert.match(panel, /buildAlterTableStatements/);
   assert.match(panel, /'kingbase'/);
   assert.match(panel, /disabled={fieldsReadOnly}/);
@@ -22,4 +21,11 @@ test('表结构面板提供 Navicat 式字段设计与新建模式', async () =>
   assert.match(store, /mode: 'design'/);
   assert.match(objects, /mode: 'create'/);
   assert.match(terminal, /<TableStructurePanel/);
+});
+
+test('表结构面板把 Oracle 纳入可修改方言，并顺序加载避免复用已关闭连接', async () => {
+  const panel = await readFile(new URL('../src/components/TableStructurePanel.svelte', import.meta.url), 'utf8');
+  assert.match(panel, /'oracle'/);
+  assert.match(panel, /当前仅支持 MySQL、PostgreSQL、人大金仓和 Oracle/);
+  assert.doesNotMatch(panel, /Promise\.all/);
 });

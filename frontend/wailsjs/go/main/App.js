@@ -10,6 +10,10 @@ export function CalculateHash(arg1, arg2) {
   return window['go']['main']['App']['CalculateHash'](arg1, arg2);
 }
 
+export function CancelSQLFile(arg1) {
+  return window['go']['main']['App']['CancelSQLFile'](arg1);
+}
+
 export function CancelTransfer(arg1) {
   return window['go']['main']['App']['CancelTransfer'](arg1);
 }
@@ -64,6 +68,10 @@ export function ConnectNativeDatabase(arg1, arg2, arg3, arg4, arg5, arg6, arg7) 
 
 export function ConnectSSH(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
   return window['go']['main']['App']['ConnectSSH'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+}
+
+export function CopilotCancel(arg1) {
+  return window['go']['main']['App']['CopilotCancel'](arg1);
 }
 
 export function CopilotChat(arg1) {
@@ -150,6 +158,10 @@ export function ExecuteNativeDatabaseQuery(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ExecuteNativeDatabaseQuery'](arg1, arg2, arg3, arg4);
 }
 
+export function ExpandUploadPaths(arg1) {
+  return window['go']['main']['App']['ExpandUploadPaths'](arg1);
+}
+
 export function ExportConnections(arg1) {
   return window['go']['main']['App']['ExportConnections'](arg1);
 }
@@ -172,6 +184,10 @@ export function GenerateUUIDv4() {
 
 export function GetBackgroundImageDataURL() {
   return window['go']['main']['App']['GetBackgroundImageDataURL']();
+}
+
+export function GetClipboardFilePaths() {
+  return window['go']['main']['App']['GetClipboardFilePaths']();
 }
 
 export function GetConnection(arg1) {
@@ -334,6 +350,10 @@ export function ListNativeDatabaseChildResources(arg1, arg2) {
   return window['go']['main']['App']['ListNativeDatabaseChildResources'](arg1, arg2);
 }
 
+export function ListNativeDatabaseChildResourcesPage(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['ListNativeDatabaseChildResourcesPage'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function ListNativeDatabaseResources(arg1) {
   return window['go']['main']['App']['ListNativeDatabaseResources'](arg1);
 }
@@ -414,8 +434,16 @@ export function SelectJDBCRuntimeArchive() {
   return window['go']['main']['App']['SelectJDBCRuntimeArchive']();
 }
 
+export function SelectSQLFile() {
+  return window['go']['main']['App']['SelectSQLFile']();
+}
+
 export function SelectSSHKeyFile() {
   return window['go']['main']['App']['SelectSSHKeyFile']();
+}
+
+export function SelectUploadDirectory() {
+  return window['go']['main']['App']['SelectUploadDirectory']();
 }
 
 export function SelectUploadFiles() {
@@ -446,6 +474,10 @@ export function SetJDBCRuntimeMode(arg1, arg2) {
   return window['go']['main']['App']['SetJDBCRuntimeMode'](arg1, arg2);
 }
 
+export function SetSessionCharset(arg1, arg2) {
+  return window['go']['main']['App']['SetSessionCharset'](arg1, arg2);
+}
+
 export function ShowAboutDialog() {
   return window['go']['main']['App']['ShowAboutDialog']();
 }
@@ -460,6 +492,10 @@ export function ShowMessageDialog(arg1, arg2) {
 
 export function ShowQuestionDialog(arg1, arg2) {
   return window['go']['main']['App']['ShowQuestionDialog'](arg1, arg2);
+}
+
+export function StartSQLFile(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['StartSQLFile'](arg1, arg2, arg3, arg4);
 }
 
 export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
@@ -508,6 +544,10 @@ export function UpdateFileManagerSettings(arg1, arg2) {
 
 export function UpdateSettings(arg1) {
   return window['go']['main']['App']['UpdateSettings'](arg1);
+}
+
+export function UploadExpandedItems(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UploadExpandedItems'](arg1, arg2, arg3);
 }
 
 export function UploadFiles(arg1, arg2, arg3) {

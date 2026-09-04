@@ -9,6 +9,8 @@ export function AddConnection(arg1:config.ConnectionConfig):Promise<void>;
 
 export function CalculateHash(arg1:string,arg2:string):Promise<string>;
 
+export function CancelSQLFile(arg1:string):Promise<void>;
+
 export function CancelTransfer(arg1:string):Promise<void>;
 
 export function ChangeDirectory(arg1:string,arg2:string):Promise<void>;
@@ -36,6 +38,8 @@ export function ConnectLocalShell(arg1:string,arg2:string,arg3:number,arg4:numbe
 export function ConnectNativeDatabase(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string):Promise<void>;
 
 export function ConnectSSH(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:number,arg9:number):Promise<void>;
+
+export function CopilotCancel(arg1:string):Promise<void>;
 
 export function CopilotChat(arg1:copilot.ChatRequest):Promise<copilot.ChatResponse>;
 
@@ -79,6 +83,8 @@ export function ExecuteDatabaseQuery(arg1:string,arg2:string):Promise<string>;
 
 export function ExecuteNativeDatabaseQuery(arg1:string,arg2:string,arg3:string,arg4:string):Promise<service.NativeQueryResult>;
 
+export function ExpandUploadPaths(arg1:Array<string>):Promise<Array<service.LocalUploadItem>>;
+
 export function ExportConnections(arg1:boolean):Promise<string>;
 
 export function ExportConnectionsByIDs(arg1:Array<string>,arg2:boolean):Promise<string>;
@@ -90,6 +96,8 @@ export function FormatJSON(arg1:string):Promise<string>;
 export function GenerateUUIDv4():Promise<string>;
 
 export function GetBackgroundImageDataURL():Promise<string>;
+
+export function GetClipboardFilePaths():Promise<Array<string>>;
 
 export function GetConnection(arg1:string):Promise<config.ConnectionConfig>;
 
@@ -171,6 +179,8 @@ export function ListJDBCDrivers():Promise<Array<service.DriverView>>;
 
 export function ListNativeDatabaseChildResources(arg1:string,arg2:string):Promise<Array<service.NativeResource>>;
 
+export function ListNativeDatabaseChildResourcesPage(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number):Promise<service.NativeResourcePage>;
+
 export function ListNativeDatabaseResources(arg1:string):Promise<Array<service.NativeResource>>;
 
 export function ListSSHSessions():Promise<Array<string>>;
@@ -211,7 +221,11 @@ export function SelectJDBCJavaExecutable():Promise<string>;
 
 export function SelectJDBCRuntimeArchive():Promise<string>;
 
+export function SelectSQLFile():Promise<string>;
+
 export function SelectSSHKeyFile():Promise<string>;
+
+export function SelectUploadDirectory():Promise<string>;
 
 export function SelectUploadFiles():Promise<Array<string>>;
 
@@ -227,6 +241,8 @@ export function SetCopilotAPIKey(arg1:string):Promise<void>;
 
 export function SetJDBCRuntimeMode(arg1:string,arg2:string):Promise<service.JDBCRuntimeActivationResult>;
 
+export function SetSessionCharset(arg1:string,arg2:string):Promise<void>;
+
 export function ShowAboutDialog():Promise<void>;
 
 export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
@@ -234,6 +250,8 @@ export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
 export function ShowMessageDialog(arg1:string,arg2:string):Promise<void>;
 
 export function ShowQuestionDialog(arg1:string,arg2:string):Promise<boolean>;
+
+export function StartSQLFile(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
@@ -258,6 +276,8 @@ export function UpdateCurrentPath(arg1:string,arg2:string):Promise<void>;
 export function UpdateFileManagerSettings(arg1:string,arg2:Record<string, any>):Promise<void>;
 
 export function UpdateSettings(arg1:Record<string, any>):Promise<void>;
+
+export function UploadExpandedItems(arg1:string,arg2:string,arg3:Array<service.LocalUploadItem>):Promise<Array<string>>;
 
 export function UploadFiles(arg1:string,arg2:Array<string>,arg3:string):Promise<Array<string>>;
 

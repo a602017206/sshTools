@@ -158,33 +158,37 @@ func (sc *SFTPClient) GetFileInfo(filePath string) (*FileInfo, error) {
 
 // UploadFile uploads a file from local to remote with progress tracking
 func (sc *SFTPClient) UploadFile(localPath, remotePath string, progressCb func(TransferProgress)) error {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
-
-	remotePath = normalizePath(remotePath)
-
-	// Open local file
 	localFile, err := os.Open(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %w", err)
 	}
 	defer localFile.Close()
 
-	// Get file size
 	stat, err := localFile.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat local file: %w", err)
 	}
 	totalBytes := stat.Size()
 
-	// Create remote file
+	sc.mu.Lock()
+	remotePath = normalizePath(remotePath)
+	if info, err := sc.client.Stat(remotePath); err == nil {
+		if info.IsDir() {
+			sc.mu.Unlock()
+			return fmt.Errorf("remote path is a directory: %s", remotePath)
+		}
+		if err := sc.client.Remove(remotePath); err != nil {
+			sc.mu.Unlock()
+			return fmt.Errorf("failed to replace remote file: %w", err)
+		}
+	}
 	remoteFile, err := sc.client.Create(remotePath)
+	sc.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("failed to create remote file: %w", err)
 	}
 	defer remoteFile.Close()
 
-	// Stream file with progress tracking
 	return sc.streamWithProgress(localFile, remoteFile, totalBytes, progressCb)
 }
 
@@ -376,6 +380,23 @@ func (sc *SFTPClient) CreateDirectory(dirPath string) error {
 
 	err := sc.client.Mkdir(dirPath)
 	if err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	return nil
+}
+
+// EnsureDirectory creates dirPath and any missing parents.
+func (sc *SFTPClient) EnsureDirectory(dirPath string) error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
+	dirPath = normalizePath(dirPath)
+	if dirPath == "/" || dirPath == "." {
+		return nil
+	}
+
+	if err := sc.client.MkdirAll(dirPath); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 

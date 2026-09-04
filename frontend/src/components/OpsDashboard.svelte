@@ -69,7 +69,7 @@
 
   <section class="dashboard-columns">
     <article class="dashboard-panel connections-panel">
-      <header><div><p class="panel-kicker">LIVE CONNECTIONS</p><h2>资源状态</h2></div><button type="button" on:click={onCreateConnection}>添加连接</button></header>
+      <header><div><p class="panel-kicker">LIVE CONNECTIONS</p><h2>资源状态</h2></div><button type="button" on:click={() => onCreateConnection()}>添加连接</button></header>
       {#if assets.length}
         <div class="resource-list">
           {#each assets.slice(0, 6) as asset}
@@ -81,7 +81,7 @@
           {/each}
         </div>
       {:else}
-        <div class="empty-panel"><strong>从第一台服务器开始</strong><span>保存 SSH 或数据库连接后，它会显示在此处。</span><button type="button" on:click={onCreateConnection}>新建 SSH 连接</button></div>
+        <div class="empty-panel"><strong>从第一台服务器开始</strong><span>保存 SSH 或数据库连接后，它会显示在此处。</span><button type="button" on:click={() => onCreateConnection()}>新建 SSH 连接</button></div>
       {/if}
     </article>
 

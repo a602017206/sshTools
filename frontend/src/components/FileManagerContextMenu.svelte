@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import { portalToBody } from '../lib/contextMenu.js';
   import {
     FILE_MANAGER_MENU_HEIGHT_BLANK,
     FILE_MANAGER_MENU_HEIGHT_FILE,
@@ -45,8 +46,9 @@
 </script>
 
 <div
-  class="file-manager__menu ops-flyout absolute z-[80] rounded-xl text-xs py-1"
+  class="file-manager__menu ops-flyout fixed z-[80] rounded-xl text-xs py-1"
   style={`left: ${x}px; top: ${menuTop}px; width: ${FILE_MANAGER_MENU_WIDTH}px;`}
+  use:portalToBody
   on:mousedown|stopPropagation
   on:click|stopPropagation
   on:mouseleave={() => dispatch('more', false)}
@@ -101,6 +103,12 @@
     <span class="file-manager__menu-label">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16V6m0 0l-4 4m4-4l4 4M5 20h14" /></svg>
       选择文件上传
+    </span>
+  </button>
+  <button class="file-manager__menu-item" type="button" on:click={() => act('uploadFolder')}>
+    <span class="file-manager__menu-label">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h3l2 2h9a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 16V10m0 0l-2.5 2.5M12 10l2.5 2.5" /></svg>
+      选择文件夹上传
     </span>
   </button>
 

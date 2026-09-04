@@ -5,7 +5,8 @@ const initialState = {
   open: false,
   width: 360,
   messagesBySession: {},
-  terminalTailsBySession: {}
+  terminalTailsBySession: {},
+  workspaceFocusBySession: {}
 };
 
 function createCopilotStore() {
@@ -54,14 +55,29 @@ function createCopilotStore() {
         terminalTailsBySession: appendTerminalTail(state.terminalTailsBySession, sessionId, output)
       }));
     },
+    setWorkspaceFocus(sessionId, focus) {
+      if (!sessionId || !focus) return;
+      update((state) => {
+        const current = state.workspaceFocusBySession?.[sessionId] || {};
+        return {
+          ...state,
+          workspaceFocusBySession: {
+            ...(state.workspaceFocusBySession || {}),
+            [sessionId]: { ...current, ...focus }
+          }
+        };
+      });
+    },
     clearSession(sessionId) {
       if (!sessionId) return;
       update((state) => {
         const messagesBySession = { ...state.messagesBySession };
         const terminalTailsBySession = { ...state.terminalTailsBySession };
+        const workspaceFocusBySession = { ...(state.workspaceFocusBySession || {}) };
         delete messagesBySession[sessionId];
         delete terminalTailsBySession[sessionId];
-        return { ...state, messagesBySession, terminalTailsBySession };
+        delete workspaceFocusBySession[sessionId];
+        return { ...state, messagesBySession, terminalTailsBySession, workspaceFocusBySession };
       });
     }
   };

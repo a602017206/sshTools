@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,6 +21,8 @@ const (
 	NativeDatabaseTypeInfluxDB      NativeDatabaseType = "influxdb"
 	NativeDatabaseTypeNeo4j         NativeDatabaseType = "neo4j"
 	NativeDatabaseTypeKafka         NativeDatabaseType = "kafka"
+	NativeDatabaseTypeRocketMQ      NativeDatabaseType = "rocketmq"
+	NativeDatabaseTypeRabbitMQ      NativeDatabaseType = "rabbitmq"
 )
 
 type NativeResourceKind string
@@ -46,6 +49,19 @@ type NativeDatabaseConfig struct {
 type NativeResource struct {
 	Kind NativeResourceKind `json:"kind"`
 	Name string             `json:"name"`
+}
+
+// NativeResourcePage is one SCAN / list page for native child resources.
+type NativeResourcePage struct {
+	Items      []NativeResource `json:"items"`
+	NextCursor string           `json:"nextCursor"`
+	HasMore    bool             `json:"hasMore"`
+	Truncated  bool             `json:"truncated"`
+}
+
+// NativePagedResourceLister optionally supports pattern + cursor pagination.
+type NativePagedResourceLister interface {
+	ListSecondaryResourcesPage(ctx context.Context, parent, pattern, cursor string, limit int) (NativeResourcePage, error)
 }
 
 // NativeResourceDetails is a bounded, read-only description of a native resource.
@@ -155,6 +171,36 @@ func (s *NativeDatabaseService) ListSecondaryResources(ctx context.Context, sess
 	return resources, nil
 }
 
+func (s *NativeDatabaseService) ListSecondaryResourcesPage(ctx context.Context, sessionID, parent, pattern, cursor string, limit int) (NativeResourcePage, error) {
+	session, err := s.session(sessionID)
+	if err != nil {
+		return NativeResourcePage{}, err
+	}
+	if paged, ok := session.client.(NativePagedResourceLister); ok {
+		page, pageErr := paged.ListSecondaryResourcesPage(ctx, parent, pattern, cursor, limit)
+		if pageErr != nil {
+			return NativeResourcePage{}, fmt.Errorf("分页读取 %s 子资源失败: %w", nativeDatabaseTypeName(session.Config.Type), pageErr)
+		}
+		return page, nil
+	}
+	resources, listErr := session.client.ListSecondaryResources(ctx, parent)
+	if listErr != nil {
+		return NativeResourcePage{}, fmt.Errorf("读取 %s 子资源失败: %w", nativeDatabaseTypeName(session.Config.Type), listErr)
+	}
+	keyword := strings.TrimSpace(pattern)
+	if keyword != "" && keyword != "*" {
+		needle := strings.ToLower(strings.Trim(keyword, "*"))
+		filtered := make([]NativeResource, 0, len(resources))
+		for _, item := range resources {
+			if strings.Contains(strings.ToLower(item.Name), needle) {
+				filtered = append(filtered, item)
+			}
+		}
+		resources = filtered
+	}
+	return NativeResourcePage{Items: resources, NextCursor: "0", HasMore: false}, nil
+}
+
 func (s *NativeDatabaseService) DescribeResource(ctx context.Context, sessionID, parent, name string) (NativeResourceDetails, error) {
 	session, err := s.session(sessionID)
 	if err != nil {
@@ -220,6 +266,17 @@ func (s *NativeDatabaseService) provider(databaseType NativeDatabaseType) (Nativ
 	return provider, nil
 }
 
+func (s *NativeDatabaseService) SessionConfig(sessionID string) (NativeDatabaseConfig, bool) {
+	if s == nil {
+		return NativeDatabaseConfig{}, false
+	}
+	session, err := s.session(sessionID)
+	if err != nil {
+		return NativeDatabaseConfig{}, false
+	}
+	return session.Config, true
+}
+
 func (s *NativeDatabaseService) session(sessionID string) (*NativeDatabaseSession, error) {
 	s.mu.RLock()
 	session, exists := s.sessions[sessionID]
@@ -250,6 +307,10 @@ func nativeDatabaseTypeName(databaseType NativeDatabaseType) string {
 		return "Neo4j"
 	case NativeDatabaseTypeKafka:
 		return "Kafka"
+	case NativeDatabaseTypeRocketMQ:
+		return "RocketMQ"
+	case NativeDatabaseTypeRabbitMQ:
+		return "RabbitMQ"
 	default:
 		return string(databaseType)
 	}

@@ -1,3 +1,5 @@
+import { getTerminalSurface, resolveTerminalThemeFromSettings } from '../lib/terminalTheme.js';
+
 export const FONT_PRESETS = [
   { id: 'system-ui', label: 'System UI', value: '"Avenir Next", "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif' },
   { id: 'inter', label: 'Inter', value: 'Inter, "Avenir Next", "Segoe UI", sans-serif' },
@@ -266,6 +268,15 @@ export function applyAppearanceSettings(settings) {
   root.dataset.compact = settings.compact_mode ? 'true' : 'false';
   root.dataset.reducedMotion = settings.reduced_motion ? 'true' : 'false';
 
+  const terminalTheme = resolveTerminalThemeFromSettings({
+    terminal_theme: settings.terminal_theme,
+    theme: settings.theme
+  });
+  const terminalSurface = getTerminalSurface(terminalTheme);
+  root.dataset.terminalTheme = terminalTheme;
+  root.style.setProperty('--ops-terminal-bg', terminalSurface.background);
+  root.style.setProperty('--ops-terminal-border', terminalSurface.border);
+
   applyBackgroundImage(settings);
 
   window.dispatchEvent(new CustomEvent('app:appearance-updated', { detail: settings }));
@@ -300,7 +311,7 @@ export function getDefaultAppSettings() {
     use_system_theme: false,
     font_family: FONT_PRESETS[0].value,
     font_size: 14,
-    terminal_theme: 'default',
+    terminal_theme: 'dark',
     terminal_font_family: TERMINAL_FONT_PRESETS[1].value,
     terminal_font_size: 14,
     accent_color: 'teal',

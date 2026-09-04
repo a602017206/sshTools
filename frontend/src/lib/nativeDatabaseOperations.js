@@ -1,14 +1,19 @@
 export const NATIVE_DB_OPERATIONS = {
   REDIS_SET: 'set',
   REDIS_SAVE: 'save',
+  REDIS_CREATE_KEY: 'create_key',
   REDIS_DELETE: 'delete',
+  REDIS_DELETE_KEYS: 'delete_keys',
   ES_INDEX: 'index_document',
   ES_UPDATE: 'update_document',
-  ES_DELETE: 'delete_document'
+  ES_DELETE: 'delete_document',
+  ES_CREATE_INDEX: 'create_index',
+  ES_DELETE_INDEX: 'delete_index',
+  ES_REFRESH_INDEX: 'refresh_index'
 };
 
-export function defaultElasticsearchQuery(size = 20) {
-  return JSON.stringify({ query: { match_all: {} }, size }, null, 2);
+export function defaultElasticsearchQuery(size = 20, from = 0) {
+  return JSON.stringify({ query: { match_all: {} }, from, size }, null, 2);
 }
 
 export function buildRedisSetPayload(value, ttlSeconds) {
@@ -73,6 +78,38 @@ export function buildRedisSavePayload(state, ttlInput) {
   return JSON.stringify(payload);
 }
 
+export function buildRedisDeleteKeysPayload(keys) {
+  return JSON.stringify({ keys: (keys || []).map((key) => String(key || '').trim()).filter(Boolean) });
+}
+
+export function buildRedisCLIQuery(command, { readOnly = false } = {}) {
+  return JSON.stringify({
+    mode: 'cli',
+    command: String(command || '').trim(),
+    readOnly: Boolean(readOnly)
+  });
+}
+
+export function buildElasticsearchDevToolsQuery(method, path, body) {
+  const payload = {
+    method: String(method || 'GET').toUpperCase(),
+    path: String(path || '').trim()
+  };
+  if (body != null && String(body).trim() !== '') {
+    const text = String(body).trim();
+    payload.body = text.startsWith('{') || text.startsWith('[') ? JSON.parse(text) : text;
+  }
+  return JSON.stringify(payload);
+}
+
+export function buildElasticsearchPagedQuery(baseQuery, from, size) {
+  const parsed = parseNativeResourceContent(baseQuery || defaultElasticsearchQuery());
+  parsed.from = Math.max(0, Number(from) || 0);
+  parsed.size = Math.max(1, Number(size) || 20);
+  if (!parsed.query) parsed.query = { match_all: {} };
+  return JSON.stringify(parsed, null, 2);
+}
+
 export function redisInspectorState(content) {
   const state = createRedisEditorState(content);
   return {
@@ -83,6 +120,12 @@ export function redisInspectorState(content) {
     truncated: state.truncated,
     length: state.length
   };
+}
+
+export function canSaveRedisEditor(state) {
+  if (!state) return false;
+  if (!['string', 'hash', 'list', 'set', 'zset'].includes(state.type)) return false;
+  return !state.truncated;
 }
 
 export function buildElasticsearchDocumentPayload(id, document, operation = NATIVE_DB_OPERATIONS.ES_INDEX) {
@@ -119,9 +162,18 @@ export function parseElasticsearchQueryHits(content) {
   });
 }
 
+export function parseNativeResourcePage(page) {
+  return {
+    items: Array.isArray(page?.items) ? page.items : (Array.isArray(page?.Items) ? page.Items : []),
+    nextCursor: String(page?.nextCursor ?? page?.NextCursor ?? '0'),
+    hasMore: Boolean(page?.hasMore ?? page?.HasMore),
+    truncated: Boolean(page?.truncated ?? page?.Truncated)
+  };
+}
+
 export function formatMutationMessage(result) {
   if (!result) return '';
-  return result.summary || '操作已完成';
+  return result.summary || result.Summary || '操作已完成';
 }
 
 export function redisDatabaseOptions(databases) {
@@ -164,5 +216,24 @@ export function parseElasticsearchIndexMetadata(content) {
     primaries: stats.primaries || '-',
     replicas: stats.replicas || '-',
     mapping: parsed.mapping || {}
+  };
+}
+
+export function buildNativeMutationArtifact(operation, parent, name, payload, summary = '') {
+  return {
+    type: 'native_mutation',
+    summary: summary || `${operation} ${name || ''}`.trim(),
+    content: JSON.stringify({ operation, parent: parent || '', name: name || '', payload: payload || '{}' }),
+    destructive: /delete|flush|drop/i.test(String(operation || ''))
+  };
+}
+
+export function parseNativeMutationArtifact(content) {
+  const parsed = parseNativeResourceContent(content);
+  return {
+    operation: String(parsed.operation || '').trim(),
+    parent: String(parsed.parent || ''),
+    name: String(parsed.name || ''),
+    payload: typeof parsed.payload === 'string' ? parsed.payload : JSON.stringify(parsed.payload || {})
   };
 }

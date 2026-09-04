@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  databaseSessionTabLabel,
   nativeDatabaseWorkspace,
   resolveNativeWorkspaceKind
 } from '../src/lib/nativeDatabaseWorkspace.js';
@@ -44,8 +45,25 @@ test('resolveNativeWorkspaceKind 按类型映射到独立工作区', () => {
   assert.equal(resolveNativeWorkspaceKind('elasticsearch'), 'elasticsearch');
   assert.equal(resolveNativeWorkspaceKind('opensearch'), 'elasticsearch');
   assert.equal(resolveNativeWorkspaceKind('kafka'), 'kafka');
+  assert.equal(resolveNativeWorkspaceKind('rocketmq'), 'kafka');
+  assert.equal(resolveNativeWorkspaceKind('rabbitmq'), 'kafka');
   assert.equal(resolveNativeWorkspaceKind('mongodb'), 'generic');
   assert.equal(resolveNativeWorkspaceKind('cassandra'), 'generic');
   assert.equal(resolveNativeWorkspaceKind(''), 'generic');
   assert.equal(resolveNativeWorkspaceKind(null), 'generic');
+});
+
+test('会话标签对原生类型使用工作区标题而非「数据库」', () => {
+  assert.equal(
+    databaseSessionTabLabel({ name: 'prod-redis', metadata: { db_type: 'redis' } }),
+    'prod-redis · Redis 键空间'
+  );
+  assert.equal(
+    databaseSessionTabLabel({ name: '192.168.195.96-es', metadata: { db_type: 'elasticsearch' } }),
+    '192.168.195.96-es · Elasticsearch 索引'
+  );
+  assert.equal(
+    databaseSessionTabLabel({ name: 'shop-mysql', metadata: { db_type: 'mysql' } }),
+    'shop-mysql · 数据库'
+  );
 });

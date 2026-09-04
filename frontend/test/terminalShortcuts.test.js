@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getTerminalShortcutAction } from '../src/lib/terminalShortcuts.js';
+import { getTerminalShortcutAction, shouldScrollToBottomBeforeArrowKey } from '../src/lib/terminalShortcuts.js';
 
 test('有选区时 Ctrl 或 Cmd+C 复制，未选中时保留 Ctrl+C 中断语义', () => {
   assert.equal(getTerminalShortcutAction({ key: 'c', ctrlKey: true }, true), 'copy');
@@ -37,4 +37,19 @@ test('支持通过 event.code 识别复制粘贴键', () => {
 test('带有冲突修饰键的组合不被终端快捷键接管', () => {
   assert.equal(getTerminalShortcutAction({ key: 'v', ctrlKey: true, metaKey: true }, false), null);
   assert.equal(getTerminalShortcutAction({ key: 'c', altKey: true, ctrlKey: true }, true), null);
+});
+
+test('单独按下 Command 等修饰键不交给 xterm，避免滚到最底部', () => {
+  assert.equal(getTerminalShortcutAction({ key: 'Meta', metaKey: true }, true), 'noop');
+  assert.equal(getTerminalShortcutAction({ key: 'Control', ctrlKey: true }, false), 'noop');
+  assert.equal(getTerminalShortcutAction({ key: 'Alt', altKey: true }, false), 'noop');
+  assert.equal(getTerminalShortcutAction({ key: 'Shift', shiftKey: true }, false), 'noop');
+});
+
+test('滚屏后上下方向键应先回到底部再发给 shell', () => {
+  assert.equal(shouldScrollToBottomBeforeArrowKey({ key: 'ArrowUp' }, 3), true);
+  assert.equal(shouldScrollToBottomBeforeArrowKey({ key: 'ArrowDown' }, 1), true);
+  assert.equal(shouldScrollToBottomBeforeArrowKey({ key: 'ArrowUp' }, 0), false);
+  assert.equal(shouldScrollToBottomBeforeArrowKey({ key: 'ArrowUp', shiftKey: true }, 5), false);
+  assert.equal(shouldScrollToBottomBeforeArrowKey({ key: 'ArrowUp', ctrlKey: true }, 5), false);
 });

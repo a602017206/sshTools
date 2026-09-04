@@ -58,6 +58,9 @@ func (s *ManagedJDBCGateway) ConnectDatabase(ctx context.Context, sessionID stri
 }
 
 func (s *ManagedJDBCGateway) ExecuteQuery(ctx context.Context, sessionID, query string) (*QueryResult, error) {
+	if cfg, ok := s.sessionConfig(sessionID); ok && strings.EqualFold(cfg.DBType, "oracle") {
+		query = sanitizeOracleExecutableSQL(query)
+	}
 	return managedGatewayCall(s, ctx, sessionID, func(gateway *JdbcGatewayService) (*QueryResult, error) {
 		return gateway.ExecuteQuery(ctx, sessionID, query)
 	})
@@ -212,22 +215,35 @@ func managedGatewayCall[T any](s *ManagedJDBCGateway, ctx context.Context, sessi
 		return zero, err
 	}
 	result, err := call(gateway)
-	if !isJDBCAgentUnavailable(err) {
-		return result, err
+	if err == nil {
+		return result, nil
 	}
 
 	cfg, ok := s.sessionConfig(sessionID)
 	if !ok {
-		return zero, err
+		return result, err
 	}
-	recoveredGateway, restartErr := s.gateway(ctx, true)
-	if restartErr != nil {
-		return zero, restartErr
+
+	if isJDBCAgentUnavailable(err) {
+		recoveredGateway, restartErr := s.gateway(ctx, true)
+		if restartErr != nil {
+			return zero, restartErr
+		}
+		if reopenErr := recoveredGateway.ConnectDatabase(ctx, sessionID, cfg); reopenErr != nil {
+			return zero, fmt.Errorf("恢复 JDBC session 失败: %w", reopenErr)
+		}
+		return call(recoveredGateway)
 	}
-	if reopenErr := recoveredGateway.ConnectDatabase(ctx, sessionID, cfg); reopenErr != nil {
-		return zero, fmt.Errorf("恢复 JDBC session 失败: %w", reopenErr)
+
+	if isJDBCSessionStale(err) {
+		_ = gateway.CloseDatabase(ctx, sessionID)
+		if reopenErr := gateway.ConnectDatabase(ctx, sessionID, cfg); reopenErr != nil {
+			return zero, fmt.Errorf("恢复 JDBC session 失败: %w", reopenErr)
+		}
+		return call(gateway)
 	}
-	return call(recoveredGateway)
+
+	return result, err
 }
 
 func (s *ManagedJDBCGateway) gateway(ctx context.Context, restart bool) (*JdbcGatewayService, error) {

@@ -1,6 +1,6 @@
 export const APP_MODES = [
   { id: 'ssh', label: 'SSH 会话' },
-  { id: 'database', label: '数据库' }
+  { id: 'database', label: '数据' }
 ];
 
 export const SSH_TOOL_TABS = [
@@ -49,6 +49,10 @@ export function sessionMatchesMode(session, mode) {
 
 export function resolveSshToolTab(tab) {
   return sshTools.has(tab) ? tab : 'files';
+}
+
+export function sshToolPanelHidden(activeTab, panelId) {
+  return resolveSshToolTab(activeTab) !== panelId;
 }
 
 /** 兼容旧调用：返回双模式 id */

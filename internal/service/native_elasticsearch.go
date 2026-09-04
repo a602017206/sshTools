@@ -23,6 +23,10 @@ type ElasticsearchNativeClient interface {
 	IndexDocument(context.Context, string, string) (NativeMutationResult, error)
 	UpdateDocument(context.Context, string, string) (NativeMutationResult, error)
 	DeleteDocument(context.Context, string, string) (NativeMutationResult, error)
+	CreateIndex(context.Context, string, string) (NativeMutationResult, error)
+	DeleteIndex(context.Context, string) (NativeMutationResult, error)
+	RefreshIndex(context.Context, string) (NativeMutationResult, error)
+	PerformRequest(context.Context, string, string, string) (NativeQueryResult, error)
 	Close() error
 }
 

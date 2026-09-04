@@ -10,6 +10,7 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
   import { isNativeDatabaseType } from '../lib/nativeDatabaseTypes.js';
+  import { databaseSessionTabLabel } from '../lib/nativeDatabaseWorkspace.js';
   import {
     listDatabaseSessionsToClose,
     resolveDatabaseCloseBinding,
@@ -17,6 +18,14 @@
   } from '../lib/databaseSessionClose.js';
   import { resolveMode, sessionMatchesMode } from '../lib/workspaceTabs.js';
   import { copilotStore } from '../stores/copilot.js';
+  import {
+    batchCloseConfirmCopy,
+    batchCloseNeedsConfirm,
+    sessionIdsToClose,
+    sessionTabCloseMenuFlags,
+  } from '../lib/sessionTabClose.js';
+  import { portalToBody, resolveContextMenuPoint } from '../lib/contextMenu.js';
+  import { applyCharsetToSessionId, applyCharsetToSessionMap, normalizeTerminalCharset } from '../lib/terminalCharset.js';
 
   export let activeMode = 'ssh';
 
@@ -28,13 +37,17 @@
   let osc7PendingBuffers = new Map();
   let handleDatabaseTableSelectEvent = null;
   let handleDatabaseTableStructureEvent = null;
+  let handleDatabaseNewQueryEvent = null;
   let databaseQuerySequence = 0;
   let databaseDesignerSequence = 0;
   const terminalOutputDecoder = new TextDecoder();
 
   // Close confirmation dialog state
   let showCloseConfirm = false;
-  let sessionToClose = null;
+  let pendingCloseIds = [];
+  let showTabContextMenu = false;
+  let tabContextSessionId = '';
+  let tabContextPosition = { x: 0, y: 0 };
   let showAuthInput = false;
   let authInputTitle = '';
   let authInputMessage = '';
@@ -52,6 +65,9 @@
   $: visibleSessions = sessionsList.filter((session) => sessionMatchesMode(session, mode));
   $: activeVisibleSession = visibleSessions.find((session) => session.sessionId === $activeSessionIdStore) || null;
   $: viewportIsConsole = !activeVisibleSession || activeVisibleSession.type !== 'database';
+  $: visibleSessionIds = visibleSessions.map((session) => session.sessionId);
+  $: tabCloseMenuFlags = sessionTabCloseMenuFlags(visibleSessionIds, tabContextSessionId);
+  $: closeConfirmCopy = batchCloseConfirmCopy(pendingCloseIds);
   $: {
     const activeId = $activeSessionIdStore;
     const activeSession = activeId
@@ -89,7 +105,7 @@
       type: 'database',
       panelType: isNativeDatabase ? 'native-database' : 'database-list',
       dbSessionId: sessionId,
-      tabName: `${asset.name} · 数据库`
+      tabName: databaseSessionTabLabel(asset)
     };
   }
 
@@ -284,7 +300,7 @@
       return;
     }
 
-    const { ConnectSSH, GetPassword, HasPassword, SavePassword } = window.wailsBindings;
+    const { ConnectSSH, GetPassword, HasPassword, SavePassword, SetSessionCharset } = window.wailsBindings;
 
     if (typeof ConnectSSH !== 'function') {
       console.error('ConnectSSH not available');
@@ -418,6 +434,9 @@
     terminal.writeln('');
 
     try {
+      if (typeof SetSessionCharset === 'function') {
+        SetSessionCharset(sessionId, normalizeTerminalCharset(asset.metadata?.encoding || asset.encoding));
+      }
       // 调用 Wails ConnectSSH API
       await ConnectSSH(
         sessionId,
@@ -521,6 +540,7 @@
 
   async function removeSession(sessionId, { closeBackend = true } = {}) {
     const session = $connectionsStore.get(sessionId);
+    if (!session) return;
     const isDatabaseListPanel = session?.type === 'database' && session?.panelType === 'database-list';
     const isNativeDatabasePanel = session?.type === 'database' && session?.panelType === 'native-database';
     const isDatabaseTablePanel = session?.type === 'database' && session?.panelType === 'database-table';
@@ -607,6 +627,7 @@
   }
   
   function handleTabChange(sessionId) {
+    showTabContextMenu = false;
     if (!$connectionsStore.has(sessionId)) return;
     activeSessionIdStore.set(sessionId);
 
@@ -628,28 +649,58 @@
   
   function handleTabClose(sessionId, event) {
     event.stopPropagation();
-    const session = $connectionsStore.get(sessionId);
-    if (!session) return;
+    showTabContextMenu = false;
+    requestCloseSessions([sessionId]);
+  }
 
-    // 如果已连接，显示确认对话框
-    if (session.type !== 'database' && session.connected) {
-      sessionToClose = sessionId;
+  function openTabContextMenu(session, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    tabContextSessionId = session.sessionId;
+    tabContextPosition = resolveContextMenuPoint(event, { menuWidth: 176, menuHeight: 168 });
+    showTabContextMenu = true;
+  }
+
+  function closeTabContextMenu() {
+    showTabContextMenu = false;
+  }
+
+  function requestTabCloseAction(action) {
+    const toClose = sessionIdsToClose(visibleSessionIds, tabContextSessionId, action);
+    showTabContextMenu = false;
+    requestCloseSessions(toClose);
+  }
+
+  function requestCloseSessions(sessionIds) {
+    const toClose = (sessionIds || []).filter(Boolean);
+    if (toClose.length === 0) return;
+
+    if (batchCloseNeedsConfirm(visibleSessions, toClose)) {
+      pendingCloseIds = toClose;
       showCloseConfirm = true;
-    } else {
-      closeSession(sessionId);
+      return;
+    }
+
+    closeSessionBatch(toClose);
+  }
+
+  async function closeSessionBatch(sessionIds) {
+    for (const sessionId of sessionIds || []) {
+      if ($connectionsStore.has(sessionId)) {
+        await closeSession(sessionId);
+      }
     }
   }
 
   function handleConfirmClose() {
-    if (sessionToClose) {
-      closeSession(sessionToClose);
-      sessionToClose = null;
-    }
+    const ids = pendingCloseIds;
+    pendingCloseIds = [];
     showCloseConfirm = false;
+    closeSessionBatch(ids);
   }
 
   function handleCancelClose() {
-    sessionToClose = null;
+    pendingCloseIds = [];
     showCloseConfirm = false;
   }
   
@@ -980,7 +1031,52 @@
     return value;
   }
 
-  // 处理终端数据
+  function handleLiveCharsetChange(sessionId, encoding) {
+    const charset = normalizeTerminalCharset(encoding);
+    const setCharset = window.wailsBindings?.SetSessionCharset;
+    if (typeof setCharset === 'function') {
+      setCharset(sessionId, charset);
+    }
+
+    let connectionId = '';
+    connectionsStore.update((conns) => {
+      const current = conns.get(sessionId);
+      connectionId = current?.connection?.id || '';
+      if (connectionId) {
+        const applied = applyCharsetToSessionMap(conns, connectionId, charset);
+        applied.sessionIds.forEach((id) => {
+          if (id !== sessionId && typeof setCharset === 'function') {
+            setCharset(id, charset);
+          }
+        });
+        return applied.sessions;
+      }
+      return applyCharsetToSessionId(conns, sessionId, charset).sessions;
+    });
+
+    persistConnectionCharset(connectionId, charset);
+  }
+
+  async function persistConnectionCharset(connectionId, charset) {
+    if (!connectionId) return;
+    const api = window.wailsBindings || {};
+    try {
+      if (typeof api.GetConnection === 'function' && typeof api.UpdateConnection === 'function') {
+        const conn = await api.GetConnection(connectionId);
+        await api.UpdateConnection({
+          ...conn,
+          metadata: { ...(conn.metadata || {}), encoding: charset }
+        });
+      }
+      assetsStore.update((assets) => assets.map((asset) => {
+        if (asset.id !== connectionId) return asset;
+        return { ...asset, metadata: { ...(asset.metadata || {}), encoding: charset } };
+      }));
+    } catch (error) {
+      console.warn('Failed to persist terminal charset:', error);
+    }
+  }
+
   function handleTerminalData(sessionId, data) {
     if (!$connectionsStore.has(sessionId)) {
       return;
@@ -1129,6 +1225,10 @@
     if (handleDatabaseTableStructureEvent) {
       window.removeEventListener('database:table-structure', handleDatabaseTableStructureEvent);
     }
+
+    if (handleDatabaseNewQueryEvent) {
+      window.removeEventListener('database:new-query', handleDatabaseNewQueryEvent);
+    }
   });
 
 
@@ -1160,6 +1260,12 @@
       openDatabaseTableDesignerPanel({ ...detail, mode: 'design' });
     };
     window.addEventListener('database:table-structure', handleDatabaseTableStructureEvent);
+    handleDatabaseNewQueryEvent = (event) => {
+      const detail = event?.detail;
+      if (!detail) return;
+      openDatabaseQueryPanel(detail);
+    };
+    window.addEventListener('database:new-query', handleDatabaseNewQueryEvent);
 
     // 聚焦当前活动的终端
     await tick();
@@ -1171,7 +1277,7 @@
   });
 </script>
 
-<div class="h-full flex flex-col ops-workspace-chrome">
+<div class="h-full flex flex-col ops-workspace-chrome" on:click={closeTabContextMenu}>
   <!-- 标签栏 -->
   <div class="session-tabbar flex items-center border-b overflow-x-auto" style="border-color: var(--glass-border);">
     {#if visibleSessions.length === 0}
@@ -1191,6 +1297,8 @@
           tabindex="0"
           on:click={() => handleTabChange(session.sessionId)}
           on:dblclick={() => startEditTab(session.sessionId)}
+          on:contextmenu={(event) => openTabContextMenu(session, event)}
+          on:selectstart|preventDefault
           on:keydown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
@@ -1303,6 +1411,9 @@
               <Terminal
                 bind:this={terminalRefs[session.sessionId]}
                 sessionId={session.sessionId}
+                encoding={normalizeTerminalCharset(session.connection?.metadata?.encoding || session.connection?.encoding)}
+                encodingEnabled={session.type !== 'local' && session.type !== 'database'}
+                onEncodingChange={(charset) => handleLiveCharsetChange(session.sessionId, charset)}
                 onData={handleTerminalData}
                 onResize={handleTerminalResize}
                 onZModemTransfer={handleZModemTransfer}
@@ -1323,10 +1434,53 @@
   {/if}
 </div>
 
+{#if showTabContextMenu && tabContextSessionId}
+  <div
+    class="ops-flyout fixed z-[120] w-44 rounded-xl py-1"
+    style={`top: ${tabContextPosition.y}px; left: ${tabContextPosition.x}px;`}
+    role="menu"
+    use:portalToBody
+    on:click|stopPropagation
+  >
+    <button
+      type="button"
+      class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+      disabled={!tabCloseMenuFlags.canCloseAll}
+      on:click={() => requestTabCloseAction('all')}
+    >
+      全部关闭
+    </button>
+    <button
+      type="button"
+      class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+      disabled={!tabCloseMenuFlags.canCloseLeft}
+      on:click={() => requestTabCloseAction('left')}
+    >
+      关闭左侧
+    </button>
+    <button
+      type="button"
+      class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+      disabled={!tabCloseMenuFlags.canCloseRight}
+      on:click={() => requestTabCloseAction('right')}
+    >
+      关闭右侧
+    </button>
+    <button
+      type="button"
+      class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+      disabled={!tabCloseMenuFlags.canCloseOthers}
+      on:click={() => requestTabCloseAction('others')}
+    >
+      关闭其它
+    </button>
+  </div>
+{/if}
+
 <ConfirmDialog
   bind:isOpen={showCloseConfirm}
-  title="关闭 SSH 会话"
-  message="确定要关闭此 SSH 会话吗？"
+  title={closeConfirmCopy.title}
+  message={closeConfirmCopy.message}
   type="warning"
   confirmText="确定关闭"
   cancelText="取消"
@@ -1371,6 +1525,9 @@
     background: transparent;
     border-bottom: 2px solid transparent;
     transition: background-color var(--trans-fast), border-color var(--trans-fast), color var(--trans-fast);
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 
   .session-tab:hover {

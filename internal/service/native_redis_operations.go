@@ -32,33 +32,182 @@ type redisZSetEntry struct {
 	Score  float64 `json:"score"`
 }
 
+type redisDeleteKeysPayload struct {
+	Keys []string `json:"keys"`
+}
+
+type redisQueryEnvelope struct {
+	Mode     string `json:"mode"`
+	Command  string `json:"command"`
+	Pattern  string `json:"pattern"`
+	Cursor   string `json:"cursor"`
+	Count    int    `json:"count"`
+	ReadOnly *bool  `json:"readOnly"`
+}
+
+var redisCLIDeniedPrefixes = []string{
+	"FLUSH", "DEBUG", "CONFIG", "SHUTDOWN", "SLAVEOF", "REPLICAOF", "MIGRATE", "CLUSTER", "MODULE", "SCRIPT", "ACL",
+}
+
+var redisCLIReadCommands = map[string]struct{}{
+	"GET": {}, "MGET": {}, "STRLEN": {}, "TTL": {}, "PTTL": {}, "TYPE": {}, "EXISTS": {}, "SCAN": {},
+	"HGET": {}, "HGETALL": {}, "HKEYS": {}, "HVALS": {}, "HLEN": {}, "HEXISTS": {},
+	"LRANGE": {}, "LLEN": {}, "LINDEX": {},
+	"SMEMBERS": {}, "SCARD": {}, "SISMEMBER": {}, "SSCAN": {},
+	"ZRANGE": {}, "ZRANGEBYSCORE": {}, "ZCARD": {}, "ZSCORE": {}, "ZSCAN": {},
+	"DBSIZE": {}, "INFO": {}, "PING": {}, "ECHO": {}, "KEYS": {}, "OBJECT": {}, "MEMORY": {},
+	"GETRANGE": {}, "DUMP": {},
+}
+
 func (s *redisNativeSession) MutateResource(ctx context.Context, parent, name, operation, payload string) (NativeMutationResult, error) {
-	database, err := redisDatabaseNumber(parent)
+	client, cleanup, err := s.redisClientFor(ctx, parent)
 	if err != nil {
 		return NativeMutationResult{}, err
 	}
-	client := s.client
-	closeClient := false
-	if database != s.database {
-		client, err = s.factory.New(s.config, database)
-		if err != nil {
-			return NativeMutationResult{}, err
-		}
-		closeClient = true
-	}
-	if closeClient {
-		defer client.Close()
-	}
+	defer cleanup()
 	switch strings.TrimSpace(operation) {
 	case "set":
 		return client.SetKey(ctx, name, payload)
-	case "save":
+	case "save", "create_key":
+		if strings.TrimSpace(name) == "" {
+			return NativeMutationResult{}, fmt.Errorf("键名不能为空")
+		}
 		return client.SaveKeyValue(ctx, name, payload)
 	case "delete":
 		return client.DeleteKey(ctx, name)
+	case "delete_keys":
+		keys, parseErr := parseRedisDeleteKeysPayload(payload, name)
+		if parseErr != nil {
+			return NativeMutationResult{}, parseErr
+		}
+		return client.DeleteKeys(ctx, keys)
 	default:
 		return NativeMutationResult{}, fmt.Errorf("不支持的 Redis 操作: %s", operation)
 	}
+}
+
+func parseRedisDeleteKeysPayload(payload, fallbackName string) ([]string, error) {
+	payload = strings.TrimSpace(payload)
+	keys := make([]string, 0)
+	if payload != "" && payload != "{}" {
+		var parsed redisDeleteKeysPayload
+		if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
+			return nil, fmt.Errorf("delete_keys payload 必须是合法 JSON: %w", err)
+		}
+		keys = append(keys, parsed.Keys...)
+	}
+	if name := strings.TrimSpace(fallbackName); name != "" {
+		keys = append(keys, name)
+	}
+	unique := make([]string, 0, len(keys))
+	seen := map[string]struct{}{}
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, key)
+	}
+	if len(unique) == 0 {
+		return nil, fmt.Errorf("delete_keys 需要至少一个键名")
+	}
+	if len(unique) > redisBatchDeleteLimit {
+		return nil, fmt.Errorf("单次最多删除 %d 个键", redisBatchDeleteLimit)
+	}
+	return unique, nil
+}
+
+func (s *redisNativeSession) ExecuteQuery(ctx context.Context, parent, _, query string) (NativeQueryResult, error) {
+	client, cleanup, err := s.redisClientFor(ctx, parent)
+	if err != nil {
+		return NativeQueryResult{}, err
+	}
+	defer cleanup()
+	envelope, command, err := parseRedisQuery(query)
+	if err != nil {
+		return NativeQueryResult{}, err
+	}
+	mode := strings.ToLower(strings.TrimSpace(envelope.Mode))
+	if mode == "scan" || (mode == "" && envelope.Pattern != "" && command == "") {
+		page, pageErr := s.ListSecondaryResourcesPage(ctx, parent, envelope.Pattern, envelope.Cursor, envelope.Count)
+		if pageErr != nil {
+			return NativeQueryResult{}, pageErr
+		}
+		content, marshalErr := json.Marshal(page)
+		if marshalErr != nil {
+			return NativeQueryResult{}, marshalErr
+		}
+		return NativeQueryResult{
+			Summary: fmt.Sprintf("SCAN 返回 %d 个键", len(page.Items)),
+			Content: string(content),
+		}, nil
+	}
+	args, parseErr := tokenizeRedisCLI(command)
+	if parseErr != nil {
+		return NativeQueryResult{}, parseErr
+	}
+	readOnlyOnly := envelope.ReadOnly != nil && *envelope.ReadOnly
+	if err := validateRedisCLI(args, readOnlyOnly); err != nil {
+		return NativeQueryResult{}, err
+	}
+	return client.DoCommand(ctx, args)
+}
+
+func parseRedisQuery(query string) (redisQueryEnvelope, string, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return redisQueryEnvelope{}, "", fmt.Errorf("Redis 查询不能为空")
+	}
+	if strings.HasPrefix(query, "{") {
+		var envelope redisQueryEnvelope
+		if err := json.Unmarshal([]byte(query), &envelope); err != nil {
+			return redisQueryEnvelope{}, "", fmt.Errorf("Redis 查询 JSON 无效: %w", err)
+		}
+		command := strings.TrimSpace(envelope.Command)
+		if command == "" && strings.EqualFold(envelope.Mode, "cli") {
+			return envelope, "", fmt.Errorf("CLI 模式需要 command")
+		}
+		return envelope, command, nil
+	}
+	return redisQueryEnvelope{Mode: "cli"}, query, nil
+}
+
+func tokenizeRedisCLI(command string) ([]any, error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return nil, fmt.Errorf("Redis 命令不能为空")
+	}
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("Redis 命令不能为空")
+	}
+	args := make([]any, len(fields))
+	for i, field := range fields {
+		args[i] = field
+	}
+	return args, nil
+}
+
+func validateRedisCLI(args []any, readOnlyOnly bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("Redis 命令不能为空")
+	}
+	cmd := strings.ToUpper(fmt.Sprint(args[0]))
+	for _, prefix := range redisCLIDeniedPrefixes {
+		if strings.HasPrefix(cmd, prefix) {
+			return fmt.Errorf("拒绝执行危险 Redis 命令: %s", cmd)
+		}
+	}
+	if readOnlyOnly {
+		if _, ok := redisCLIReadCommands[cmd]; !ok {
+			return fmt.Errorf("只读模式下不允许命令: %s", cmd)
+		}
+	}
+	return nil
 }
 
 func parseRedisSetPayload(payload string) (redisSetPayload, error) {
@@ -103,6 +252,50 @@ func (c *redisGoClient) DeleteKey(ctx context.Context, name string) (NativeMutat
 		return NativeMutationResult{}, err
 	}
 	return NativeMutationResult{Summary: fmt.Sprintf("已删除 %d 个键", deleted)}, nil
+}
+
+func (c *redisGoClient) DeleteKeys(ctx context.Context, keys []string) (NativeMutationResult, error) {
+	if len(keys) == 0 {
+		return NativeMutationResult{}, fmt.Errorf("没有可删除的键")
+	}
+	deleted, err := c.client.Del(ctx, keys...).Result()
+	if err != nil {
+		return NativeMutationResult{}, err
+	}
+	return NativeMutationResult{Summary: fmt.Sprintf("已删除 %d 个键", deleted)}, nil
+}
+
+func (c *redisGoClient) DoCommand(ctx context.Context, args []any) (NativeQueryResult, error) {
+	raw, err := c.client.Do(ctx, args...).Result()
+	if err != nil && err != redis.Nil {
+		return NativeQueryResult{}, err
+	}
+	content, marshalErr := json.Marshal(map[string]any{
+		"command": args,
+		"result":  redisCommandResult(raw),
+	})
+	if marshalErr != nil {
+		return NativeQueryResult{}, marshalErr
+	}
+	return NativeQueryResult{
+		Summary: fmt.Sprintf("已执行 %s", strings.ToUpper(fmt.Sprint(args[0]))),
+		Content: string(content),
+	}, nil
+}
+
+func redisCommandResult(value any) any {
+	switch typed := value.(type) {
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed {
+			out[i] = redisCommandResult(item)
+		}
+		return out
+	case []byte:
+		return string(typed)
+	default:
+		return typed
+	}
 }
 
 func parseRedisSavePayload(payload string) (redisSavePayload, error) {
@@ -217,6 +410,7 @@ func (c *redisGoClient) readStringPreview(ctx context.Context, name string, data
 	if err != nil && err != redis.Nil {
 		return err
 	}
+	data["length"] = len(value)
 	if len(value) > redisPreviewLimit {
 		value = value[:redisPreviewLimit]
 		data["truncated"] = true
@@ -229,6 +423,10 @@ func (c *redisGoClient) readHashPreview(ctx context.Context, name string, data m
 	fields, err := c.client.HGetAll(ctx, name).Result()
 	if err != nil {
 		return err
+	}
+	data["length"] = len(fields)
+	if len(fields) > redisCollectionPreviewLimit {
+		data["truncated"] = true
 	}
 	data["fields"] = limitRedisMap(fields, redisCollectionPreviewLimit)
 	return nil
@@ -295,13 +493,6 @@ func limitRedisMap(values map[string]string, limit int) map[string]string {
 		}
 	}
 	return limited
-}
-
-func limitRedisSlice(values []string, limit int) []string {
-	if len(values) <= limit {
-		return values
-	}
-	return values[:limit]
 }
 
 func redisKeySummary(kind string, ttl time.Duration) string {

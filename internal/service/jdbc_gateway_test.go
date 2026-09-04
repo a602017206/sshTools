@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -117,6 +118,32 @@ func TestJdbcGatewayExecuteQueryStripsTrailingSemicolons(t *testing.T) {
 func TestSanitizeJDBCSQL(t *testing.T) {
 	if got := sanitizeJDBCSQL("  select 1; ; "); got != "select 1" {
 		t.Fatalf("unexpected sanitize result: %q", got)
+	}
+}
+
+func TestSanitizeOracleExecutableSQLStripsEnableAndStorageClauses(t *testing.T) {
+	input := `
+CREATE TABLE "DW_CP_CONTROL_DISPATCH_THRESHOLD" (
+  "ID_" NUMBER(19,0) NOT NULL ENABLE,
+  "CONTROL_NAME" VARCHAR2(200) NOT NULL ENABLE,
+  CONSTRAINT "PK_THRESHOLD" PRIMARY KEY ("ID_")
+  USING INDEX TABLESPACE "USERS" ENABLE
+) SEGMENT CREATION IMMEDIATE
+PCTFREE 10 TABLESPACE "USERS"
+/
+`
+	got := sanitizeOracleExecutableSQL(input)
+	if strings.Contains(got, "ENABLE") {
+		t.Fatalf("ENABLE should be stripped for JDBC execution, got %q", got)
+	}
+	if strings.Contains(got, "SEGMENT CREATION") || strings.Contains(got, "PCTFREE") {
+		t.Fatalf("physical storage clauses should be stripped, got %q", got)
+	}
+	if strings.HasSuffix(strings.TrimSpace(got), "/") {
+		t.Fatalf("SQL*Plus slash should be stripped, got %q", got)
+	}
+	if !strings.Contains(got, `"ID_" NUMBER(19,0) NOT NULL`) {
+		t.Fatalf("column definition should remain, got %q", got)
 	}
 }
 

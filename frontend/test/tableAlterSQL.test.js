@@ -50,3 +50,20 @@ test('人大金仓表结构修改复用 PostgreSQL 兼容语法', () => {
     'COMMENT ON COLUMN "public"."users"."display_name" IS \'显示名\';'
   ]);
 });
+
+test('Oracle 表结构修改使用 ADD/MODIFY/RENAME COLUMN，并以 schema 限定表名', () => {
+  const originalFields = [
+    { _originalName: 'NAME', name: 'NAME', type: 'VARCHAR2', length: '50', nullable: true, primary: false, defaultValue: '', comment: '' }
+  ];
+  const fields = [
+    { _originalName: 'NAME', name: 'DISPLAY_NAME', type: 'VARCHAR2', length: '100', nullable: false, primary: false, defaultValue: "'unknown'", comment: '显示名' },
+    { _originalName: '', name: 'CREATED_AT', type: 'TIMESTAMP', length: '', nullable: false, primary: false, defaultValue: 'SYSDATE', comment: '' }
+  ];
+
+  assert.deepEqual(buildAlterTableStatements({ databaseType: 'oracle', databaseName: 'pdb', schemaName: 'PEMS', tableName: 'DW_CP_CONTROL_TYPE', originalFields, fields }), [
+    'ALTER TABLE "PEMS"."DW_CP_CONTROL_TYPE" RENAME COLUMN "NAME" TO "DISPLAY_NAME";',
+    'ALTER TABLE "PEMS"."DW_CP_CONTROL_TYPE" MODIFY ("DISPLAY_NAME" VARCHAR2(100) NOT NULL DEFAULT \'unknown\');',
+    'COMMENT ON COLUMN "PEMS"."DW_CP_CONTROL_TYPE"."DISPLAY_NAME" IS \'显示名\';',
+    'ALTER TABLE "PEMS"."DW_CP_CONTROL_TYPE" ADD ("CREATED_AT" TIMESTAMP NOT NULL DEFAULT SYSDATE);'
+  ]);
+});

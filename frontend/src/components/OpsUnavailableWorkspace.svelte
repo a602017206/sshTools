@@ -18,7 +18,7 @@
       <div><b>02</b><span>建立会话</span><small>工作区会自动关联当前连接和权限。</small></div>
       <div><b>03</b><span>接入能力</span><small>后端接入后显示真实资源和可执行操作。</small></div>
     </div>
-    <button type="button" on:click={onCreateConnection}>添加连接</button>
+    <button type="button" on:click={() => onCreateConnection()}>添加连接</button>
   </section>
 </main>
 

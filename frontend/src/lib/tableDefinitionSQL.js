@@ -3,23 +3,34 @@ function quoteIdentifier(value, databaseType) {
   return `${quote}${String(value).replaceAll(quote, `${quote}${quote}`)}${quote}`;
 }
 
+function isSchemaScoped(databaseType) {
+  return ['postgresql', 'kingbase', 'opengauss', 'oracle'].includes(String(databaseType).toLowerCase());
+}
+
 function qualifiedTableName({ databaseType, databaseName, schemaName, tableName }) {
-  const postgreSQL = ['postgresql', 'kingbase'].includes(String(databaseType).toLowerCase());
-  const parts = postgreSQL ? [schemaName, tableName] : [databaseName, tableName];
+  const parts = isSchemaScoped(databaseType) ? [schemaName, tableName] : [databaseName, tableName];
   return parts.filter(Boolean).map(part => quoteIdentifier(part, databaseType)).join('.');
 }
 
 function fieldType(field, databaseType) {
-  const type = String(field.type || 'VARCHAR').toUpperCase();
+  let type = String(field.type || 'VARCHAR').toUpperCase();
   const length = String(field.length || '').trim();
-  const postgreSQL = ['postgresql', 'kingbase'].includes(String(databaseType).toLowerCase());
-  if (!length || (postgreSQL && /^(BIGINT|INT|INTEGER|SMALLINT|TIMESTAMP|DATE|BOOLEAN|TEXT)$/i.test(type))) return type;
-  return /^(VARCHAR|CHAR|DECIMAL|NUMERIC|INT|BIGINT)$/i.test(type) ? `${type}(${length})` : type;
+  const dialect = String(databaseType).toLowerCase();
+  if (dialect === 'oracle') {
+    if (type === 'VARCHAR' || type === 'NVARCHAR') type = 'VARCHAR2';
+    if (type === 'TEXT') type = 'CLOB';
+    if (/^(BIGINT|INT|INTEGER|SMALLINT|BOOLEAN|DECIMAL|NUMERIC)$/i.test(type)) type = 'NUMBER';
+  }
+  const skipLength = (['postgresql', 'kingbase', 'opengauss'].includes(dialect)
+    && /^(BIGINT|INT|INTEGER|SMALLINT|TIMESTAMP|DATE|BOOLEAN|TEXT)$/i.test(type))
+    || (dialect === 'oracle' && /^(TIMESTAMP|DATE|CLOB|BLOB)$/i.test(type));
+  if (!length || skipLength) return type;
+  return /^(VARCHAR2?|CHAR|NVARCHAR2?|DECIMAL|NUMERIC|NUMBER|INT|INTEGER|BIGINT|SMALLINT)$/i.test(type) ? `${type}(${length})` : type;
 }
 
 export function buildCreateTableSQL({ databaseType, databaseName = '', schemaName = '', tableName, fields = [] }) {
   const dialect = String(databaseType).toLowerCase();
-  if (!['mysql', 'postgresql', 'kingbase'].includes(dialect)) return '';
+  if (!['mysql', 'postgresql', 'kingbase', 'oracle'].includes(dialect)) return '';
   const validFields = fields.filter(field => String(field?.name || '').trim());
   if (!String(tableName || '').trim() || !validFields.length) return '';
 

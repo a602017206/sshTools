@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"AHaSSHTools/internal/config"
@@ -256,4 +257,23 @@ func sanitizeJDBCSQL(query string) string {
 		trimmed = strings.TrimSpace(strings.TrimSuffix(trimmed, ";"))
 	}
 	return trimmed
+}
+
+var (
+	oracleSQLPlusSlash      = regexp.MustCompile(`(?m)\s*/\s*$`)
+	oracleConstraintEnable  = regexp.MustCompile(`(?i)(\b(?:NOT\s+NULL|NULL|UNIQUE|(?:PRIMARY|FOREIGN)\s+KEY\s*\([^)]*\)))\s+(ENABLE|DISABLE)\b`)
+	oracleEnableBeforeClose = regexp.MustCompile(`(?i)\s+(ENABLE|DISABLE)\s*\)`)
+	oraclePhysicalTail      = regexp.MustCompile(`(?is)\)\s*(SEGMENT\s+CREATION|PCTFREE|PCTUSED|INITRANS|MAXTRANS|NOCOMPRESS|COMPRESS|LOGGING|NOLOGGING|TABLESPACE|STORAGE)\b.*\z`)
+)
+
+// sanitizeOracleExecutableSQL makes DBMS_METADATA / Navicat style CREATE TABLE
+// runnable over JDBC. Oracle rejects column-level ENABLE (ORA-00922) and
+// SQL*Plus "/" terminators; physical storage clauses are also dropped so the
+// statement does not depend on a specific tablespace.
+func sanitizeOracleExecutableSQL(query string) string {
+	sql := oracleSQLPlusSlash.ReplaceAllString(sanitizeJDBCSQL(query), "")
+	sql = oracleConstraintEnable.ReplaceAllString(sql, "$1")
+	sql = oracleEnableBeforeClose.ReplaceAllString(sql, ")")
+	sql = oraclePhysicalTail.ReplaceAllString(sql, ")")
+	return strings.TrimSpace(sql)
 }

@@ -372,6 +372,10 @@ export namespace copilot {
 	    User: string;
 	    DBType: string;
 	    Database: string;
+	    Schema: string;
+	    ObjectKind: string;
+	    ObjectName: string;
+	    ObjectParent: string;
 	    WorkingDir: string;
 	
 	    static createFrom(source: any = {}) {
@@ -391,6 +395,10 @@ export namespace copilot {
 	        this.User = source["User"];
 	        this.DBType = source["DBType"];
 	        this.Database = source["Database"];
+	        this.Schema = source["Schema"];
+	        this.ObjectKind = source["ObjectKind"];
+	        this.ObjectName = source["ObjectName"];
+	        this.ObjectParent = source["ObjectParent"];
 	        this.WorkingDir = source["WorkingDir"];
 	    }
 	
@@ -616,6 +624,22 @@ export namespace service {
 	        this.error = source["error"];
 	    }
 	}
+	export class LocalUploadItem {
+	    localPath: string;
+	    relPath: string;
+	    isDir: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new LocalUploadItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.localPath = source["localPath"];
+	        this.relPath = source["relPath"];
+	        this.isDir = source["isDir"];
+	    }
+	}
 	export class NativeMutationResult {
 	    summary: string;
 	    content: string;
@@ -675,6 +699,42 @@ export namespace service {
 	        this.summary = source["summary"];
 	        this.content = source["content"];
 	    }
+	}
+	export class NativeResourcePage {
+	    items: NativeResource[];
+	    nextCursor: string;
+	    hasMore: boolean;
+	    truncated: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NativeResourcePage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], NativeResource);
+	        this.nextCursor = source["nextCursor"];
+	        this.hasMore = source["hasMore"];
+	        this.truncated = source["truncated"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	
 	export class TableDDL {

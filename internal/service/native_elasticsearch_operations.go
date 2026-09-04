@@ -11,14 +11,30 @@ import (
 	"strings"
 )
 
-const elasticsearchQuerySizeLimit = 100
+const (
+	elasticsearchQuerySizeLimit = 100
+	elasticsearchQueryFromLimit = 400
+)
 
 type elasticsearchMutationPayload struct {
 	ID       string          `json:"id"`
 	Document json.RawMessage `json:"document"`
 }
 
+type elasticsearchDevToolsQuery struct {
+	Method string          `json:"method"`
+	Path   string          `json:"path"`
+	Body   json.RawMessage `json:"body"`
+}
+
 func (s *elasticsearchNativeSession) ExecuteQuery(ctx context.Context, _, name, query string) (NativeQueryResult, error) {
+	query = strings.TrimSpace(query)
+	if strings.HasPrefix(query, "{") {
+		var envelope elasticsearchDevToolsQuery
+		if err := json.Unmarshal([]byte(query), &envelope); err == nil && strings.TrimSpace(envelope.Path) != "" {
+			return s.client.PerformRequest(ctx, envelope.Method, envelope.Path, string(envelope.Body))
+		}
+	}
 	return s.client.SearchIndex(ctx, name, query)
 }
 
@@ -30,6 +46,12 @@ func (s *elasticsearchNativeSession) MutateResource(ctx context.Context, _, name
 		return s.client.UpdateDocument(ctx, name, payload)
 	case "delete_document":
 		return s.client.DeleteDocument(ctx, name, payload)
+	case "create_index":
+		return s.client.CreateIndex(ctx, name, payload)
+	case "delete_index":
+		return s.client.DeleteIndex(ctx, name)
+	case "refresh_index":
+		return s.client.RefreshIndex(ctx, name)
 	default:
 		return NativeMutationResult{}, fmt.Errorf("不支持的 Elasticsearch 操作: %s", operation)
 	}
@@ -59,6 +81,27 @@ func clampElasticsearchQuerySize(body map[string]any, maxSize int) {
 	}
 }
 
+func clampElasticsearchQueryFrom(body map[string]any, maxFrom int) {
+	fromValue, exists := body["from"]
+	if !exists {
+		return
+	}
+	switch typed := fromValue.(type) {
+	case float64:
+		if int(typed) > maxFrom {
+			body["from"] = maxFrom
+		}
+	case int:
+		if typed > maxFrom {
+			body["from"] = maxFrom
+		}
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil && int(parsed) > maxFrom {
+			body["from"] = maxFrom
+		}
+	}
+}
+
 func normalizeElasticsearchQuery(query string) ([]byte, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -69,6 +112,7 @@ func normalizeElasticsearchQuery(query string) ([]byte, error) {
 		return nil, fmt.Errorf("Elasticsearch 查询必须是合法 JSON: %w", err)
 	}
 	clampElasticsearchQuerySize(body, elasticsearchQuerySizeLimit)
+	clampElasticsearchQueryFrom(body, elasticsearchQueryFromLimit)
 	return json.Marshal(body)
 }
 
@@ -82,6 +126,43 @@ func parseElasticsearchMutationPayload(payload string) (elasticsearchMutationPay
 		return elasticsearchMutationPayload{}, fmt.Errorf("变更 payload 必须是合法 JSON: %w", err)
 	}
 	return parsed, nil
+}
+
+func validateElasticsearchDevTools(method, path string) error {
+	method = strings.ToUpper(strings.TrimSpace(method))
+	if method != http.MethodGet && method != http.MethodPost && method != http.MethodPut && method != http.MethodHead {
+		return fmt.Errorf("Dev Tools 仅允许 GET/POST/PUT/HEAD")
+	}
+	path = strings.TrimSpace(path)
+	if path == "" || !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("Dev Tools path 必须以 / 开头")
+	}
+	if strings.Contains(path, "://") || strings.Contains(path, "..") {
+		return fmt.Errorf("Dev Tools path 非法")
+	}
+	allowed := []string{
+		"/_search", "/_mapping", "/_stats", "/_doc", "/_update", "/_refresh",
+		"/_cluster/health", "/_cluster/stats", "/_nodes", "/_cat/",
+	}
+	lower := strings.ToLower(path)
+	for _, prefix := range allowed {
+		if strings.Contains(lower, prefix) || strings.HasPrefix(lower, prefix) {
+			return nil
+		}
+	}
+	// /index/_search style
+	parts := strings.Split(strings.Trim(lower, "/"), "/")
+	if len(parts) >= 2 {
+		action := parts[len(parts)-1]
+		switch action {
+		case "_search", "_mapping", "_stats", "_refresh", "_doc":
+			return nil
+		}
+		if len(parts) >= 3 && (parts[1] == "_doc" || parts[1] == "_update" || parts[1] == "_search") {
+			return nil
+		}
+	}
+	return fmt.Errorf("Dev Tools 路径不在白名单内: %s", path)
 }
 
 func (c *elasticsearchGoClient) SearchIndex(ctx context.Context, index, query string) (NativeQueryResult, error) {
@@ -126,6 +207,101 @@ func (c *elasticsearchGoClient) SearchIndex(ctx context.Context, index, query st
 		Summary: fmt.Sprintf("返回 %d 条命中", len(payload.Hits.Hits)),
 		Content: string(content),
 	}, nil
+}
+
+func (c *elasticsearchGoClient) PerformRequest(ctx context.Context, method, path, body string) (NativeQueryResult, error) {
+	method = strings.ToUpper(strings.TrimSpace(method))
+	if method == "" {
+		method = http.MethodGet
+	}
+	if err := validateElasticsearchDevTools(method, path); err != nil {
+		return NativeQueryResult{}, err
+	}
+	var reader io.Reader
+	if strings.TrimSpace(body) != "" && body != "null" {
+		reader = strings.NewReader(body)
+	}
+	response, err := c.perform(ctx, method, path, reader)
+	if err != nil {
+		return NativeQueryResult{}, err
+	}
+	defer response.Body.Close()
+	if err := elasticsearchResponseError(response); err != nil {
+		return NativeQueryResult{}, err
+	}
+	raw, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return NativeQueryResult{}, err
+	}
+	content, err := json.Marshal(map[string]any{
+		"status": response.StatusCode,
+		"body":   json.RawMessage(raw),
+	})
+	if err != nil {
+		content, _ = json.Marshal(map[string]any{"status": response.StatusCode, "text": string(raw)})
+	}
+	return NativeQueryResult{
+		Summary: fmt.Sprintf("%s %s → %d", method, path, response.StatusCode),
+		Content: string(content),
+	}, nil
+}
+
+func (c *elasticsearchGoClient) CreateIndex(ctx context.Context, index, payload string) (NativeMutationResult, error) {
+	index = strings.TrimSpace(index)
+	if index == "" {
+		return NativeMutationResult{}, fmt.Errorf("索引名不能为空")
+	}
+	body := strings.TrimSpace(payload)
+	if body == "" {
+		body = "{}"
+	}
+	if !json.Valid([]byte(body)) {
+		return NativeMutationResult{}, fmt.Errorf("create_index payload 必须是合法 JSON")
+	}
+	response, err := c.perform(ctx, http.MethodPut, "/"+url.PathEscape(index), strings.NewReader(body))
+	if err != nil {
+		return NativeMutationResult{}, err
+	}
+	defer response.Body.Close()
+	if err := elasticsearchResponseError(response); err != nil {
+		return NativeMutationResult{}, err
+	}
+	raw, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	return NativeMutationResult{Summary: "索引已创建", Content: strings.TrimSpace(string(raw))}, nil
+}
+
+func (c *elasticsearchGoClient) DeleteIndex(ctx context.Context, index string) (NativeMutationResult, error) {
+	index = strings.TrimSpace(index)
+	if index == "" {
+		return NativeMutationResult{}, fmt.Errorf("索引名不能为空")
+	}
+	response, err := c.perform(ctx, http.MethodDelete, "/"+url.PathEscape(index), nil)
+	if err != nil {
+		return NativeMutationResult{}, err
+	}
+	defer response.Body.Close()
+	if err := elasticsearchResponseError(response); err != nil {
+		return NativeMutationResult{}, err
+	}
+	raw, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	return NativeMutationResult{Summary: "索引已删除", Content: strings.TrimSpace(string(raw))}, nil
+}
+
+func (c *elasticsearchGoClient) RefreshIndex(ctx context.Context, index string) (NativeMutationResult, error) {
+	index = strings.TrimSpace(index)
+	if index == "" {
+		return NativeMutationResult{}, fmt.Errorf("索引名不能为空")
+	}
+	response, err := c.perform(ctx, http.MethodPost, "/"+url.PathEscape(index)+"/_refresh", nil)
+	if err != nil {
+		return NativeMutationResult{}, err
+	}
+	defer response.Body.Close()
+	if err := elasticsearchResponseError(response); err != nil {
+		return NativeMutationResult{}, err
+	}
+	raw, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	return NativeMutationResult{Summary: "索引已刷新", Content: strings.TrimSpace(string(raw))}, nil
 }
 
 func (c *elasticsearchGoClient) IndexDocument(ctx context.Context, index, payload string) (NativeMutationResult, error) {

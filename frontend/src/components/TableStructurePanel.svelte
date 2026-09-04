@@ -24,7 +24,7 @@
   const newField = (name = '') => ({ _originalName: '', name, type: 'VARCHAR', length: name === 'id' ? '20' : '255', nullable: name !== 'id', primary: name === 'id', defaultValue: '', comment: '' });
   $: isCreateMode = mode === 'create';
   $: databaseType = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toLowerCase();
-  $: supportsCreate = ['mysql', 'postgresql', 'kingbase'].includes(databaseType);
+  $: supportsCreate = ['mysql', 'postgresql', 'kingbase', 'oracle'].includes(databaseType);
   $: titleName = isCreateMode ? '新建表' : (schemaName && tableName ? `${schemaName}.${tableName}` : (tableName || '设计表'));
   $: dbTypeLabel = String(dbConfig?.metadata?.db_type || dbConfig?.dbType || '').toUpperCase();
   $: requestKey = `${sessionId || ''}:${databaseName || ''}:${schemaName || ''}:${tableName || ''}:${mode}`;
@@ -66,10 +66,10 @@
     isLoading = true;
     errorMessage = '';
     try {
-      const [ddl, schema] = await Promise.all([
-        schemaName ? window.wailsBindings.GetTableDDLInSchema(sessionId, databaseName, schemaName, tableName) : window.wailsBindings.GetTableDDL(sessionId, databaseName, tableName),
-        window.wailsBindings.GetTableSchemaInSchema(sessionId, databaseName, schemaName, tableName)
-      ]);
+      const schema = await window.wailsBindings.GetTableSchemaInSchema(sessionId, databaseName, schemaName, tableName);
+      const ddl = schemaName
+        ? await window.wailsBindings.GetTableDDLInSchema(sessionId, databaseName, schemaName, tableName)
+        : await window.wailsBindings.GetTableDDL(sessionId, databaseName, tableName);
       ddlData = ddl;
       schemaData = schema;
       draftTableName = tableName;
@@ -131,7 +131,7 @@
 
   {#if errorMessage}<div class="table-designer__notice table-designer__notice--error">{errorMessage}</div>{/if}
   {#if successMessage}<div class="table-designer__notice table-designer__notice--success">{successMessage}</div>{/if}
-  {#if !supportsCreate}<div class="table-designer__notice table-designer__notice--error">当前仅支持 MySQL、PostgreSQL 和人大金仓的表结构修改。</div>{/if}
+  {#if !supportsCreate}<div class="table-designer__notice table-designer__notice--error">当前仅支持 MySQL、PostgreSQL、人大金仓和 Oracle 的表结构修改。</div>{/if}
 
   <div class="table-designer__body">
     <label class="table-designer__name">表名<input bind:value={draftTableName} disabled={!isCreateMode} /></label>
@@ -140,7 +140,7 @@
       <table class="table-designer__grid"><thead><tr><th>字段名</th><th>类型</th><th>长度</th><th>非空</th><th>主键</th><th>默认值</th><th>注释</th>{#if !fieldsReadOnly}<th></th>{/if}</tr></thead>
         <tbody>{#each fieldDrafts as field, index}<tr>
           <td><input value={field.name} on:input={(event) => updateField(index, { name: event.currentTarget.value })} disabled={fieldsReadOnly} /></td>
-          <td><select value={field.type} on:change={(event) => updateField(index, { type: event.currentTarget.value })} disabled={fieldsReadOnly}>{#each ['BIGINT', 'INT', 'VARCHAR', 'TEXT', 'DECIMAL', 'TIMESTAMP', 'DATE', 'BOOLEAN'] as type}<option value={type}>{type}</option>{/each}</select></td>
+          <td><select value={field.type} on:change={(event) => updateField(index, { type: event.currentTarget.value })} disabled={fieldsReadOnly}>{#each ['BIGINT', 'INT', 'NUMBER', 'VARCHAR', 'VARCHAR2', 'TEXT', 'CLOB', 'DECIMAL', 'TIMESTAMP', 'DATE', 'BOOLEAN'] as type}<option value={type}>{type}</option>{/each}</select></td>
           <td><input value={field.length} on:input={(event) => updateField(index, { length: event.currentTarget.value })} disabled={fieldsReadOnly} /></td>
           <td><input type="checkbox" checked={!field.nullable} on:change={(event) => updateField(index, { nullable: !event.currentTarget.checked })} disabled={fieldsReadOnly} /></td>
           <td><input type="checkbox" checked={field.primary} on:change={(event) => updateField(index, { primary: event.currentTarget.checked })} disabled={fieldsReadOnly} /></td>

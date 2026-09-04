@@ -342,6 +342,16 @@ func (ds *DatabaseService) ListTables(sessionID string) ([]string, error) {
 	return ds.listTablesWithDB(ctx, session.Config.DBType, session.DB, "")
 }
 
+func (ds *DatabaseService) ListTablesInScope(sessionID, database, schema string) ([]string, error) {
+	if strings.TrimSpace(schema) != "" {
+		return ds.ListTablesInSchema(sessionID, database, schema)
+	}
+	if strings.TrimSpace(database) != "" {
+		return ds.ListTablesInDatabase(sessionID, database)
+	}
+	return ds.ListTables(sessionID)
+}
+
 func (ds *DatabaseService) ListDatabases(sessionID string) ([]string, error) {
 	if ds.gateway != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -580,6 +590,13 @@ func (ds *DatabaseService) GetTableSchemaInSchema(sessionID, database, schema, t
 			return gateway.GetTableSchemaInDatabaseAndSchema(ctx, sessionID, database, schema, table)
 		}
 		return ds.gateway.GetTableSchemaInSchema(ctx, sessionID, schema, table)
+	}
+	return ds.GetTableSchema(sessionID, table)
+}
+
+func (ds *DatabaseService) GetTableSchemaInScope(sessionID, database, schema, table string) (*config.TableSchema, error) {
+	if strings.TrimSpace(schema) != "" || strings.TrimSpace(database) != "" {
+		return ds.GetTableSchemaInSchema(sessionID, database, schema, table)
 	}
 	return ds.GetTableSchema(sessionID, table)
 }

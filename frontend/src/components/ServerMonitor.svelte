@@ -1,6 +1,14 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { activeSessionIdStore, connectionsStore } from '../stores.js';
+  import {
+    isSessionLiveEnabled,
+    setSessionLiveEnabled,
+    shouldPollMonitor
+  } from '../lib/monitorLiveControl.js';
+
+  /** 性能面板当前是否可见；隐藏时即使开启实时也不轮询。 */
+  export let panelVisible = true;
 
   const defaultStats = {
     cpu: 0,
@@ -34,14 +42,14 @@
 
   let cpuData = [];
   let memoryData = [];
-  let cpuPerCore = []; // Per-core CPU usage array
+  let cpuPerCore = [];
   let currentStats = { ...defaultStats };
   let systemInfo = { ...defaultSystemInfo };
   let diskInfo = { ...defaultDiskInfo };
   let loadInfo = { ...defaultLoadInfo };
   let memoryDetail = { ...defaultMemoryDetail };
+  let isRefreshing = false;
 
-  // Per-session monitoring history
   let sessionCpuData = new Map();
   let sessionMemoryData = new Map();
   let sessionCpuPerCore = new Map();
@@ -50,15 +58,22 @@
   let sessionDiskInfo = new Map();
   let sessionLoadInfo = new Map();
   let sessionMemoryDetail = new Map();
+  let sessionLiveEnabled = new Map();
 
   let dataInterval = null;
   let previousSessionId = null;
+  let lastPollKey = '';
 
-  // Get current session object
   $: currentSession = $activeSessionIdStore ? $connectionsStore.get($activeSessionIdStore) : null;
   $: isSessionConnected = currentSession?.connected || false;
   $: isLocalSession = currentSession?.type === 'local';
   $: canUseMonitor = isSessionConnected && !isLocalSession;
+  $: liveEnabled = isSessionLiveEnabled(sessionLiveEnabled, $activeSessionIdStore);
+  $: pollingActive = shouldPollMonitor({
+    liveEnabled,
+    canUseMonitor,
+    panelVisible
+  });
 
   function applySessionSnapshot(sessionId) {
     if (!sessionId) {
@@ -103,13 +118,17 @@
   }
   $: previousSessionId = $activeSessionIdStore;
 
-  function getStatusColor(value) {
-    if (value < 50) return '#10b981'; // green
-    if (value < 80) return '#f59e0b'; // amber
-    return '#ef4444'; // red
+  function setLiveEnabled(enabled) {
+    if (!$activeSessionIdStore || !canUseMonitor) return;
+    sessionLiveEnabled = setSessionLiveEnabled(sessionLiveEnabled, $activeSessionIdStore, enabled);
   }
 
-  // Convert bytes to appropriate unit
+  function getStatusColor(value) {
+    if (value < 50) return '#10b981';
+    if (value < 80) return '#f59e0b';
+    return '#ef4444';
+  }
+
   function formatBytesPerSecond(bytesPerSecond) {
     if (bytesPerSecond === 0) return '0 KB/s';
 
@@ -125,7 +144,6 @@
     return `${value.toFixed(1)} ${units[unitIndex]}`;
   }
 
-  // Convert bytes to appropriate unit (for memory/disk)
   function formatBytes(bytes) {
     if (bytes === 0) return '0 B';
 
@@ -141,7 +159,6 @@
     return `${value.toFixed(1)} ${units[unitIndex]}`;
   }
 
-  // Normalize backend monitoring data to component's expected format
   function normalizeMonitoringData(data) {
     if (!data) return null;
 
@@ -149,20 +166,18 @@
       ? data.cpu.per_core
       : null;
 
-    // Backend returns detailed structure, normalize to simple format
     const stats = {
       cpu: typeof data.cpu === 'number' ? data.cpu : (data.cpu?.overall || 0),
       memory: typeof data.memory === 'number' ? data.memory : (data.memory?.used_percent || 0),
       disk: typeof data.disk === 'number' ? data.disk : (data.disk?.partitions?.[0]?.used_percent || 0),
       network: {
-        in: typeof data.network?.in === 'number' ? data.network.in * (1024 * 1024) : // Convert MB to bytes
-              (typeof data.network?.rx_rate === 'number' ? data.network.rx_rate : 0), // Already in bytes/s
-        out: typeof data.network?.out === 'number' ? data.network.out * (1024 * 1024) : // Convert MB to bytes
-               (typeof data.network?.tx_rate === 'number' ? data.network.tx_rate : 0) // Already in bytes/s
+        in: typeof data.network?.in === 'number' ? data.network.in * (1024 * 1024) :
+              (typeof data.network?.rx_rate === 'number' ? data.network.rx_rate : 0),
+        out: typeof data.network?.out === 'number' ? data.network.out * (1024 * 1024) :
+               (typeof data.network?.tx_rate === 'number' ? data.network.tx_rate : 0)
       }
     };
 
-    // Update system info if available
     const nextSystemInfo = data.system ? {
       os: data.system.os || defaultSystemInfo.os,
       kernel: data.system.kernel || defaultSystemInfo.kernel,
@@ -170,7 +185,6 @@
       processes: data.system.processes || defaultSystemInfo.processes
     } : null;
 
-    // Update disk info if available
     let nextDiskInfo = null;
     if (data.disk?.partitions?.[0]) {
       const partition = data.disk.partitions[0];
@@ -182,7 +196,6 @@
       };
     }
 
-    // Update load info if available
     let nextLoadInfo = null;
     if (data.cpu?.load_average && Array.isArray(data.cpu.load_average) && data.cpu.load_average.length >= 3) {
       nextLoadInfo = {
@@ -192,7 +205,6 @@
       };
     }
 
-    // Update memory detail if available
     let nextMemoryDetail = null;
     if (data.memory?.used !== undefined && data.memory?.total !== undefined) {
       const usedBytes = data.memory.used;
@@ -213,7 +225,6 @@
     };
   }
 
-  // 获取监控数据
   async function fetchMonitoringData() {
     const sessionId = $activeSessionIdStore;
     if (!sessionId || !isSessionConnected || isLocalSession) return;
@@ -259,12 +270,29 @@
     }
   }
 
-  // React to active session changes - only fetch when session is connected and can use monitor
-  $: if ($activeSessionIdStore && canUseMonitor) {
-    fetchMonitoringData();
+  async function refreshOnce() {
+    if (!canUseMonitor || isRefreshing) return;
+    isRefreshing = true;
+    try {
+      await fetchMonitoringData();
+    } finally {
+      isRefreshing = false;
+    }
   }
 
-  // Clear monitoring data when no active session or cannot use monitor
+  function stopPolling() {
+    if (dataInterval) {
+      clearInterval(dataInterval);
+      dataInterval = null;
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    fetchMonitoringData();
+    dataInterval = setInterval(fetchMonitoringData, 2000);
+  }
+
   $: if (!$activeSessionIdStore || !canUseMonitor) {
     cpuData = [];
     memoryData = [];
@@ -276,33 +304,60 @@
     memoryDetail = { ...defaultMemoryDetail };
   }
 
-  onMount(() => {
-    // 开始定时更新数据
-    dataInterval = setInterval(fetchMonitoringData, 2000);
-
-    return () => {
-      clearInterval(dataInterval);
-    };
-  });
+  $: pollKey = `${$activeSessionIdStore || ''}:${pollingActive ? '1' : '0'}`;
+  $: if (pollKey !== lastPollKey) {
+    lastPollKey = pollKey;
+    if (pollingActive) {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+  }
 
   onDestroy(() => {
-    if (dataInterval) {
-      clearInterval(dataInterval);
-    }
+    stopPolling();
   });
 </script>
 
 <div class="h-full flex flex-col bg-white dark:bg-gray-800 overflow-y-auto scrollbar-thin">
-  <!-- 头部 -->
-   <div class="p-3 border-b border-gray-200 dark:border-gray-700">
-    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">服务器监控</h3>
-    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-      {#if isLocalSession}
-        本地终端不支持服务器监控
-      {:else if isSessionConnected}
-        实时数据获取中...
-      {:else}
-        请先连接到服务器
+  <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white">服务器监控</h3>
+        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          {#if isLocalSession}
+            本地终端不支持服务器监控
+          {:else if !isSessionConnected}
+            请先连接到服务器
+          {:else if liveEnabled}
+            实时查询中（约每 2 秒）
+          {:else}
+            实时已关闭，可手动刷新，减轻弱机压力
+          {/if}
+        </div>
+      </div>
+      {#if canUseMonitor}
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <button
+            type="button"
+            class="monitor-refresh"
+            title="手动刷新一次"
+            disabled={isRefreshing || liveEnabled}
+            on:click={refreshOnce}
+          >
+            {isRefreshing ? '刷新中' : '刷新'}
+          </button>
+          <label class="monitor-live-toggle" title="开启后持续远程采集，弱性能服务器建议关闭">
+            <span>实时</span>
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="实时性能查询"
+              checked={liveEnabled}
+              on:change={(event) => setLiveEnabled(event.currentTarget.checked)}
+            />
+          </label>
+        </div>
       {/if}
     </div>
   </div>
@@ -322,7 +377,6 @@
   {/if}
 
   <div class="p-3 space-y-3">
-     <!-- CPU 使用率 -->
      <div class="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl p-3 shadow-sm border border-purple-100 dark:border-purple-800">
        <div class="flex items-center justify-between mb-2">
          <div class="flex items-center gap-2">
@@ -353,7 +407,6 @@
            </div>
          </div>
        {/if}
-      <!-- CPU Chart -->
       <div class="h-[80px] bg-white dark:bg-gray-800 rounded-lg overflow-hidden relative">
         {#if cpuData.length > 1}
           <svg class="w-full h-full" preserveAspectRatio="none">
@@ -363,11 +416,9 @@
                 <stop offset="100%" style="stop-color:rgb(139, 92, 246);stop-opacity:0.05" />
               </linearGradient>
             </defs>
-            <!-- Grid lines -->
             <line x1="0" y1="25%" x2="100%" y2="25%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
             <line x1="0" y1="50%" x2="100%" y2="50%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
             <line x1="0" y1="75%" x2="100%" y2="75%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
-            <!-- Area fill -->
             <path
               d="{cpuData.map((v, i) => {
                 const x = (i / (cpuData.length - 1)) * 100;
@@ -377,7 +428,6 @@
               fill="url(#cpuGradient)"
               transform="scale(1, 0.8) translate(0, 10)"
             />
-            <!-- Line -->
             <path
               d="{cpuData.map((v, i) => {
                 const x = (i / (cpuData.length - 1)) * 100;
@@ -392,16 +442,14 @@
               transform="scale(1, 0.8) translate(0, 10)"
             />
           </svg>
-          <!-- Y-axis labels -->
           <div class="absolute left-1 top-1 text-[8px] text-gray-400 dark:text-gray-500">100%</div>
           <div class="absolute left-1 bottom-1 text-[8px] text-gray-400 dark:text-gray-500">0%</div>
         {:else}
           <div class="w-full h-full flex items-center justify-center text-xs text-gray-400">
-            等待数据...
+            {liveEnabled ? '等待数据...' : '开启实时或点刷新'}
           </div>
         {/if}
       </div>
-      <!-- Per-core CPU usage -->
       {#if cpuPerCore.length > 0}
         <div class="mt-2 flex flex-wrap gap-1">
           {#each cpuPerCore as core, i}
@@ -419,7 +467,6 @@
       {/if}
     </div>
 
-     <!-- 内存使用率 -->
      <div class="rounded-xl p-3 shadow-sm border border-emerald-100 dark:border-emerald-800" style="background: linear-gradient(135deg, var(--accent-soft), transparent);">
        <div class="flex items-center justify-between mb-2">
          <div class="flex items-center gap-2">
@@ -439,7 +486,6 @@
            </span>
          </div>
        </div>
-      <!-- Memory Chart -->
       <div class="h-[80px] bg-white dark:bg-gray-800 rounded-lg overflow-hidden relative">
         {#if memoryData.length > 1}
           <svg class="w-full h-full" preserveAspectRatio="none">
@@ -449,11 +495,9 @@
                 <stop offset="100%" style="stop-color:rgb(16, 185, 129);stop-opacity:0.05" />
               </linearGradient>
             </defs>
-            <!-- Grid lines -->
             <line x1="0" y1="25%" x2="100%" y2="25%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
             <line x1="0" y1="50%" x2="100%" y2="50%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
             <line x1="0" y1="75%" x2="100%" y2="75%" stroke="currentColor" stroke-width="0.5" class="text-gray-200 dark:text-gray-700" />
-            <!-- Area fill -->
             <path
               d="{memoryData.map((v, i) => {
                 const x = (i / (memoryData.length - 1)) * 100;
@@ -463,7 +507,6 @@
               fill="url(#memoryGradient)"
               transform="scale(1, 0.8) translate(0, 10)"
             />
-            <!-- Line -->
             <path
               d="{memoryData.map((v, i) => {
                 const x = (i / (memoryData.length - 1)) * 100;
@@ -478,18 +521,16 @@
               transform="scale(1, 0.8) translate(0, 10)"
             />
           </svg>
-          <!-- Y-axis labels -->
           <div class="absolute left-1 top-1 text-[8px] text-gray-400 dark:text-gray-500">100%</div>
           <div class="absolute left-1 bottom-1 text-[8px] text-gray-400 dark:text-gray-500">0%</div>
         {:else}
           <div class="w-full h-full flex items-center justify-center text-xs text-gray-400">
-            等待数据...
+            {liveEnabled ? '等待数据...' : '开启实时或点刷新'}
           </div>
         {/if}
       </div>
     </div>
 
-    <!-- 磁盘使用 -->
     <div class="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-xl p-3 shadow-sm border border-amber-100 dark:border-amber-800">
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
@@ -516,7 +557,6 @@
       </div>
     </div>
 
-    <!-- 网络流量 -->
     <div class="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-3 shadow-sm border border-blue-100 dark:border-blue-800">
       <div class="flex items-center gap-2 mb-3">
         <div class="p-1.5 bg-blue-100 dark:bg-blue-900 rounded-lg">
@@ -548,7 +588,6 @@
       </div>
     </div>
 
-    <!-- 系统信息 -->
     <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 shadow-sm border border-gray-200 dark:border-gray-600">
       <div class="text-xs font-semibold text-gray-900 dark:text-white mb-2">系统信息</div>
       <div class="space-y-1.5 text-[10px]">
@@ -572,3 +611,77 @@
     </div>
   </div>
 </div>
+
+<style>
+  .monitor-refresh {
+    appearance: none;
+    border: 1px solid var(--border-primary, #d9e0e4);
+    border-radius: 999px;
+    background: var(--bg-primary, #fff);
+    color: var(--text-secondary, #52606d);
+    font-size: 11px;
+    font-weight: 600;
+    min-height: 26px;
+    padding: 0 10px;
+    cursor: pointer;
+  }
+
+  .monitor-refresh:hover:not(:disabled) {
+    color: #0e6674;
+    border-color: #9fc5c8;
+  }
+
+  .monitor-refresh:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .monitor-live-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary, #52606d);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .monitor-live-toggle input {
+    width: 34px;
+    height: 18px;
+    margin: 0;
+    appearance: none;
+    border-radius: 999px;
+    background: #cbd5e1;
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .monitor-live-toggle input::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2);
+    transition: transform 0.15s ease;
+  }
+
+  .monitor-live-toggle input:checked {
+    background: #0e6674;
+  }
+
+  .monitor-live-toggle input:checked::after {
+    transform: translateX(16px);
+  }
+
+  .monitor-live-toggle input:focus-visible {
+    outline: 2px solid #0e6674;
+    outline-offset: 2px;
+  }
+</style>

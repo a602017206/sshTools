@@ -91,6 +91,30 @@ func newJDBCError(message string, cause error) *JDBCError {
 	return &JDBCError{Code: code, Message: friendly, Err: cause}
 }
 
+func isJDBCSessionStale(err error) bool {
+	if err == nil {
+		return false
+	}
+	normalized := strings.ToLower(err.Error())
+	return containsAny(normalized,
+		"ora-17008",
+		"ora-17027",
+		"closed connection",
+		"connection closed",
+		"connection is closed",
+		"已关闭连接",
+		"流已被关闭",
+		"stream has already been closed",
+		"socket closed",
+		"broken pipe",
+		"connection reset",
+		"no more data to read from socket",
+		"ora-03113",
+		"ora-03114",
+		"ora-12571",
+	)
+}
+
 func containsAny(message string, values ...string) bool {
 	for _, value := range values {
 		if strings.Contains(message, value) {

@@ -2,6 +2,7 @@
   export let state = null;
   export let ttlInput = '';
   export let saving = false;
+  export let saveDisabled = false;
   export let onSave = () => {};
   export let onDelete = () => {};
 
@@ -50,7 +51,7 @@
   <div class="redis-key-editor">
     <div class="redis-key-editor__type">类型：<strong>{state.type}</strong></div>
     {#if state.truncated}
-      <p class="redis-key-editor__hint">预览已截断，保存时会写入当前编辑区中的完整内容。</p>
+      <p class="redis-key-editor__hint">预览已截断，已禁用保存，避免用预览覆盖完整值。</p>
     {/if}
 
     {#if state.type === 'string'}
@@ -119,7 +120,7 @@
 
     <div class="redis-key-editor__actions">
       {#if ['string', 'hash', 'list', 'set', 'zset'].includes(state.type)}
-        <button type="button" on:click={onSave} disabled={saving}>保存</button>
+        <button type="button" on:click={onSave} disabled={saving || saveDisabled || state.truncated}>保存</button>
       {/if}
       <button type="button" class="danger" on:click={onDelete} disabled={saving}>删除键</button>
     </div>

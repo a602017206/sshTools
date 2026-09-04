@@ -16,7 +16,14 @@ type grpcJdbcAgentClient struct {
 
 func NewGRPCJdbcAgentClient(ctx context.Context, host string, port int) (JdbcAgentClient, func() error, error) {
 	target := net.JoinHostPort(host, fmt.Sprintf("%d", port))
-	conn, err := grpc.DialContext(ctx, target, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	conn, err := grpc.DialContext(ctx, target,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(64<<20),
+			grpc.MaxCallSendMsgSize(64<<20),
+		),
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("连接 JDBC agent gRPC 失败: %w", err)
 	}

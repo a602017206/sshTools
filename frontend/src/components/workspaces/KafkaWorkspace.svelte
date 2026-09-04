@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { nativeDatabaseWorkspace } from '../../lib/nativeDatabaseWorkspace.js';
+  import { copilotStore } from '../../stores/copilot.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -13,7 +14,14 @@
   let details = null;
 
   $: databaseType = dbConfig?.metadata?.db_type || 'kafka';
-  $: workspace = nativeDatabaseWorkspace('kafka');
+  $: workspace = nativeDatabaseWorkspace(databaseType);
+  $: if (sessionId) {
+    copilotStore.setWorkspaceFocus(sessionId, {
+      objectKind: selectedResource ? 'topic' : '',
+      objectName: selectedResource || '',
+      objectParent: ''
+    });
+  }
 
   onMount(loadResources);
 
@@ -100,13 +108,13 @@
     <aside class="native-database-panel__inspector">
       <h4>对象信息</h4>
       <dl>
-        <div><dt>类型</dt><dd>KAFKA</dd></div>
+        <div><dt>类型</dt><dd>{(databaseType || 'kafka').toUpperCase()}</dd></div>
         <div><dt>资源</dt><dd>{workspace.resourceLabel}</dd></div>
         <div><dt>数量</dt><dd>{resources.length}</dd></div>
         {#if selectedResource}<div><dt>当前选中</dt><dd>{selectedResource}</dd></div>{/if}
       </dl>
       <p>{workspace.description}</p>
-      <p class="native-database-panel__hint">当前仅展示 Topic 分区元数据</p>
+      <p class="native-database-panel__hint">当前为只读元数据浏览</p>
 
       {#if loadingDetails}
         <p>正在读取对象详情…</p>
@@ -117,7 +125,7 @@
           <pre>{formatDetails(details.content)}</pre>
         </div>
       {:else}
-        <p>选择一个 Topic 以查看分区元数据。</p>
+        <p>选择一个{workspace.resourceLabel}以查看详情。</p>
       {/if}
     </aside>
   </div>
