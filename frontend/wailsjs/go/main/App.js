@@ -6,6 +6,10 @@ export function AddConnection(arg1) {
   return window['go']['main']['App']['AddConnection'](arg1);
 }
 
+export function BindSessionConnection(arg1, arg2) {
+  return window['go']['main']['App']['BindSessionConnection'](arg1, arg2);
+}
+
 export function CalculateHash(arg1, arg2) {
   return window['go']['main']['App']['CalculateHash'](arg1, arg2);
 }
@@ -122,6 +126,10 @@ export function DeletePassword(arg1) {
   return window['go']['main']['App']['DeletePassword'](arg1);
 }
 
+export function DeleteSessionLog(arg1) {
+  return window['go']['main']['App']['DeleteSessionLog'](arg1);
+}
+
 export function DescribeNativeDatabaseResource(arg1, arg2, arg3) {
   return window['go']['main']['App']['DescribeNativeDatabaseResource'](arg1, arg2, arg3);
 }
@@ -172,6 +180,10 @@ export function ExportConnectionsByIDs(arg1, arg2) {
 
 export function ExportConnectionsByIDsWithPassphrase(arg1, arg2) {
   return window['go']['main']['App']['ExportConnectionsByIDsWithPassphrase'](arg1, arg2);
+}
+
+export function ExportSessionLog(arg1) {
+  return window['go']['main']['App']['ExportSessionLog'](arg1);
 }
 
 export function FormatJSON(arg1) {
@@ -362,6 +374,10 @@ export function ListSSHSessions() {
   return window['go']['main']['App']['ListSSHSessions']();
 }
 
+export function ListSessionLogs(arg1) {
+  return window['go']['main']['App']['ListSessionLogs'](arg1);
+}
+
 export function MinifyJSON(arg1) {
   return window['go']['main']['App']['MinifyJSON'](arg1);
 }
@@ -372,6 +388,14 @@ export function MutateNativeDatabaseResource(arg1, arg2, arg3, arg4, arg5) {
 
 export function ParseURL(arg1) {
   return window['go']['main']['App']['ParseURL'](arg1);
+}
+
+export function PurgeExpiredSessionLogs() {
+  return window['go']['main']['App']['PurgeExpiredSessionLogs']();
+}
+
+export function RecordCommand(arg1, arg2) {
+  return window['go']['main']['App']['RecordCommand'](arg1, arg2);
 }
 
 export function RemoveConnection(arg1) {
@@ -408,6 +432,10 @@ export function SavePassword(arg1, arg2) {
 
 export function SearchDirectories(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SearchDirectories'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function SearchSessionLogs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SearchSessionLogs'](arg1, arg2, arg3);
 }
 
 export function SelectBackgroundImage() {
@@ -496,6 +524,10 @@ export function ShowQuestionDialog(arg1, arg2) {
 
 export function StartSQLFile(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['StartSQLFile'](arg1, arg2, arg3, arg4);
+}
+
+export function SuggestCommands(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SuggestCommands'](arg1, arg2, arg3);
 }
 
 export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {

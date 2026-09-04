@@ -56,3 +56,21 @@ test('\\r\\n 只提交一次', () => {
   assert.deepEqual(submitted, ['echo hi']);
   assert.equal(buf.getLine(), '');
 });
+
+test('Tab 不写入缓冲并标记 sawShellTab', () => {
+  const buf = createCommandLineBuffer();
+  buf.push('cd lnpe');
+  const { submitted, sawShellTab } = buf.push('\t');
+  assert.deepEqual(submitted, []);
+  assert.equal(sawShellTab, true);
+  assert.equal(buf.getLine(), 'cd lnpe');
+});
+
+test('replaceLine 覆盖为可见命令', () => {
+  const buf = createCommandLineBuffer();
+  buf.push('cd lnpe');
+  buf.replaceLine('cd lnpems-idc-hiddendanger/');
+  assert.equal(buf.getLine(), 'cd lnpems-idc-hiddendanger/');
+  const { submitted } = buf.push('\r');
+  assert.deepEqual(submitted, ['cd lnpems-idc-hiddendanger/']);
+});

@@ -7,6 +7,8 @@ import {ssh} from '../models';
 
 export function AddConnection(arg1:config.ConnectionConfig):Promise<void>;
 
+export function BindSessionConnection(arg1:string,arg2:string):Promise<void>;
+
 export function CalculateHash(arg1:string,arg2:string):Promise<string>;
 
 export function CancelSQLFile(arg1:string):Promise<void>;
@@ -65,6 +67,8 @@ export function DeleteFiles(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function DeletePassword(arg1:string):Promise<void>;
 
+export function DeleteSessionLog(arg1:string):Promise<void>;
+
 export function DescribeNativeDatabaseResource(arg1:string,arg2:string,arg3:string):Promise<service.NativeResourceDetails>;
 
 export function DescribeNativeDatabaseSession(arg1:string):Promise<service.NativeResourceDetails>;
@@ -90,6 +94,8 @@ export function ExportConnections(arg1:boolean):Promise<string>;
 export function ExportConnectionsByIDs(arg1:Array<string>,arg2:boolean):Promise<string>;
 
 export function ExportConnectionsByIDsWithPassphrase(arg1:Array<string>,arg2:string):Promise<string>;
+
+export function ExportSessionLog(arg1:string):Promise<string>;
 
 export function FormatJSON(arg1:string):Promise<string>;
 
@@ -185,11 +191,17 @@ export function ListNativeDatabaseResources(arg1:string):Promise<Array<service.N
 
 export function ListSSHSessions():Promise<Array<string>>;
 
+export function ListSessionLogs(arg1:string):Promise<Array<service.SessionLogInfo>>;
+
 export function MinifyJSON(arg1:string):Promise<string>;
 
 export function MutateNativeDatabaseResource(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<service.NativeMutationResult>;
 
 export function ParseURL(arg1:string):Promise<Record<string, any>>;
+
+export function PurgeExpiredSessionLogs():Promise<number>;
+
+export function RecordCommand(arg1:string,arg2:string):Promise<void>;
 
 export function RemoveConnection(arg1:string):Promise<void>;
 
@@ -208,6 +220,8 @@ export function SaveBinaryFile(arg1:string,arg2:string):Promise<string>;
 export function SavePassword(arg1:string,arg2:string):Promise<void>;
 
 export function SearchDirectories(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<Array<ssh.SearchResult>>;
+
+export function SearchSessionLogs(arg1:string,arg2:string,arg3:number):Promise<Array<service.SessionLogHit>>;
 
 export function SelectBackgroundImage():Promise<service.BackgroundImageResult>;
 
@@ -252,6 +266,8 @@ export function ShowMessageDialog(arg1:string,arg2:string):Promise<void>;
 export function ShowQuestionDialog(arg1:string,arg2:string):Promise<boolean>;
 
 export function StartSQLFile(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SuggestCommands(arg1:string,arg2:string,arg3:number):Promise<Array<service.CommandHistoryEntry>>;
 
 export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 

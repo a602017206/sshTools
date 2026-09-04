@@ -11,6 +11,7 @@
   import { getViewportMenuPosition, portalToBody } from '../lib/contextMenu.js';
   import { createCommandLineBuffer } from '../lib/commandLineBuffer.js';
   import { pickSuggestFill, shouldOfferSuggest } from '../lib/commandSuggest.js';
+  import { readExecutedCommandFromTerminal } from '../lib/terminalCommandLine.js';
 
   export let sessionId = null;
   export let encoding = 'utf-8';
@@ -48,6 +49,7 @@
   let suggestVisible = false;
   let suggestDebounceTimer = null;
   let suggestRequestSeq = 0;
+  let xtermSyncTimer = null;
   $: currentEncoding = normalizeTerminalCharset(encoding);
   $: suggestOpen = suggestVisible && suggestItems.length > 0;
   $: if ((!commandSuggestEnabled || !connectionId) && (suggestVisible || suggestItems.length > 0)) {
@@ -140,11 +142,47 @@
     }
   }
 
+  /** Tab 补全后从 xterm 可见行同步本地缓冲，避免只记下半截按键。 */
+  function syncBufferFromXterm() {
+    if (!terminal) {
+      return;
+    }
+    const visible = readExecutedCommandFromTerminal(terminal);
+    commandLineBuffer.replaceLine(visible);
+    scheduleSuggestRefresh();
+  }
+
+  function scheduleSyncBufferFromXterm() {
+    if (xtermSyncTimer) {
+      clearTimeout(xtermSyncTimer);
+      xtermSyncTimer = null;
+    }
+    // 等远端把补全结果回显到 xterm 后再读
+    xtermSyncTimer = setTimeout(() => {
+      xtermSyncTimer = null;
+      syncBufferFromXterm();
+    }, 80);
+  }
+
   function handleOutgoingInput(data) {
-    const { submitted } = commandLineBuffer.push(data);
+    const willSubmit = data.includes('\r') || data.includes('\n');
+    // 回车瞬间画面上仍是完整命令行（含 Tab 补全结果），优先用它记账
+    const visibleCommand = willSubmit && terminal ? readExecutedCommandFromTerminal(terminal) : '';
+
+    const { submitted, sawShellTab } = commandLineBuffer.push(data);
     if (submitted.length) {
-      recordSubmittedCommands(submitted);
+      if (xtermSyncTimer) {
+        clearTimeout(xtermSyncTimer);
+        xtermSyncTimer = null;
+      }
+      const toRecord =
+        submitted.length === 1 && visibleCommand.trim()
+          ? [visibleCommand.trim()]
+          : submitted;
+      recordSubmittedCommands(toRecord);
       clearSuggestOverlay();
+    } else if (sawShellTab) {
+      scheduleSyncBufferFromXterm();
     } else {
       scheduleSuggestRefresh();
     }
@@ -520,6 +558,10 @@
     if (suggestDebounceTimer) {
       clearTimeout(suggestDebounceTimer);
       suggestDebounceTimer = null;
+    }
+    if (xtermSyncTimer) {
+      clearTimeout(xtermSyncTimer);
+      xtermSyncTimer = null;
     }
     closeContextMenu();
     if (terminal) {

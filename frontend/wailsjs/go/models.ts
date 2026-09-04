@@ -51,6 +51,11 @@ export namespace config {
 	    file_manager_sort_by: string;
 	    file_manager_sort_order: string;
 	    file_manager_per_connection?: Record<string, FileManagerSettings>;
+	    session_log_enabled: boolean;
+	    session_log_retention_days: number;
+	    session_log_redact_enabled: boolean;
+	    command_suggest_enabled: boolean;
+	    command_suggest_limit: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -90,6 +95,11 @@ export namespace config {
 	        this.file_manager_sort_by = source["file_manager_sort_by"];
 	        this.file_manager_sort_order = source["file_manager_sort_order"];
 	        this.file_manager_per_connection = this.convertValues(source["file_manager_per_connection"], FileManagerSettings, true);
+	        this.session_log_enabled = source["session_log_enabled"];
+	        this.session_log_retention_days = source["session_log_retention_days"];
+	        this.session_log_redact_enabled = source["session_log_redact_enabled"];
+	        this.command_suggest_enabled = source["command_suggest_enabled"];
+	        this.command_suggest_limit = source["command_suggest_limit"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -492,6 +502,41 @@ export namespace service {
 	        this.opacity = source["opacity"];
 	    }
 	}
+	export class CommandHistoryEntry {
+	    Command: string;
+	    Count: number;
+	    // Go type: time
+	    LastUsed: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommandHistoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Command = source["Command"];
+	        this.Count = source["Count"];
+	        this.LastUsed = this.convertValues(source["LastUsed"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class DriverView {
 	    id: string;
 	    name: string;
@@ -737,6 +782,63 @@ export namespace service {
 		}
 	}
 	
+	export class SessionLogHit {
+	    LogID: string;
+	    Line: number;
+	    Text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionLogHit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.LogID = source["LogID"];
+	        this.Line = source["Line"];
+	        this.Text = source["Text"];
+	    }
+	}
+	export class SessionLogInfo {
+	    ID: string;
+	    ConnectionID: string;
+	    SessionID: string;
+	    Path: string;
+	    Size: number;
+	    // Go type: time
+	    ModTime: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionLogInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.ConnectionID = source["ConnectionID"];
+	        this.SessionID = source["SessionID"];
+	        this.Path = source["Path"];
+	        this.Size = source["Size"];
+	        this.ModTime = this.convertValues(source["ModTime"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class TableDDL {
 	    table_name: string;
 	    ddl: string;
