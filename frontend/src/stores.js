@@ -226,7 +226,7 @@ export async function loadFileManagerConfig(connectionId) {
     const config = await GetFileManagerSettings(connectionId);
     // Map snake_case backend response to camelCase frontend state
     const mappedConfig = {
-      directoryTracking: config?.directory_tracking ?? false,
+      directoryTracking: config?.directory_tracking ?? true,
       historyEnabled: config?.history_enabled ?? true,
       historyLimit: config?.history_limit ?? 5,
       history: config?.history ?? [],
