@@ -121,6 +121,67 @@ func TestUpdateSettingsPersistsCopilotFieldsWithoutAPIKey(t *testing.T) {
 	}
 }
 
+func TestDefaultSettingsIncludeSessionLogAndCommandSuggest(t *testing.T) {
+	settings := DefaultSettings()
+	if !settings.SessionLogEnabled {
+		t.Fatal("expected SessionLogEnabled default true")
+	}
+	if settings.SessionLogRetentionDays != 30 {
+		t.Fatalf("expected SessionLogRetentionDays 30, got %d", settings.SessionLogRetentionDays)
+	}
+	if !settings.SessionLogRedactEnabled {
+		t.Fatal("expected SessionLogRedactEnabled default true")
+	}
+	if !settings.CommandSuggestEnabled {
+		t.Fatal("expected CommandSuggestEnabled default true")
+	}
+	if settings.CommandSuggestLimit != 8 {
+		t.Fatalf("expected CommandSuggestLimit 8, got %d", settings.CommandSuggestLimit)
+	}
+}
+
+func TestDefaultFileManagerDirectoryTrackingEnabled(t *testing.T) {
+	settings := DefaultFileManagerSettings()
+	if !settings.DirectoryTracking {
+		t.Fatal("expected DirectoryTracking default true")
+	}
+}
+
+func TestUpdateSettingsPersistsSessionLogFields(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	cm := newDiskTestConfigManager(configPath)
+	if err := cm.UpdateSettings(map[string]interface{}{
+		"session_log_enabled":          false,
+		"session_log_retention_days":   float64(7),
+		"session_log_redact_enabled":   false,
+		"command_suggest_enabled":      false,
+		"command_suggest_limit":        float64(12),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := newDiskTestConfigManager(configPath)
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	s := reloaded.GetSettings()
+	if s.SessionLogEnabled {
+		t.Fatal("expected SessionLogEnabled false")
+	}
+	if s.SessionLogRetentionDays != 7 {
+		t.Fatalf("expected SessionLogRetentionDays 7, got %d", s.SessionLogRetentionDays)
+	}
+	if s.SessionLogRedactEnabled {
+		t.Fatal("expected SessionLogRedactEnabled false")
+	}
+	if s.CommandSuggestEnabled {
+		t.Fatal("expected CommandSuggestEnabled false")
+	}
+	if s.CommandSuggestLimit != 12 {
+		t.Fatalf("expected CommandSuggestLimit 12, got %d", s.CommandSuggestLimit)
+	}
+}
+
 func newDiskTestConfigManager(configPath string) *ConfigManager {
 	return &ConfigManager{
 		configPath: configPath,

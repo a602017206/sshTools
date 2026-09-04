@@ -68,6 +68,15 @@ type AppSettings struct {
 	FileManagerSortBy        string                         `json:"file_manager_sort_by"`
 	FileManagerSortOrder     string                         `json:"file_manager_sort_order"`
 	FileManagerPerConnection map[string]FileManagerSettings `json:"file_manager_per_connection,omitempty"`
+
+	// Session log settings
+	SessionLogEnabled         bool `json:"session_log_enabled"`
+	SessionLogRetentionDays   int  `json:"session_log_retention_days"`
+	SessionLogRedactEnabled   bool `json:"session_log_redact_enabled"`
+
+	// Command suggest settings
+	CommandSuggestEnabled bool `json:"command_suggest_enabled"`
+	CommandSuggestLimit   int  `json:"command_suggest_limit"`
 }
 
 // FileManagerSettings stores file manager configuration per connection
@@ -107,13 +116,18 @@ func DefaultSettings() AppSettings {
 		FileManagerSortOrder:   "asc",
 		CopilotProvider:        "openai_compatible",
 		CopilotMaxToolRounds:   4, CopilotMaxToolResultChars: 8000,
+		SessionLogEnabled:       true,
+		SessionLogRetentionDays: 30,
+		SessionLogRedactEnabled: true,
+		CommandSuggestEnabled:   true,
+		CommandSuggestLimit:     8,
 	}
 }
 
 // DefaultFileManagerSettings returns default file manager settings for a connection
 func DefaultFileManagerSettings() FileManagerSettings {
 	return FileManagerSettings{
-		DirectoryTracking: false,
+		DirectoryTracking: true,
 		HistoryEnabled:    true,
 		HistoryLimit:      5,
 		History:           []string{},
@@ -378,6 +392,22 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 	if v, ok := updates["copilot_max_tool_result_chars"].(float64); ok {
 		cm.config.Settings.CopilotMaxToolResultChars = int(v)
+	}
+
+	if sessionLogEnabled, ok := updates["session_log_enabled"].(bool); ok {
+		cm.config.Settings.SessionLogEnabled = sessionLogEnabled
+	}
+	if sessionLogRetentionDays, ok := updates["session_log_retention_days"].(float64); ok {
+		cm.config.Settings.SessionLogRetentionDays = int(sessionLogRetentionDays)
+	}
+	if sessionLogRedactEnabled, ok := updates["session_log_redact_enabled"].(bool); ok {
+		cm.config.Settings.SessionLogRedactEnabled = sessionLogRedactEnabled
+	}
+	if commandSuggestEnabled, ok := updates["command_suggest_enabled"].(bool); ok {
+		cm.config.Settings.CommandSuggestEnabled = commandSuggestEnabled
+	}
+	if commandSuggestLimit, ok := updates["command_suggest_limit"].(float64); ok {
+		cm.config.Settings.CommandSuggestLimit = int(commandSuggestLimit)
 	}
 
 	// File manager per-connection settings
