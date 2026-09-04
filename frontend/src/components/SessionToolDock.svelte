@@ -1,11 +1,13 @@
 <script>
   import FileManager from './FileManager.svelte';
   import ServerMonitor from './ServerMonitor.svelte';
+  import SessionLogPanel from './SessionLogPanel.svelte';
   import { SSH_TOOL_TABS, resolveSshToolTab, sshToolPanelHidden } from '../lib/workspaceTabs.js';
 
   export let activeTab = 'files';
   export let boundSessionName = '';
   export let hasBoundSession = false;
+  export let connectionId = '';
   export let onSelectTab = () => {};
   export let onConnectHint = () => {};
 
@@ -41,7 +43,7 @@
     {#if !hasBoundSession}
       <div class="dock-empty" role="status">
         <strong>先连接一台主机</strong>
-        <span>文件与性能都会跟随当前 SSH 会话。</span>
+        <span>文件、性能与会话日志都会跟随当前 SSH 会话。</span>
         <button type="button" on:click={onConnectHint}>打开资源树</button>
       </div>
     {:else}
@@ -58,6 +60,16 @@
         aria-hidden={sshToolPanelHidden(toolTab, 'performance')}
       >
         <ServerMonitor panelVisible={!sshToolPanelHidden(toolTab, 'performance')} />
+      </div>
+      <div
+        class="dock-panel"
+        hidden={sshToolPanelHidden(toolTab, 'logs')}
+        aria-hidden={sshToolPanelHidden(toolTab, 'logs')}
+      >
+        <SessionLogPanel
+          connectionId={connectionId}
+          panelVisible={!sshToolPanelHidden(toolTab, 'logs')}
+        />
       </div>
     {/if}
   </div>

@@ -325,6 +325,13 @@ export function getDefaultAppSettings() {
     background_image_data_url: '',
     copilot_provider: 'openai_compatible',
     copilot_base_url: '',
-    copilot_model: '', copilot_max_tool_rounds: 4, copilot_max_tool_result_chars: 8000
+    copilot_model: '',
+    copilot_max_tool_rounds: 4,
+    copilot_max_tool_result_chars: 8000,
+    session_log_enabled: true,
+    session_log_retention_days: 30,
+    session_log_redact_enabled: true,
+    command_suggest_enabled: true,
+    command_suggest_limit: 8
   };
 }

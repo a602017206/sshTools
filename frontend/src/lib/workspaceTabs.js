@@ -5,7 +5,8 @@ export const APP_MODES = [
 
 export const SSH_TOOL_TABS = [
   { id: 'files', label: '文件' },
-  { id: 'performance', label: '性能' }
+  { id: 'performance', label: '性能' },
+  { id: 'logs', label: '会话日志' }
 ];
 
 /** @deprecated 旧七标签仅作兼容映射，顶栏不再展示 */
@@ -71,7 +72,7 @@ export function getWorkspaceMeta(workspace) {
   }
   return {
     title: 'SSH 会话',
-    description: '终端为主舞台，文件与性能绑定当前会话。',
+    description: '终端为主舞台，文件、性能与会话日志绑定当前会话。',
     available: true
   };
 }

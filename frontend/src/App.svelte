@@ -148,7 +148,12 @@
       copilot_base_url: settings.copilot_base_url || '',
       copilot_model: settings.copilot_model || '',
       copilot_max_tool_rounds: Number(settings.copilot_max_tool_rounds) || 4,
-      copilot_max_tool_result_chars: Number(settings.copilot_max_tool_result_chars) || 8000
+      copilot_max_tool_result_chars: Number(settings.copilot_max_tool_result_chars) || 8000,
+      session_log_enabled: settings.session_log_enabled !== false,
+      session_log_retention_days: Number(settings.session_log_retention_days) || 30,
+      session_log_redact_enabled: settings.session_log_redact_enabled !== false,
+      command_suggest_enabled: settings.command_suggest_enabled !== false,
+      command_suggest_limit: Number(settings.command_suggest_limit) || 8
     };
 
     try {
@@ -1135,6 +1140,7 @@
             activeTab={sshToolTab}
             boundSessionName={boundSessionName}
             hasBoundSession={Boolean(boundSshSession)}
+            connectionId={boundSshSession?.connection?.id || ''}
             onSelectTab={selectSshToolTab}
             onConnectHint={focusResourceTree}
           />
@@ -1163,6 +1169,17 @@
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19V5m4 14v-7m4 7V8m4 11v-4m4 4V9"></path>
+          </svg>
+        </button>
+        <button
+          on:click={() => selectSshToolTab('logs')}
+          disabled={isAddDialogOpen}
+          class="ops-icon-button flex items-center justify-center w-8 h-8 rounded-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          title="会话日志"
+          aria-label="打开会话日志"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M7 4h10a2 2 0 012 2v14l-4-2-4 2-4-2-4 2V6a2 2 0 012-2z"></path>
           </svg>
         </button>
         <div class="mt-auto text-[10px] rotate-90 whitespace-nowrap ops-muted">TOOLS</div>

@@ -41,12 +41,13 @@ test('modeForAsset routes by asset type', () => {
   assert.equal(modeForAsset(null), 'ssh');
 });
 
-test('ssh tool tabs are files and performance', () => {
+test('ssh tool tabs are files, performance and logs', () => {
   assert.deepEqual(
     SSH_TOOL_TABS.map((tab) => tab.id),
-    ['files', 'performance']
+    ['files', 'performance', 'logs']
   );
   assert.equal(resolveSshToolTab('performance'), 'performance');
+  assert.equal(resolveSshToolTab('logs'), 'logs');
   assert.equal(resolveSshToolTab('nope'), 'files');
 });
 
@@ -55,6 +56,8 @@ test('ssh tool panels hide the inactive tab without implying unmount', () => {
   assert.equal(sshToolPanelHidden('files', 'performance'), true);
   assert.equal(sshToolPanelHidden('performance', 'files'), true);
   assert.equal(sshToolPanelHidden('performance', 'performance'), false);
+  assert.equal(sshToolPanelHidden('logs', 'logs'), false);
+  assert.equal(sshToolPanelHidden('logs', 'files'), true);
   assert.equal(sshToolPanelHidden('nope', 'files'), false);
 });
 

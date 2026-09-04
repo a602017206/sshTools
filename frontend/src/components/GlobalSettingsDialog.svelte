@@ -35,6 +35,8 @@
   function normalizeDraft(settings) {
     const rest = { ...(settings || {}) };
     delete rest.copilot_api_key;
+    const retention = Number(rest.session_log_retention_days);
+    const suggestLimit = Number(rest.command_suggest_limit);
     return {
       ...rest,
       font_size: Number(rest.font_size) || 14,
@@ -42,8 +44,14 @@
       terminal_font_size: Number(rest.terminal_font_size) || 14,
       copilot_provider: rest.copilot_provider || 'openai_compatible',
       copilot_base_url: rest.copilot_base_url || '',
-      copilot_model: rest.copilot_model || ''
-      ,copilot_max_tool_rounds: rest.copilot_max_tool_rounds || 4, copilot_max_tool_result_chars: rest.copilot_max_tool_result_chars || 8000
+      copilot_model: rest.copilot_model || '',
+      copilot_max_tool_rounds: Number(rest.copilot_max_tool_rounds) || 4,
+      copilot_max_tool_result_chars: Number(rest.copilot_max_tool_result_chars) || 8000,
+      session_log_enabled: rest.session_log_enabled !== false,
+      session_log_retention_days: Number.isFinite(retention) && retention > 0 ? Math.floor(retention) : 30,
+      session_log_redact_enabled: rest.session_log_redact_enabled !== false,
+      command_suggest_enabled: rest.command_suggest_enabled !== false,
+      command_suggest_limit: Number.isFinite(suggestLimit) && suggestLimit > 0 ? Math.floor(suggestLimit) : 8
     };
   }
 
@@ -191,6 +199,14 @@
       >
         <span>AI Copilot</span>
         <small>接口、模型、密钥</small>
+      </button>
+      <button
+        type="button"
+        class:active={activeSection === 'session-log'}
+        on:click={() => (activeSection = 'session-log')}
+      >
+        <span>会话与建议</span>
+        <small>日志、命令提示</small>
       </button>
     </nav>
 
@@ -377,6 +393,63 @@
       </div>
     </div>
   </div>
+      {:else if activeSection === 'session-log'}
+        <div class="space-y-6">
+          <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/70 dark:bg-slate-900/50 space-y-4">
+            <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">会话日志</div>
+            <p class="text-xs text-slate-500 dark:text-slate-400">记录 SSH 输出到本机，支持按连接查看、搜索与导出。</p>
+            <label class="flex items-center justify-between text-sm text-slate-700 dark:text-slate-300">
+              <span>启用会话日志</span>
+              <input type="checkbox" bind:checked={draft.session_log_enabled} class="w-4 h-4" style="accent-color: var(--accent-primary);" />
+            </label>
+            <label class="flex items-center justify-between text-sm text-slate-700 dark:text-slate-300">
+              <span>写入前敏感信息脱敏</span>
+              <input type="checkbox" bind:checked={draft.session_log_redact_enabled} class="w-4 h-4" style="accent-color: var(--accent-primary);" />
+            </label>
+            <label class="space-y-2 block">
+              <div class="flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-slate-100">
+                <span>保留天数</span>
+                <span style="color: var(--accent-primary);">{draft.session_log_retention_days}</span>
+              </div>
+              <input
+                type="number"
+                min="1"
+                max="365"
+                bind:value={draft.session_log_retention_days}
+                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
+              />
+            </label>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/70 dark:bg-slate-900/50 space-y-4">
+            <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">常用命令提示</div>
+            <p class="text-xs text-slate-500 dark:text-slate-400">按连接记忆历史命令，在终端输入时给出前缀建议。</p>
+            <label class="flex items-center justify-between text-sm text-slate-700 dark:text-slate-300">
+              <span>启用命令提示</span>
+              <input type="checkbox" bind:checked={draft.command_suggest_enabled} class="w-4 h-4" style="accent-color: var(--accent-primary);" />
+            </label>
+            <label class="space-y-2 block">
+              <div class="flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-slate-100">
+                <span>浮层最多条数</span>
+                <span style="color: var(--accent-primary);">{draft.command_suggest_limit}</span>
+              </div>
+              <input
+                type="number"
+                min="1"
+                max="30"
+                bind:value={draft.command_suggest_limit}
+                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
+              />
+            </label>
+          </div>
+
+          <div class="flex items-center justify-end pt-2">
+            <div class="flex gap-2">
+              <button type="button" on:click={onCancel} class="px-3 py-2 text-xs rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">取消</button>
+              <button type="button" on:click={handleSave} class="px-3 py-2 text-xs rounded-lg text-white" style="background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));">保存设置</button>
+            </div>
+          </div>
+        </div>
       {:else if activeSection === 'copilot'}
         <div class="space-y-6">
           <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/70 dark:bg-slate-900/50 space-y-4">
@@ -507,7 +580,7 @@
 
     .settings-nav {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
     }
   }
