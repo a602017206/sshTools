@@ -9,6 +9,8 @@
   import { getXtermTheme, resolveTerminalThemeFromSettings } from '../lib/terminalTheme.js';
   import { decodeTerminalOutput, normalizeTerminalCharset, terminalContextMenuItems, TERMINAL_CHARSET_OPTIONS } from '../lib/terminalCharset.js';
   import { getViewportMenuPosition, portalToBody } from '../lib/contextMenu.js';
+  import { createCommandLineBuffer } from '../lib/commandLineBuffer.js';
+  import { pickSuggestFill, shouldOfferSuggest } from '../lib/commandSuggest.js';
 
   export let sessionId = null;
   export let encoding = 'utf-8';
@@ -17,6 +19,9 @@
   export let onData = null;
   export let onResize = null;
   export let onZModemTransfer = null;
+  export let connectionId = null;
+  export let commandSuggestEnabled = false;
+  export let commandSuggestLimit = 8;
 
   let terminalElement;
   let terminal;
@@ -37,7 +42,146 @@
   let zmodemTransferModal = null;
   let handleAppearanceUpdated = null;
   let contextMenu = null;
+  const commandLineBuffer = createCommandLineBuffer();
+  let suggestItems = [];
+  let suggestSelectedIndex = 0;
+  let suggestVisible = false;
+  let suggestDebounceTimer = null;
+  let suggestRequestSeq = 0;
   $: currentEncoding = normalizeTerminalCharset(encoding);
+  $: suggestOpen = suggestVisible && suggestItems.length > 0;
+  $: if ((!commandSuggestEnabled || !connectionId) && (suggestVisible || suggestItems.length > 0)) {
+    clearSuggestOverlay();
+  }
+
+  function suggestionText(entry) {
+    return entry?.command || entry?.Command || '';
+  }
+
+  function clearSuggestOverlay() {
+    suggestItems = [];
+    suggestSelectedIndex = 0;
+    suggestVisible = false;
+  }
+
+  function recordSubmittedCommands(submitted) {
+    if (!connectionId || !commandSuggestEnabled) {
+      return;
+    }
+    const RecordCommand = window.wailsBindings?.RecordCommand;
+    if (typeof RecordCommand !== 'function') {
+      return;
+    }
+    for (const cmd of submitted) {
+      if (!cmd || !String(cmd).trim()) {
+        continue;
+      }
+      Promise.resolve(RecordCommand(connectionId, cmd)).catch(() => {});
+    }
+  }
+
+  function scheduleSuggestRefresh() {
+    if (suggestDebounceTimer) {
+      clearTimeout(suggestDebounceTimer);
+      suggestDebounceTimer = null;
+    }
+    const line = commandLineBuffer.getLine();
+    if (!shouldOfferSuggest(line, commandSuggestEnabled) || !connectionId) {
+      clearSuggestOverlay();
+      return;
+    }
+    suggestDebounceTimer = setTimeout(() => {
+      refreshSuggestions(line);
+    }, 150);
+  }
+
+  async function refreshSuggestions(prefix) {
+    const SuggestCommands = window.wailsBindings?.SuggestCommands;
+    if (typeof SuggestCommands !== 'function' || !connectionId) {
+      clearSuggestOverlay();
+      return;
+    }
+    if (!shouldOfferSuggest(prefix, commandSuggestEnabled)) {
+      clearSuggestOverlay();
+      return;
+    }
+    const seq = ++suggestRequestSeq;
+    try {
+      const limit = Number(commandSuggestLimit) > 0 ? Number(commandSuggestLimit) : 8;
+      const rows = await SuggestCommands(connectionId, prefix, limit);
+      if (seq !== suggestRequestSeq) {
+        return;
+      }
+      const items = Array.isArray(rows) ? rows.filter((row) => suggestionText(row)) : [];
+      suggestItems = items;
+      suggestSelectedIndex = 0;
+      suggestVisible = items.length > 0 && shouldOfferSuggest(commandLineBuffer.getLine(), commandSuggestEnabled);
+    } catch (error) {
+      console.warn('SuggestCommands failed:', error);
+      if (seq === suggestRequestSeq) {
+        clearSuggestOverlay();
+      }
+    }
+  }
+
+  /** Tab/点击填入：退格清空远端当前行后发送建议文本，不发送 \\r。 */
+  function applySuggestionFill(suggestion) {
+    const currentLine = commandLineBuffer.getLine();
+    const fill = pickSuggestFill(currentLine, suggestion);
+    if (fill == null || fill === '') {
+      return;
+    }
+    const payload = '\x7f'.repeat(currentLine.length) + fill;
+    commandLineBuffer.push(payload);
+    clearSuggestOverlay();
+    if (onData && sessionId) {
+      onData(sessionId, payload);
+    }
+  }
+
+  function handleOutgoingInput(data) {
+    const { submitted } = commandLineBuffer.push(data);
+    if (submitted.length) {
+      recordSubmittedCommands(submitted);
+      clearSuggestOverlay();
+    } else {
+      scheduleSuggestRefresh();
+    }
+    if (onData && sessionId) {
+      onData(sessionId, data);
+    }
+  }
+
+  function handleSuggestKeyEvent(event) {
+    if (!suggestOpen) {
+      return true;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      const text = suggestionText(suggestItems[suggestSelectedIndex]);
+      if (text) {
+        applySuggestionFill(text);
+      }
+      return false;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      suggestSelectedIndex = (suggestSelectedIndex - 1 + suggestItems.length) % suggestItems.length;
+      return false;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      suggestSelectedIndex = (suggestSelectedIndex + 1) % suggestItems.length;
+      return false;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      clearSuggestOverlay();
+      return false;
+    }
+    // Enter：不采纳建议，交给终端原义提交
+    return true;
+  }
   function readTerminalXtermTheme(settings) {
     const resolved = settings
       ? resolveTerminalThemeFromSettings(settings)
@@ -131,8 +275,8 @@
   }
 
   function pasteText(text) {
-    if (text && onData && sessionId) {
-      onData(sessionId, text);
+    if (text && sessionId) {
+      handleOutgoingInput(text);
     }
   }
 
@@ -221,6 +365,10 @@
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') {
         return true;
+      }
+
+      if (handleSuggestKeyEvent(event) === false) {
+        return false;
       }
 
       if (shouldScrollToBottomBeforeArrowKey(event, terminal.buffer.active.viewportY)) {
@@ -339,9 +487,7 @@
     }
 
     terminal.onData((data) => {
-      if (onData && sessionId) {
-        onData(sessionId, data);
-      }
+      handleOutgoingInput(data);
     });
 
     terminal.onResize(({ cols, rows }) => {
@@ -370,6 +516,10 @@
   });
 
   onDestroy(() => {
+    if (suggestDebounceTimer) {
+      clearTimeout(suggestDebounceTimer);
+      suggestDebounceTimer = null;
+    }
     closeContextMenu();
     if (terminal) {
       terminal.dispose();
@@ -771,6 +921,24 @@
   >
     <!-- xterm 终端将在这里渲染 -->
   </div>
+  {#if suggestOpen}
+    <ul class="command-suggest-overlay" role="listbox" aria-label="常用命令建议">
+      {#each suggestItems as item, i (suggestionText(item) + ':' + i)}
+        <li
+          class="command-suggest-item"
+          class:selected={i === suggestSelectedIndex}
+          role="option"
+          aria-selected={i === suggestSelectedIndex}
+          on:mousedown|preventDefault={() => applySuggestionFill(suggestionText(item))}
+        >
+          <span class="command-suggest-cmd">{suggestionText(item)}</span>
+          {#if (item.count ?? item.Count) > 0}
+            <span class="command-suggest-count">{item.count ?? item.Count}</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
   {#if encodingEnabled}
     <label class="terminal-encoding" on:click|stopPropagation on:mousedown|stopPropagation>
       <span>编码</span>
@@ -901,6 +1069,55 @@
     border: 1px solid var(--glass-border);
     color: var(--text-secondary);
     font-size: 11px;
+  }
+
+  .command-suggest-overlay {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    z-index: 8;
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    min-width: 200px;
+    max-width: min(480px, calc(100% - 24px));
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--ops-terminal-bg, var(--bg-primary)) 92%, transparent);
+    color: var(--text-primary);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    font-family: var(--terminal-font-family, Menlo, Monaco, "Courier New", monospace);
+    font-size: 12px;
+  }
+
+  .command-suggest-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 10px;
+    cursor: pointer;
+    color: var(--text-primary);
+  }
+
+  .command-suggest-item:hover,
+  .command-suggest-item.selected {
+    background: color-mix(in srgb, var(--accent-primary, #0f9f9a) 22%, transparent);
+  }
+
+  .command-suggest-cmd {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .command-suggest-count {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    opacity: 0.8;
   }
 
   .terminal-encoding select {

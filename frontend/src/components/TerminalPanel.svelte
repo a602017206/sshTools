@@ -41,6 +41,8 @@
   let databaseQuerySequence = 0;
   let databaseDesignerSequence = 0;
   const terminalOutputDecoder = new TextDecoder();
+  let commandSuggestEnabled = true;
+  let commandSuggestLimit = 8;
 
   // Close confirmation dialog state
   let showCloseConfirm = false;
@@ -300,7 +302,7 @@
       return;
     }
 
-    const { ConnectSSH, GetPassword, HasPassword, SavePassword, SetSessionCharset } = window.wailsBindings;
+    const { ConnectSSH, GetPassword, HasPassword, SavePassword, SetSessionCharset, BindSessionConnection } = window.wailsBindings;
 
     if (typeof ConnectSSH !== 'function') {
       console.error('ConnectSSH not available');
@@ -436,6 +438,9 @@
     try {
       if (typeof SetSessionCharset === 'function') {
         SetSessionCharset(sessionId, normalizeTerminalCharset(asset.metadata?.encoding || asset.encoding));
+      }
+      if (typeof BindSessionConnection === 'function' && asset.id) {
+        BindSessionConnection(sessionId, asset.id);
       }
       // 调用 Wails ConnectSSH API
       await ConnectSSH(
@@ -1232,11 +1237,35 @@
   });
 
 
+  async function loadCommandSuggestSettings() {
+    try {
+      const GetSettings = window.wailsBindings?.GetSettings;
+      if (typeof GetSettings !== 'function') {
+        return;
+      }
+      const settings = await GetSettings();
+      if (!settings || typeof settings !== 'object') {
+        return;
+      }
+      if (typeof settings.command_suggest_enabled === 'boolean') {
+        commandSuggestEnabled = settings.command_suggest_enabled;
+      }
+      const limit = Number(settings.command_suggest_limit);
+      if (Number.isFinite(limit) && limit > 0) {
+        commandSuggestLimit = limit;
+      }
+    } catch (error) {
+      console.warn('Failed to load command suggest settings:', error);
+    }
+  }
+
   onMount(async () => {
     // 加载 Wails 绑定到全局
     if (window.wailsBindings) {
       console.log('Wails bindings already loaded');
     }
+
+    await loadCommandSuggestSettings();
 
     // 将 terminalRefs 存储到全局，供 App.svelte 访问
     window.terminalRefs = terminalRefs;
@@ -1411,6 +1440,9 @@
               <Terminal
                 bind:this={terminalRefs[session.sessionId]}
                 sessionId={session.sessionId}
+                connectionId={session.connection?.id || null}
+                commandSuggestEnabled={commandSuggestEnabled}
+                commandSuggestLimit={commandSuggestLimit}
                 encoding={normalizeTerminalCharset(session.connection?.metadata?.encoding || session.connection?.encoding)}
                 encodingEnabled={session.type !== 'local' && session.type !== 'database'}
                 onEncodingChange={(charset) => handleLiveCharsetChange(session.sessionId, charset)}
