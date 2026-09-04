@@ -168,7 +168,7 @@ func (s *CommandHistoryService) loadLocked(connectionID string) (*commandHistory
 }
 
 func (s *CommandHistoryService) saveLocked(connectionID string, file *commandHistoryFile) error {
-	if err := os.MkdirAll(s.rootDir, 0o755); err != nil {
+	if err := os.MkdirAll(s.rootDir, 0o700); err != nil {
 		return fmt.Errorf("command history: create directory: %w", err)
 	}
 
@@ -189,7 +189,7 @@ func (s *CommandHistoryService) saveLocked(connectionID string, file *commandHis
 		_ = temp.Close()
 		return fmt.Errorf("command history: write temp: %w", err)
 	}
-	if err := temp.Chmod(0o644); err != nil {
+	if err := temp.Chmod(0o600); err != nil {
 		_ = temp.Close()
 		return fmt.Errorf("command history: chmod temp: %w", err)
 	}

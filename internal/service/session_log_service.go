@@ -66,13 +66,13 @@ func (s *SessionLogService) Append(connectionID, sessionID string, data []byte, 
 	w, ok := s.writers[key]
 	if !ok {
 		connDir := filepath.Join(s.rootDir, connectionID)
-		if err := os.MkdirAll(connDir, 0o755); err != nil {
+		if err := os.MkdirAll(connDir, 0o700); err != nil {
 			return fmt.Errorf("session log: create directory: %w", err)
 		}
 
 		name := time.Now().Format(sessionLogTimeLayout) + "_" + sessionID + ".log"
 		path := filepath.Join(connDir, name)
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
 			return fmt.Errorf("session log: open file: %w", err)
 		}
@@ -86,6 +86,21 @@ func (s *SessionLogService) Append(connectionID, sessionID string, data []byte, 
 		return fmt.Errorf("session log: write: %w", err)
 	}
 	return nil
+}
+
+// CloseSession closes the open writer for a session and removes it from the map.
+// Missing writers are ignored.
+func (s *SessionLogService) CloseSession(connectionID, sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := s.writerKey(connectionID, sessionID)
+	w, ok := s.writers[key]
+	if !ok {
+		return
+	}
+	_ = w.file.Close()
+	delete(s.writers, key)
 }
 
 // List returns session logs for a connection, newest first.
@@ -164,6 +179,9 @@ func parseLogTimeFromFilename(filename string) (time.Time, bool) {
 // Search scans log files for query and returns up to limit hits.
 func (s *SessionLogService) Search(connectionID, query string, limit int) ([]SessionLogHit, error) {
 	if limit <= 0 {
+		return nil, nil
+	}
+	if strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
 

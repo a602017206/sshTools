@@ -32,6 +32,8 @@ var Version = "dev"
 
 var cwdRegex = regexp.MustCompile(`\033\]0;CWD:([^\007]+)\007`)
 
+var sessionLogAppendWarnOnce sync.Once
+
 const (
 	sftpProgressEventPrefix               = "sftp:progress:"
 	jdbcAgentSupervisorUnavailableMessage = "JDBC agent supervisor 未初始化"
@@ -186,6 +188,7 @@ func (a *App) startup(ctx context.Context) {
 	if _, purgeErr := a.PurgeExpiredSessionLogs(); purgeErr != nil {
 		fmt.Printf("Failed to purge expired session logs: %v\n", purgeErr)
 	}
+	go a.runSessionLogPurgeTicker()
 }
 
 func (a *App) initJDBCServices(agentJar []byte) error {
@@ -415,7 +418,21 @@ func (a *App) appendSessionLog(sessionID string, data []byte) {
 	if connID == "" {
 		return
 	}
-	_ = a.sessionLogService.Append(connID, sessionID, data, settings.SessionLogRedactEnabled)
+	if err := a.sessionLogService.Append(connID, sessionID, data, settings.SessionLogRedactEnabled); err != nil {
+		sessionLogAppendWarnOnce.Do(func() {
+			fmt.Printf("session log append failed (subsequent errors suppressed): %v\n", err)
+		})
+	}
+}
+
+func (a *App) runSessionLogPurgeTicker() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		if _, err := a.PurgeExpiredSessionLogs(); err != nil {
+			fmt.Printf("Failed to purge expired session logs: %v\n", err)
+		}
+	}
 }
 
 // BindSessionConnection associates a terminal session with a saved connection for logging/history.
@@ -578,8 +595,12 @@ func (a *App) CloseSSH(sessionID string) error {
 	a.clearCopilotSession(sessionID)
 	a.clearSessionCharset(sessionID)
 	a.sessionConnectionMu.Lock()
+	connID := a.sessionConnection[sessionID]
 	delete(a.sessionConnection, sessionID)
 	a.sessionConnectionMu.Unlock()
+	if a.sessionLogService != nil && connID != "" {
+		a.sessionLogService.CloseSession(connID, sessionID)
+	}
 	err := a.sessionService.CloseSession(sessionID)
 	if err != nil {
 		return err

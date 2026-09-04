@@ -124,7 +124,8 @@
     }
   }
 
-  /** Tab/点击填入：退格清空远端当前行后发送建议文本，不发送 \\r。 */
+  /** Tab/点击填入：退格清空远端当前行后发送建议文本，不发送 \\r。
+   *  依赖远端 echo 回显来同步本地行缓冲；无回显或缓冲不同步时填入可能不准。 */
   function applySuggestionFill(suggestion) {
     const currentLine = commandLineBuffer.getLine();
     const fill = pickSuggestFill(currentLine, suggestion);

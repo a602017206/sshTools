@@ -86,3 +86,25 @@ func TestCommandHistoryEmptySuggest(t *testing.T) {
 		t.Fatalf("expected nil for missing connection, got %+v", got)
 	}
 }
+
+func TestCommandHistoryFilePermissions(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "commands")
+	svc := NewCommandHistoryService(root)
+	if err := svc.Record("c1", "ls -la"); err != nil {
+		t.Fatal(err)
+	}
+	dirInfo, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("expected dir mode 0700, got %o", dirInfo.Mode().Perm())
+	}
+	fileInfo, err := os.Stat(filepath.Join(root, "c1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("expected file mode 0600, got %o", fileInfo.Mode().Perm())
+	}
+}

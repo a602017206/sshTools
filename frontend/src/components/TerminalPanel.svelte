@@ -38,6 +38,7 @@
   let handleDatabaseTableSelectEvent = null;
   let handleDatabaseTableStructureEvent = null;
   let handleDatabaseNewQueryEvent = null;
+  let handleAppearanceUpdatedEvent = null;
   let databaseQuerySequence = 0;
   let databaseDesignerSequence = 0;
   const terminalOutputDecoder = new TextDecoder();
@@ -440,7 +441,7 @@
         SetSessionCharset(sessionId, normalizeTerminalCharset(asset.metadata?.encoding || asset.encoding));
       }
       if (typeof BindSessionConnection === 'function' && asset.id) {
-        BindSessionConnection(sessionId, asset.id);
+        await BindSessionConnection(sessionId, asset.id);
       }
       // 调用 Wails ConnectSSH API
       await ConnectSSH(
@@ -1234,8 +1235,25 @@
     if (handleDatabaseNewQueryEvent) {
       window.removeEventListener('database:new-query', handleDatabaseNewQueryEvent);
     }
+
+    if (handleAppearanceUpdatedEvent) {
+      window.removeEventListener('app:appearance-updated', handleAppearanceUpdatedEvent);
+    }
   });
 
+
+  function applyCommandSuggestSettings(settings) {
+    if (!settings || typeof settings !== 'object') {
+      return;
+    }
+    if (typeof settings.command_suggest_enabled === 'boolean') {
+      commandSuggestEnabled = settings.command_suggest_enabled;
+    }
+    const limit = Number(settings.command_suggest_limit);
+    if (Number.isFinite(limit) && limit > 0) {
+      commandSuggestLimit = limit;
+    }
+  }
 
   async function loadCommandSuggestSettings() {
     try {
@@ -1244,16 +1262,7 @@
         return;
       }
       const settings = await GetSettings();
-      if (!settings || typeof settings !== 'object') {
-        return;
-      }
-      if (typeof settings.command_suggest_enabled === 'boolean') {
-        commandSuggestEnabled = settings.command_suggest_enabled;
-      }
-      const limit = Number(settings.command_suggest_limit);
-      if (Number.isFinite(limit) && limit > 0) {
-        commandSuggestLimit = limit;
-      }
+      applyCommandSuggestSettings(settings);
     } catch (error) {
       console.warn('Failed to load command suggest settings:', error);
     }
@@ -1276,6 +1285,16 @@
     }
 
     console.log('TerminalPanel mounted, subscribing to events for sessions:', sessionsList);
+
+    handleAppearanceUpdatedEvent = (event) => {
+      const detail = event?.detail;
+      if (detail && typeof detail === 'object') {
+        applyCommandSuggestSettings(detail);
+        return;
+      }
+      loadCommandSuggestSettings();
+    };
+    window.addEventListener('app:appearance-updated', handleAppearanceUpdatedEvent);
 
     handleDatabaseTableSelectEvent = (event) => {
       const detail = event?.detail;

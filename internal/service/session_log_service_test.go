@@ -113,3 +113,73 @@ func TestSessionLogListEmptyConnection(t *testing.T) {
 		t.Fatalf("expected empty list, got %v", list)
 	}
 }
+
+func TestSessionLogCloseSession(t *testing.T) {
+	root := t.TempDir()
+	svc := NewSessionLogService(root)
+	if err := svc.Append("c1", "s1", []byte("line1\n"), false); err != nil {
+		t.Fatal(err)
+	}
+	key := svc.writerKey("c1", "s1")
+	svc.mu.Lock()
+	_, open := svc.writers[key]
+	svc.mu.Unlock()
+	if !open {
+		t.Fatal("expected open writer before CloseSession")
+	}
+
+	svc.CloseSession("c1", "s1")
+	svc.CloseSession("c1", "missing") // ignore missing
+
+	svc.mu.Lock()
+	_, stillOpen := svc.writers[key]
+	svc.mu.Unlock()
+	if stillOpen {
+		t.Fatal("expected writer removed after CloseSession")
+	}
+
+	if err := svc.Append("c1", "s1", []byte("line2\n"), false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionLogSearchEmptyQuery(t *testing.T) {
+	root := t.TempDir()
+	svc := NewSessionLogService(root)
+	if err := svc.Append("c1", "s1", []byte("hello\n"), false); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := svc.Search("c1", "   ", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits != nil {
+		t.Fatalf("expected nil hits for blank query, got %+v", hits)
+	}
+}
+
+func TestSessionLogFilePermissions(t *testing.T) {
+	root := t.TempDir()
+	svc := NewSessionLogService(root)
+	if err := svc.Append("c1", "s1", []byte("secret\n"), false); err != nil {
+		t.Fatal(err)
+	}
+	dirInfo, err := os.Stat(filepath.Join(root, "c1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("expected dir mode 0700, got %o", dirInfo.Mode().Perm())
+	}
+	list, err := svc.List("c1")
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list=%v err=%v", list, err)
+	}
+	fileInfo, err := os.Stat(list[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("expected file mode 0600, got %o", fileInfo.Mode().Perm())
+	}
+}
