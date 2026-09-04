@@ -67,6 +67,10 @@ type App struct {
 	sqlFileCancel         map[string]context.CancelFunc
 	sessionCharsetMu      sync.Mutex
 	sessionCharset        map[string]string
+	sessionLogService     *service.SessionLogService
+	commandHistoryService *service.CommandHistoryService
+	sessionConnectionMu   sync.Mutex
+	sessionConnection     map[string]string
 }
 
 type copilotSessionMeta struct {
@@ -107,8 +111,9 @@ func (wailsJDBCFileDialogs) SelectJavaExecutable(ctx context.Context) (string, e
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		jdbcFileDialogs: wailsJDBCFileDialogs{},
-		copilotMeta:     make(map[string]copilotSessionMeta),
+		jdbcFileDialogs:   wailsJDBCFileDialogs{},
+		copilotMeta:       make(map[string]copilotSessionMeta),
+		sessionConnection: make(map[string]string),
 	}
 }
 
@@ -141,6 +146,17 @@ func (a *App) startup(ctx context.Context) {
 	a.monitorService = service.NewMonitorService(sessionManager)
 	a.settingsService = service.NewSettingsService(configManager)
 	a.devToolsService = service.NewDevToolsService()
+
+	homeDir, homeErr := os.UserHomeDir()
+	if homeErr != nil {
+		homeDir = "."
+	}
+	a.sessionLogService = service.NewSessionLogService(filepath.Join(homeDir, ".ahasshtools", "session-logs"))
+	a.commandHistoryService = service.NewCommandHistoryService(filepath.Join(homeDir, ".ahasshtools", "commands"))
+	if a.sessionConnection == nil {
+		a.sessionConnection = make(map[string]string)
+	}
+
 	agentJar, readAgentErr := assets.ReadFile("frontend/build/jdbc-agent.jar")
 	if readAgentErr != nil {
 		fmt.Printf("Failed to read embedded JDBC agent: %v\n", readAgentErr)
@@ -166,6 +182,10 @@ func (a *App) startup(ctx context.Context) {
 		a.copilotMeta = make(map[string]copilotSessionMeta)
 	}
 	a.copilotService = copilot.NewService(nil, a.databaseService, a.sessionService).WithNative(nativeCopilotReader{svc: a.nativeDatabaseService})
+
+	if _, purgeErr := a.PurgeExpiredSessionLogs(); purgeErr != nil {
+		fmt.Printf("Failed to purge expired session logs: %v\n", purgeErr)
+	}
 }
 
 func (a *App) initJDBCServices(agentJar []byte) error {
@@ -364,6 +384,7 @@ func (a *App) ConnectSSH(sessionID, host string, port int, user, authType, authV
 
 		encoded := base64.StdEncoding.EncodeToString(data)
 		runtime.EventsEmit(a.ctx, "ssh:output:"+sessionID, encoded)
+		a.appendSessionLog(sessionID, data)
 	}, func(err error) {
 		payload := map[string]string{"reason": "closed"}
 		if err != nil && err != io.EOF {
@@ -378,6 +399,131 @@ func (a *App) ConnectSSH(sessionID, host string, port int, user, authType, authV
 		a.setupCWDTracking(sessionID)
 	}
 	return err
+}
+
+func (a *App) appendSessionLog(sessionID string, data []byte) {
+	if a.sessionLogService == nil || a.settingsService == nil {
+		return
+	}
+	settings := a.settingsService.GetSettings()
+	if !settings.SessionLogEnabled {
+		return
+	}
+	a.sessionConnectionMu.Lock()
+	connID := a.sessionConnection[sessionID]
+	a.sessionConnectionMu.Unlock()
+	if connID == "" {
+		return
+	}
+	_ = a.sessionLogService.Append(connID, sessionID, data, settings.SessionLogRedactEnabled)
+}
+
+// BindSessionConnection associates a terminal session with a saved connection for logging/history.
+func (a *App) BindSessionConnection(sessionID, connectionID string) {
+	if sessionID == "" {
+		return
+	}
+	a.sessionConnectionMu.Lock()
+	defer a.sessionConnectionMu.Unlock()
+	if a.sessionConnection == nil {
+		a.sessionConnection = make(map[string]string)
+	}
+	if connectionID == "" {
+		delete(a.sessionConnection, sessionID)
+		return
+	}
+	a.sessionConnection[sessionID] = connectionID
+}
+
+// ListSessionLogs returns session logs for a connection, newest first.
+func (a *App) ListSessionLogs(connectionID string) ([]service.SessionLogInfo, error) {
+	if a.sessionLogService == nil {
+		return nil, nil
+	}
+	return a.sessionLogService.List(connectionID)
+}
+
+// SearchSessionLogs searches session logs for a connection.
+func (a *App) SearchSessionLogs(connectionID, query string, limit int) ([]service.SessionLogHit, error) {
+	if a.sessionLogService == nil {
+		return nil, nil
+	}
+	return a.sessionLogService.Search(connectionID, query, limit)
+}
+
+// ExportSessionLog opens a save dialog and exports the session log to the chosen path.
+func (a *App) ExportSessionLog(logID string) (string, error) {
+	if a.sessionLogService == nil {
+		return "", fmt.Errorf("session log service not initialized")
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "导出会话日志",
+		DefaultFilename: filepath.Base(logID),
+	})
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", nil
+	}
+	if err := a.sessionLogService.Export(logID, path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// DeleteSessionLog deletes a session log by id.
+func (a *App) DeleteSessionLog(logID string) error {
+	if a.sessionLogService == nil {
+		return nil
+	}
+	return a.sessionLogService.Delete(logID)
+}
+
+// PurgeExpiredSessionLogs removes session logs older than the configured retention days.
+func (a *App) PurgeExpiredSessionLogs() (int, error) {
+	if a.sessionLogService == nil {
+		return 0, nil
+	}
+	retentionDays := 30
+	if a.settingsService != nil {
+		settings := a.settingsService.GetSettings()
+		retentionDays = settings.SessionLogRetentionDays
+	}
+	return a.sessionLogService.PurgeExpired(retentionDays)
+}
+
+// RecordCommand records a submitted command for per-connection suggestions.
+func (a *App) RecordCommand(connectionID, command string) error {
+	if a.commandHistoryService == nil {
+		return nil
+	}
+	if a.settingsService != nil {
+		settings := a.settingsService.GetSettings()
+		if !settings.CommandSuggestEnabled {
+			return nil
+		}
+	}
+	return a.commandHistoryService.Record(connectionID, command)
+}
+
+// SuggestCommands returns command suggestions for a connection and prefix.
+func (a *App) SuggestCommands(connectionID, prefix string, limit int) ([]service.CommandHistoryEntry, error) {
+	if a.commandHistoryService == nil {
+		return nil, nil
+	}
+	if a.settingsService != nil {
+		settings := a.settingsService.GetSettings()
+		if !settings.CommandSuggestEnabled {
+			return nil, nil
+		}
+		if limit <= 0 {
+			limit = settings.CommandSuggestLimit
+		}
+	} else if limit <= 0 {
+		limit = config.DefaultSettings().CommandSuggestLimit
+	}
+	return a.commandHistoryService.Suggest(connectionID, prefix, limit)
 }
 
 func (a *App) parseCWDFromOutput(sessionID string, data []byte) string {
@@ -431,6 +577,9 @@ func (a *App) CloseSSH(sessionID string) error {
 	}
 	a.clearCopilotSession(sessionID)
 	a.clearSessionCharset(sessionID)
+	a.sessionConnectionMu.Lock()
+	delete(a.sessionConnection, sessionID)
+	a.sessionConnectionMu.Unlock()
 	err := a.sessionService.CloseSession(sessionID)
 	if err != nil {
 		return err
