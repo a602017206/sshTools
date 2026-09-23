@@ -6,7 +6,8 @@ const initialState = {
   width: 360,
   messagesBySession: {},
   terminalTailsBySession: {},
-  workspaceFocusBySession: {}
+  workspaceFocusBySession: {},
+  settingsEpoch: 0
 };
 
 function createCopilotStore() {
@@ -24,6 +25,9 @@ function createCopilotStore() {
     setWidth(width) {
       const next = Math.max(280, Math.min(520, Number(width) || 360));
       update((state) => ({ ...state, width: next }));
+    },
+    touchSettings() {
+      update((state) => ({ ...state, settingsEpoch: (state.settingsEpoch || 0) + 1 }));
     },
     appendMessage(sessionId, message) {
       if (!sessionId || !message) return;

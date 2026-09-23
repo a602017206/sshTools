@@ -1,8 +1,10 @@
 <script>
   import Dialog from './ui/Dialog.svelte';
   import JDBCDriverManager from './JDBCDriverManager.svelte';
+  import CopilotSettingsSection from './CopilotSettingsSection.svelte';
   import { ACCENT_PRESETS, FONT_PRESETS, TERMINAL_FONT_PRESETS, getDefaultAppSettings } from '../settings/appearance.js';
   import { TERMINAL_THEME_PRESETS } from '../lib/terminalTheme.js';
+  import { mirrorLegacyCopilotFields, resolveActiveModelId } from '../lib/copilotModels.js';
 
   export let isOpen = false;
   export let value = getDefaultAppSettings();
@@ -13,38 +15,44 @@
   let draft = getDefaultAppSettings();
   let initializedForOpen = false;
   let activeSection = 'appearance';
-  let copilotApiKey = '';
-  let hasCopilotAPIKey = false;
-  let copilotKeyBusy = false;
-  let copilotKeyError = '';
+  let providerKeys = {};
+  let providerHasKey = {};
+  let providerKeyBusy = {};
+  let providerKeyError = {};
 
   $: if (isOpen && !initializedForOpen) {
     draft = normalizeDraft({ ...getDefaultAppSettings(), ...value });
-    copilotApiKey = '';
-    copilotKeyError = '';
+    providerKeys = {};
+    providerKeyError = {};
     initializedForOpen = true;
-    refreshHasCopilotAPIKey();
+    refreshProviderKeyStatus();
   }
 
   $: if (!isOpen && initializedForOpen) {
     initializedForOpen = false;
-    copilotApiKey = '';
-    copilotKeyError = '';
+    providerKeys = {};
+    providerKeyError = {};
   }
 
   function normalizeDraft(settings) {
     const rest = { ...(settings || {}) };
     delete rest.copilot_api_key;
+    delete rest.copilot_provider_keys;
     const retention = Number(rest.session_log_retention_days);
     const suggestLimit = Number(rest.command_suggest_limit);
+    const providers = Array.isArray(rest.copilot_providers) ? rest.copilot_providers : [];
+    const activeId = resolveActiveModelId(providers, rest.copilot_active_model_id);
+    const mirrored = mirrorLegacyCopilotFields(providers, activeId);
     return {
       ...rest,
       font_size: Number(rest.font_size) || 14,
       terminal_theme: rest.terminal_theme === 'light' || rest.terminal_theme === 'follow' ? rest.terminal_theme : 'dark',
       terminal_font_size: Number(rest.terminal_font_size) || 14,
       copilot_provider: rest.copilot_provider || 'openai_compatible',
-      copilot_base_url: rest.copilot_base_url || '',
-      copilot_model: rest.copilot_model || '',
+      copilot_providers: providers,
+      copilot_active_model_id: activeId,
+      copilot_base_url: mirrored.copilot_base_url || rest.copilot_base_url || '',
+      copilot_model: mirrored.copilot_model || rest.copilot_model || '',
       copilot_max_tool_rounds: Number(rest.copilot_max_tool_rounds) || 4,
       copilot_max_tool_result_chars: Number(rest.copilot_max_tool_result_chars) || 8000,
       session_log_enabled: rest.session_log_enabled !== false,
@@ -57,43 +65,61 @@
 
   function handleSave() {
     const next = normalizeDraft(draft);
-    const key = String(copilotApiKey || '').trim();
-    if (key) {
-      next.copilot_api_key = key;
+    const keys = {};
+    for (const [providerId, value] of Object.entries(providerKeys || {})) {
+      const trimmed = String(value || '').trim();
+      if (trimmed) keys[providerId] = trimmed;
+    }
+    if (Object.keys(keys).length) {
+      next.copilot_provider_keys = keys;
     }
     onSave(next);
   }
 
-  async function refreshHasCopilotAPIKey() {
-    const api = window.wailsBindings || {};
-    if (typeof api.HasCopilotAPIKey !== 'function') {
-      hasCopilotAPIKey = false;
-      return;
+  async function refreshProviderKeyStatus() {
+    const api = window.wailsBindings || window.go?.main?.App || {};
+    const next = {};
+    for (const provider of draft.copilot_providers || []) {
+      if (typeof api.HasCopilotProviderAPIKey === 'function') {
+        try {
+          next[provider.id] = Boolean(await api.HasCopilotProviderAPIKey(provider.id));
+        } catch (error) {
+          console.error('Failed to check copilot provider API key:', error);
+          next[provider.id] = false;
+        }
+      } else if (typeof api.HasCopilotAPIKey === 'function' && (draft.copilot_providers || []).length === 1) {
+        try {
+          next[provider.id] = Boolean(await api.HasCopilotAPIKey());
+        } catch (error) {
+          next[provider.id] = false;
+        }
+      } else {
+        next[provider.id] = false;
+      }
     }
-    try {
-      hasCopilotAPIKey = Boolean(await api.HasCopilotAPIKey());
-    } catch (error) {
-      console.error('Failed to check copilot API key:', error);
-      hasCopilotAPIKey = false;
-    }
+    providerHasKey = next;
   }
 
-  async function handleClearCopilotAPIKey() {
-    const api = window.wailsBindings || {};
-    if (typeof api.ClearCopilotAPIKey !== 'function') {
+  function handleProviderKeyChange(providerId, value) {
+    providerKeys = { ...providerKeys, [providerId]: value };
+  }
+
+  async function handleClearProviderKey(providerId) {
+    const api = window.wailsBindings || window.go?.main?.App || {};
+    if (typeof api.ClearCopilotProviderAPIKey !== 'function') {
       return;
     }
-    copilotKeyBusy = true;
-    copilotKeyError = '';
+    providerKeyBusy = { ...providerKeyBusy, [providerId]: true };
+    providerKeyError = { ...providerKeyError, [providerId]: '' };
     try {
-      await api.ClearCopilotAPIKey();
-      copilotApiKey = '';
-      await refreshHasCopilotAPIKey();
+      await api.ClearCopilotProviderAPIKey(providerId);
+      providerKeys = { ...providerKeys, [providerId]: '' };
+      await refreshProviderKeyStatus();
     } catch (error) {
-      console.error('Failed to clear copilot API key:', error);
-      copilotKeyError = '清除密钥失败';
+      console.error('Failed to clear copilot provider API key:', error);
+      providerKeyError = { ...providerKeyError, [providerId]: '清除密钥失败' };
     } finally {
-      copilotKeyBusy = false;
+      providerKeyBusy = { ...providerKeyBusy, [providerId]: false };
     }
   }
 
@@ -198,7 +224,7 @@
         on:click={() => (activeSection = 'copilot')}
       >
         <span>AI Copilot</span>
-        <small>接口、模型、密钥</small>
+        <small>服务商、模型、密钥</small>
       </button>
       <button
         type="button"
@@ -452,61 +478,15 @@
         </div>
       {:else if activeSection === 'copilot'}
         <div class="space-y-6">
-          <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/70 dark:bg-slate-900/50 space-y-4">
-            <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">AI Copilot</div>
-
-            <label class="space-y-2 block">
-              <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">Base URL</div>
-              <input
-                type="text"
-                bind:value={draft.copilot_base_url}
-                placeholder="https://api.deepseek.com/v1"
-                autocomplete="off"
-                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
-              />
-            </label>
-            <div class="grid grid-cols-2 gap-3"><label class="space-y-2 block"><div class="text-sm font-semibold">最大工具轮次</div><input type="number" min="1" max="8" bind:value={draft.copilot_max_tool_rounds} class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border" /></label><label class="space-y-2 block"><div class="text-sm font-semibold">单次工具结果上限</div><input type="number" min="1000" max="20000" step="1000" bind:value={draft.copilot_max_tool_result_chars} class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border" /></label></div>
-
-            <label class="space-y-2 block">
-              <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">模型名称</div>
-              <input
-                type="text"
-                bind:value={draft.copilot_model}
-                placeholder="deepseek-chat"
-                autocomplete="off"
-                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
-              />
-              <p class="text-xs text-slate-500 dark:text-slate-400">模型名称请按服务商官方文档填写，例如 deepseek-chat</p>
-            </label>
-
-            <label class="space-y-2 block">
-              <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">API Key</div>
-              <input
-                type="password"
-                bind:value={copilotApiKey}
-                placeholder="留空则保留已保存的密钥"
-                autocomplete="off"
-                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
-              />
-            </label>
-
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs text-slate-500 dark:text-slate-400">
-                {hasCopilotAPIKey ? '已保存密钥' : '尚未保存密钥'}
-              </span>
-              <button
-                type="button"
-                class="px-3 py-2 text-xs rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-50"
-                disabled={!hasCopilotAPIKey || copilotKeyBusy}
-                on:click={handleClearCopilotAPIKey}
-              >
-                清除密钥
-              </button>
-            </div>
-            {#if copilotKeyError}
-              <p class="text-xs text-red-500">{copilotKeyError}</p>
-            {/if}
-          </div>
+          <CopilotSettingsSection
+            bind:draft
+            {providerKeys}
+            {providerHasKey}
+            {providerKeyBusy}
+            {providerKeyError}
+            onProviderKeyChange={handleProviderKeyChange}
+            onClearProviderKey={handleClearProviderKey}
+          />
 
           <div class="flex items-center justify-end pt-2">
             <div class="flex gap-2">

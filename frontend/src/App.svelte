@@ -122,7 +122,7 @@
     applyAppearanceSettings(appSettings);
   }
 
-  async function persistAppSettings(settings) {
+  async function persistAppSettings(settings, extra = {}) {
     if (!window.wailsBindings || typeof window.wailsBindings.UpdateSettings !== 'function') {
       return;
     }
@@ -155,6 +155,10 @@
       command_suggest_enabled: settings.command_suggest_enabled !== false,
       command_suggest_limit: Number(settings.command_suggest_limit) || 8
     };
+    if (Object.prototype.hasOwnProperty.call(extra, 'copilot_providers')) {
+      updates.copilot_providers = extra.copilot_providers || [];
+      updates.copilot_active_model_id = extra.copilot_active_model_id || '';
+    }
 
     try {
       await window.wailsBindings.UpdateSettings(updates);
@@ -198,17 +202,27 @@
   }
 
   async function handleSaveGlobalSettings(nextSettings) {
-    const apiKey = typeof nextSettings?.copilot_api_key === 'string'
-      ? nextSettings.copilot_api_key.trim()
-      : '';
+    const providerKeys = nextSettings?.copilot_provider_keys && typeof nextSettings.copilot_provider_keys === 'object'
+      ? nextSettings.copilot_provider_keys
+      : {};
     const settingsWithoutKey = { ...nextSettings };
     delete settingsWithoutKey.copilot_api_key;
+    delete settingsWithoutKey.copilot_provider_keys;
 
-    if (apiKey && window.wailsBindings && typeof window.wailsBindings.SetCopilotAPIKey === 'function') {
+    const api = window.wailsBindings || window.go?.main?.App || {};
+    for (const [providerId, apiKey] of Object.entries(providerKeys)) {
+      const trimmed = String(apiKey || '').trim();
+      if (!trimmed) continue;
+      if (typeof api.SetCopilotProviderAPIKey !== 'function') {
+        dbErrorTitle = '设置保存失败';
+        dbErrorMessage = '当前版本无法保存服务商密钥，请重启应用后重试。';
+        showDbErrorDialog = true;
+        return;
+      }
       try {
-        await window.wailsBindings.SetCopilotAPIKey(apiKey);
+        await api.SetCopilotProviderAPIKey(providerId, trimmed);
       } catch (error) {
-        console.error('Failed to save copilot API key:', error);
+        console.error('Failed to save copilot provider API key:', error);
         dbErrorTitle = '设置保存失败';
         dbErrorMessage = '密钥保存失败，请重试。其它设置尚未保存。';
         showDbErrorDialog = true;
@@ -216,11 +230,28 @@
       }
     }
 
+    const previousIds = new Set((appSettings.copilot_providers || []).map((item) => item.id));
+    const nextIds = new Set((settingsWithoutKey.copilot_providers || []).map((item) => item.id));
+    if (typeof api.ClearCopilotProviderAPIKey === 'function') {
+      for (const providerId of previousIds) {
+        if (nextIds.has(providerId)) continue;
+        try {
+          await api.ClearCopilotProviderAPIKey(providerId);
+        } catch (error) {
+          console.warn('Failed to clear removed copilot provider key:', error);
+        }
+      }
+    }
+
     applyAndSyncSettings(settingsWithoutKey);
     settingsDraftSnapshot = null;
     isGlobalSettingsOpen = false;
+    copilotStore.touchSettings();
 
-    await persistAppSettings(appSettings);
+    await persistAppSettings(appSettings, {
+      copilot_providers: appSettings.copilot_providers || [],
+      copilot_active_model_id: appSettings.copilot_active_model_id || ''
+    });
   }
 
   async function toggleThemeMode() {

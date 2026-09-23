@@ -351,6 +351,24 @@ func (s *SFTPService) CreateDirectory(sessionID string, path string) error {
 	return sftpClient.CreateDirectory(path)
 }
 
+// ReadTextFile loads a remote UTF-8 text file for the online editor.
+func (s *SFTPService) ReadTextFile(sessionID string, path string) (*ssh.RemoteTextFile, error) {
+	sftpClient, err := s.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+	return sftpClient.ReadTextFile(path)
+}
+
+// WriteTextFile writes UTF-8 text back to an existing remote file.
+func (s *SFTPService) WriteTextFile(sessionID string, path string, content string) error {
+	sftpClient, err := s.sessionManager.GetOrCreateSFTPClient(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get SFTP client: %w", err)
+	}
+	return sftpClient.WriteTextFile(path, content)
+}
+
 // CreateFile creates an empty remote file.
 func (s *SFTPService) CreateFile(sessionID string, path string) error {
 	sftpClient, err := s.sessionManager.GetOrCreateSFTPClient(sessionID)

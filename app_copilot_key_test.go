@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/service/copilot"
 	"AHaSSHTools/internal/store"
 )
@@ -64,6 +65,47 @@ func TestClearCopilotAPIKeyRemovesKey(t *testing.T) {
 	}
 	if app.HasCopilotAPIKey() {
 		t.Fatal("HasCopilotAPIKey must be false after ClearCopilotAPIKey")
+	}
+}
+
+func TestCopilotProviderAPIKeyIsIsolatedFromLegacyKey(t *testing.T) {
+	app := newAppWithTempCredentialStore(t)
+	if err := app.SetCopilotAPIKey("sk-legacy"); err != nil {
+		t.Fatalf("legacy set: %v", err)
+	}
+	if app.HasCopilotProviderAPIKey("p1") {
+		t.Fatal("provider key should not exist before it is stored")
+	}
+	if err := app.SetCopilotProviderAPIKey("p1", "sk-provider"); err != nil {
+		t.Fatalf("provider set: %v", err)
+	}
+	if !app.HasCopilotProviderAPIKey("p1") {
+		t.Fatal("expected provider key")
+	}
+	if got := app.copilotAPIKey("p1"); got != "sk-provider" {
+		t.Fatalf("expected provider key to win, got %q", got)
+	}
+	if err := app.ClearCopilotProviderAPIKey("p1"); err != nil {
+		t.Fatalf("clear provider: %v", err)
+	}
+	if app.HasCopilotProviderAPIKey("p1") {
+		t.Fatal("provider key should be cleared")
+	}
+	if got := app.copilotAPIKey("p1"); got != "sk-legacy" {
+		t.Fatalf("expected legacy fallback after provider key cleared, got %q", got)
+	}
+}
+
+func TestMigrateCopilotAPIKeyCopiesLegacyKeyOntoSingleProvider(t *testing.T) {
+	app := newAppWithTempCredentialStore(t)
+	if err := app.SetCopilotAPIKey("sk-legacy"); err != nil {
+		t.Fatalf("legacy set: %v", err)
+	}
+	app.migrateCopilotAPIKey(config.AppSettings{
+		CopilotProviders: []config.CopilotProvider{{ID: "p1"}},
+	})
+	if !app.HasCopilotProviderAPIKey("p1") {
+		t.Fatal("expected legacy key to be copied onto the migrated provider")
 	}
 }
 

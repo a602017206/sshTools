@@ -119,6 +119,114 @@ func TestUpdateSettingsPersistsCopilotFieldsWithoutAPIKey(t *testing.T) {
 	if s.CopilotBaseURL != "https://api.deepseek.com/v1" || s.CopilotModel != "deepseek-chat" {
 		t.Fatalf("unexpected copilot settings: %+v", s)
 	}
+	if len(s.CopilotProviders) != 1 {
+		t.Fatalf("expected legacy copilot settings to migrate into one provider, got %d", len(s.CopilotProviders))
+	}
+	if s.CopilotProviders[0].BaseURL != "https://api.deepseek.com/v1" {
+		t.Fatalf("migrated base url = %q", s.CopilotProviders[0].BaseURL)
+	}
+	if len(s.CopilotProviders[0].Models) != 1 || s.CopilotProviders[0].Models[0].ModelID != "deepseek-chat" {
+		t.Fatalf("unexpected migrated models: %+v", s.CopilotProviders[0].Models)
+	}
+	if s.CopilotActiveModelID == "" {
+		t.Fatal("expected migrated active model id")
+	}
+}
+
+func TestUpdateSettingsPersistsCopilotProvidersWithoutAPIKey(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	cm := newDiskTestConfigManager(configPath)
+	if err := cm.UpdateSettings(map[string]interface{}{
+		"copilot_active_model_id": "m1",
+		"copilot_providers": []interface{}{
+			map[string]interface{}{
+				"id":       "p1",
+				"kind":     "deepseek",
+				"name":     "DeepSeek",
+				"base_url": "https://api.deepseek.com/v1",
+				"api_key":  "sk-should-not-persist",
+				"models": []interface{}{
+					map[string]interface{}{"id": "m1", "name": "Chat", "model_id": "deepseek-chat"},
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "sk-should-not-persist") || strings.Contains(string(raw), "api_key") {
+		t.Fatalf("provider api key leaked into config.json: %s", raw)
+	}
+	reloaded := newDiskTestConfigManager(configPath)
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	s := reloaded.GetSettings()
+	if len(s.CopilotProviders) != 1 || s.CopilotProviders[0].ID != "p1" {
+		t.Fatalf("unexpected providers: %+v", s.CopilotProviders)
+	}
+	if s.CopilotActiveModelID != "m1" || s.CopilotModel != "deepseek-chat" {
+		t.Fatalf("expected mirrored active model, got %+v", s)
+	}
+}
+
+func TestUpdateSettingsClearsProvidersWithoutRevivingLegacyFields(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	cm := newDiskTestConfigManager(configPath)
+	if err := cm.UpdateSettings(map[string]interface{}{
+		"copilot_providers": []interface{}{
+			map[string]interface{}{
+				"id":       "p1",
+				"kind":     "custom",
+				"name":     "默认",
+				"base_url": "https://api.deepseek.com/v1",
+				"models": []interface{}{
+					map[string]interface{}{"id": "m1", "name": "Chat", "model_id": "deepseek-chat"},
+				},
+			},
+		},
+		"copilot_active_model_id": "m1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cm.UpdateSettings(map[string]interface{}{
+		"copilot_providers": []interface{}{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := cm.GetSettings()
+	if len(s.CopilotProviders) != 0 || s.CopilotBaseURL != "" || s.CopilotModel != "" {
+		t.Fatalf("expected cleared copilot settings, got %+v", s)
+	}
+	reloaded := newDiskTestConfigManager(configPath)
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	s = reloaded.GetSettings()
+	if len(s.CopilotProviders) != 0 {
+		t.Fatalf("cleared providers should not remigrate on load: %+v", s.CopilotProviders)
+	}
+}
+
+func TestMigrateLegacyCopilotSettingsIsIdempotent(t *testing.T) {
+	settings := AppSettings{
+		CopilotBaseURL: "https://api.deepseek.com/v1",
+		CopilotModel:   "deepseek-chat",
+	}
+	first, changed := MigrateLegacyCopilotSettings(settings)
+	if !changed || len(first.CopilotProviders) != 1 {
+		t.Fatalf("expected first migration, got changed=%v providers=%+v", changed, first.CopilotProviders)
+	}
+	second, changed := MigrateLegacyCopilotSettings(first)
+	if changed {
+		t.Fatal("second migration should be a no-op")
+	}
+	if first.CopilotProviders[0].ID != second.CopilotProviders[0].ID {
+		t.Fatal("migration must keep stable ids")
+	}
 }
 
 func TestDefaultSettingsIncludeSessionLogAndCommandSuggest(t *testing.T) {
@@ -151,11 +259,11 @@ func TestUpdateSettingsPersistsSessionLogFields(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	cm := newDiskTestConfigManager(configPath)
 	if err := cm.UpdateSettings(map[string]interface{}{
-		"session_log_enabled":          false,
-		"session_log_retention_days":   float64(7),
-		"session_log_redact_enabled":   false,
-		"command_suggest_enabled":      false,
-		"command_suggest_limit":        float64(12),
+		"session_log_enabled":        false,
+		"session_log_retention_days": float64(7),
+		"session_log_redact_enabled": false,
+		"command_suggest_enabled":    false,
+		"command_suggest_limit":      float64(12),
 	}); err != nil {
 		t.Fatal(err)
 	}

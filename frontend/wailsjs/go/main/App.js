@@ -38,6 +38,10 @@ export function ClearCopilotAPIKey() {
   return window['go']['main']['App']['ClearCopilotAPIKey']();
 }
 
+export function ClearCopilotProviderAPIKey(arg1) {
+  return window['go']['main']['App']['ClearCopilotProviderAPIKey'](arg1);
+}
+
 export function CloseDatabase(arg1) {
   return window['go']['main']['App']['CloseDatabase'](arg1);
 }
@@ -286,6 +290,10 @@ export function HasCopilotAPIKey() {
   return window['go']['main']['App']['HasCopilotAPIKey']();
 }
 
+export function HasCopilotProviderAPIKey(arg1) {
+  return window['go']['main']['App']['HasCopilotProviderAPIKey'](arg1);
+}
+
 export function HasPassword(arg1) {
   return window['go']['main']['App']['HasPassword'](arg1);
 }
@@ -320,6 +328,10 @@ export function InstallJDBCDriver(arg1, arg2) {
 
 export function InstallJDBCManagedRuntime() {
   return window['go']['main']['App']['InstallJDBCManagedRuntime']();
+}
+
+export function ListCopilotProviderModels(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ListCopilotProviderModels'](arg1, arg2, arg3, arg4);
 }
 
 export function ListDatabaseObjects(arg1, arg2, arg3, arg4) {
@@ -394,6 +406,10 @@ export function PurgeExpiredSessionLogs() {
   return window['go']['main']['App']['PurgeExpiredSessionLogs']();
 }
 
+export function ReadRemoteTextFile(arg1, arg2) {
+  return window['go']['main']['App']['ReadRemoteTextFile'](arg1, arg2);
+}
+
 export function RecordCommand(arg1, arg2) {
   return window['go']['main']['App']['RecordCommand'](arg1, arg2);
 }
@@ -428,6 +444,10 @@ export function SaveBinaryFile(arg1, arg2) {
 
 export function SavePassword(arg1, arg2) {
   return window['go']['main']['App']['SavePassword'](arg1, arg2);
+}
+
+export function SaveRemoteTextFile(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveRemoteTextFile'](arg1, arg2, arg3);
 }
 
 export function SearchDirectories(arg1, arg2, arg3, arg4, arg5) {
@@ -496,6 +516,10 @@ export function SendSSHDataBinary(arg1, arg2) {
 
 export function SetCopilotAPIKey(arg1) {
   return window['go']['main']['App']['SetCopilotAPIKey'](arg1);
+}
+
+export function SetCopilotProviderAPIKey(arg1, arg2) {
+  return window['go']['main']['App']['SetCopilotProviderAPIKey'](arg1, arg2);
 }
 
 export function SetJDBCRuntimeMode(arg1, arg2) {

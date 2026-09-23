@@ -759,7 +759,9 @@ func (a *App) DeletePassword(connectionID string) error {
 
 // GetSettings returns application settings
 func (a *App) GetSettings() config.AppSettings {
-	return a.settingsService.GetSettings()
+	settings := a.settingsService.GetSettings()
+	a.migrateCopilotAPIKey(settings)
+	return settings
 }
 
 // UpdateSettings updates application settings
@@ -775,22 +777,22 @@ func (a *App) CopilotChat(req copilot.ChatRequest) (*copilot.ChatResponse, error
 	var settings config.AppSettings
 	if a.settingsService != nil {
 		settings = a.settingsService.GetSettings()
+		a.migrateCopilotAPIKey(settings)
 	}
 
-	apiKey := ""
-	if a.credentialStore != nil {
-		if stored, err := a.credentialStore.Get(copilot.APIKeyCredentialID); err == nil {
-			apiKey = stored
-		}
+	resolved, err := copilot.ResolveEndpoint(settings, req.ModelProfileID)
+	if err != nil {
+		return nil, err
 	}
-	if err := copilot.ValidateConfig(settings.CopilotBaseURL, apiKey); err != nil {
+	apiKey := a.copilotAPIKey(resolved.ProviderID)
+	if err := copilot.ValidateEndpoint(resolved, apiKey); err != nil {
 		return nil, err
 	}
 
 	a.fillCopilotRequest(&req)
-	req.Model = settings.CopilotModel
+	req.Model = resolved.ModelID
 
-	provider := copilot.NewOpenAICompatible(settings.CopilotBaseURL, apiKey, &http.Client{Timeout: 60 * time.Second})
+	provider := copilot.NewOpenAICompatible(resolved.BaseURL, apiKey, &http.Client{Timeout: 60 * time.Second})
 	parent := context.Background()
 	if a.ctx != nil {
 		parent = a.ctx
@@ -810,6 +812,23 @@ func (a *App) CopilotCancel(sessionID string) {
 
 func (a *App) CopilotClassify(kind, content string) copilot.Result {
 	return copilot.Classify(kind, content)
+}
+
+// ListCopilotProviderModels fetches OpenAI-compatible GET /v1/models for a provider.
+// apiKey may be the unsaved draft; empty falls back to the stored provider key.
+func (a *App) ListCopilotProviderModels(baseURL, apiKey, providerID, providerKind string) ([]copilot.RemoteModel, error) {
+	key, err := copilot.ResolveListModelsAPIKey(apiKey, a.copilotAPIKey(providerID), providerKind)
+	if err != nil {
+		return nil, err
+	}
+	parent := a.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	timeout := 15 * time.Second
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	return copilot.ListModels(ctx, baseURL, key, &http.Client{Timeout: timeout})
 }
 
 func (a *App) HasCopilotAPIKey() bool {
@@ -835,6 +854,66 @@ func (a *App) ClearCopilotAPIKey() error {
 		return fmt.Errorf("凭据存储未初始化")
 	}
 	return a.credentialStore.Delete(copilot.APIKeyCredentialID)
+}
+
+func (a *App) HasCopilotProviderAPIKey(providerID string) bool {
+	if a.credentialStore == nil {
+		return false
+	}
+	id := strings.TrimSpace(providerID)
+	if id == "" {
+		return a.HasCopilotAPIKey()
+	}
+	return a.credentialStore.Has(copilot.ProviderAPIKeyCredentialID(id))
+}
+
+func (a *App) SetCopilotProviderAPIKey(providerID, apiKey string) error {
+	if a.credentialStore == nil {
+		return fmt.Errorf("凭据存储未初始化")
+	}
+	id := strings.TrimSpace(providerID)
+	if id == "" {
+		return a.SetCopilotAPIKey(apiKey)
+	}
+	credID := copilot.ProviderAPIKeyCredentialID(id)
+	if strings.TrimSpace(apiKey) == "" {
+		return a.credentialStore.Delete(credID)
+	}
+	return a.credentialStore.Store(credID, apiKey)
+}
+
+func (a *App) ClearCopilotProviderAPIKey(providerID string) error {
+	return a.SetCopilotProviderAPIKey(providerID, "")
+}
+
+func (a *App) copilotAPIKey(providerID string) string {
+	if a.credentialStore == nil {
+		return ""
+	}
+	if strings.TrimSpace(providerID) != "" {
+		if stored, err := a.credentialStore.Get(copilot.ProviderAPIKeyCredentialID(providerID)); err == nil && strings.TrimSpace(stored) != "" {
+			return stored
+		}
+	}
+	if stored, err := a.credentialStore.Get(copilot.APIKeyCredentialID); err == nil {
+		return stored
+	}
+	return ""
+}
+
+func (a *App) migrateCopilotAPIKey(settings config.AppSettings) {
+	if a.credentialStore == nil || len(settings.CopilotProviders) != 1 {
+		return
+	}
+	providerID := strings.TrimSpace(settings.CopilotProviders[0].ID)
+	if providerID == "" || a.credentialStore.Has(copilot.ProviderAPIKeyCredentialID(providerID)) {
+		return
+	}
+	legacy, err := a.credentialStore.Get(copilot.APIKeyCredentialID)
+	if err != nil || strings.TrimSpace(legacy) == "" {
+		return
+	}
+	_ = a.credentialStore.Store(copilot.ProviderAPIKeyCredentialID(providerID), legacy)
 }
 
 func fillIfEmpty(dst *string, src string) {
@@ -1048,6 +1127,16 @@ func (a *App) CreateDirectory(sessionID string, path string) error {
 // CreateFile creates an empty remote file
 func (a *App) CreateFile(sessionID string, path string) error {
 	return a.sftpService.CreateFile(sessionID, path)
+}
+
+// ReadRemoteTextFile loads a UTF-8 text or config file for the online editor.
+func (a *App) ReadRemoteTextFile(sessionID string, path string) (*ssh.RemoteTextFile, error) {
+	return a.sftpService.ReadTextFile(sessionID, path)
+}
+
+// SaveRemoteTextFile writes editor content back to the remote file.
+func (a *App) SaveRemoteTextFile(sessionID string, path string, content string) error {
+	return a.sftpService.WriteTextFile(sessionID, path, content)
 }
 
 // CopyFile copies a remote file to another remote path

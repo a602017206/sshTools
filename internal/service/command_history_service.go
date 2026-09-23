@@ -15,9 +15,9 @@ const commandHistoryMaxEntries = 500
 
 // CommandHistoryEntry is a single command usage record returned by Suggest.
 type CommandHistoryEntry struct {
-	Command  string
-	Count    int
-	LastUsed time.Time
+	Command  string    `json:"Command"`
+	Count    int       `json:"Count"`
+	LastUsed time.Time `json:"LastUsed" ts_type:"string"`
 }
 
 type commandHistoryEntryStored struct {

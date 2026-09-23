@@ -109,6 +109,8 @@
     file: null,
   };
   let fileClipboard = null;
+  let textEditorFile = null;
+  let RemoteTextEditor = null;
   let moreOpen = false;
   let inputDialogMode = 'rename';
   const isMac = typeof navigator !== 'undefined' && isMacPlatform(navigator.userAgent);
@@ -507,6 +509,14 @@
     contextMenu = { open: true, x, y, file };
   }
 
+  async function openRemoteTextEditor(file) {
+    if (!RemoteTextEditor) {
+      const module = await import('./RemoteTextEditorDialog.svelte');
+      RemoteTextEditor = module.default;
+    }
+    textEditorFile = file;
+  }
+
   function closeContextMenu() {
     if (!contextMenu.open) return;
     moreOpen = false;
@@ -546,6 +556,9 @@
       case 'openLocal':
         if (file?.is_dir) navigateTo(file.path, true);
         else if (file && !file.is_dir) await handleDownload(file);
+        break;
+      case 'edit':
+        if (file && !file.is_dir) await openRemoteTextEditor(file);
         break;
       case 'refresh':
         await handleRefresh();
@@ -769,7 +782,7 @@
 
   function handleFileManagerKeydown(event) {
     if (!canUseFileManager) return;
-    if (showRenameDialog || showDeleteConfirm || showSettingsDialog || isEditingPath || isDirSearchOpen || uploadConflictOpen) return;
+    if (showRenameDialog || showDeleteConfirm || showSettingsDialog || isEditingPath || isDirSearchOpen || uploadConflictOpen || textEditorFile) return;
     const tag = event.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable) return;
     const action = matchFileManagerShortcut(event, { isMac });
@@ -1531,6 +1544,16 @@
     onChoose={chooseUploadConflict}
     onCancel={() => chooseUploadConflict('cancel')}
   />
+
+  {#if textEditorFile && RemoteTextEditor}
+    <svelte:component
+      this={RemoteTextEditor}
+      sessionId={$activeSessionIdStore}
+      file={textEditorFile}
+      onClose={() => { textEditorFile = null; }}
+      onSaved={() => loadDirectory(currentPath)}
+    />
+  {/if}
 
   <InputDialog
     bind:isOpen={showRenameDialog}

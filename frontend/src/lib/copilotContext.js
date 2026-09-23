@@ -179,7 +179,7 @@ export function copilotAssistantTitle(context, mode = 'ssh') {
   return 'SQL 助手';
 }
 
-export function copilotChatPayload(context, { sessionID, mode, message, history, terminalTail, workingDir } = {}) {
+export function copilotChatPayload(context, { sessionID, mode, message, history, terminalTail, workingDir, modelProfileID } = {}) {
   const ctx = context || {};
   return {
     SessionID: sessionID || '',
@@ -196,7 +196,8 @@ export function copilotChatPayload(context, { sessionID, mode, message, history,
     ObjectKind: ctx.objectKind || '',
     ObjectName: ctx.objectName || '',
     ObjectParent: ctx.objectParent || '',
-    WorkingDir: workingDir || ctx.workingDir || ''
+    WorkingDir: workingDir || ctx.workingDir || '',
+    ModelProfileID: modelProfileID || ''
   };
 }
 

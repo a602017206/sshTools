@@ -18,6 +18,60 @@ export namespace config {
 	        this.history = source["history"];
 	    }
 	}
+	export class CopilotModelProfile {
+	    id: string;
+	    name: string;
+	    model_id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CopilotModelProfile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.model_id = source["model_id"];
+	    }
+	}
+	export class CopilotProvider {
+	    id: string;
+	    kind: string;
+	    name: string;
+	    base_url: string;
+	    models: CopilotModelProfile[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CopilotProvider(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.base_url = source["base_url"];
+	        this.models = this.convertValues(source["models"], CopilotModelProfile);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class AppSettings {
 	    theme: string;
 	    theme_mode: string;
@@ -40,6 +94,8 @@ export namespace config {
 	    copilot_provider: string;
 	    copilot_base_url: string;
 	    copilot_model: string;
+	    copilot_providers: CopilotProvider[];
+	    copilot_active_model_id: string;
 	    copilot_max_tool_rounds: number;
 	    copilot_max_tool_result_chars: number;
 	    monitor_collapsed: boolean;
@@ -84,6 +140,8 @@ export namespace config {
 	        this.copilot_provider = source["copilot_provider"];
 	        this.copilot_base_url = source["copilot_base_url"];
 	        this.copilot_model = source["copilot_model"];
+	        this.copilot_providers = this.convertValues(source["copilot_providers"], CopilotProvider);
+	        this.copilot_active_model_id = source["copilot_active_model_id"];
 	        this.copilot_max_tool_rounds = source["copilot_max_tool_rounds"];
 	        this.copilot_max_tool_result_chars = source["copilot_max_tool_result_chars"];
 	        this.monitor_collapsed = source["monitor_collapsed"];
@@ -178,6 +236,8 @@ export namespace config {
 	        this.type = source["type"];
 	    }
 	}
+	
+	
 	
 	export class JDBCProp {
 	    name: string;
@@ -375,6 +435,7 @@ export namespace copilot {
 	    Mode: string;
 	    Message: string;
 	    Model: string;
+	    ModelProfileID: string;
 	    History: Message[];
 	    EditorContent: string;
 	    TerminalTail: string;
@@ -398,6 +459,7 @@ export namespace copilot {
 	        this.Mode = source["Mode"];
 	        this.Message = source["Message"];
 	        this.Model = source["Model"];
+	        this.ModelProfileID = source["ModelProfileID"];
 	        this.History = this.convertValues(source["History"], Message);
 	        this.EditorContent = source["EditorContent"];
 	        this.TerminalTail = source["TerminalTail"];
@@ -465,6 +527,20 @@ export namespace copilot {
 		}
 	}
 	
+	export class RemoteModel {
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteModel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
+	}
 	export class Result {
 	    Destructive: boolean;
 	    Reason: string;
@@ -505,8 +581,7 @@ export namespace service {
 	export class CommandHistoryEntry {
 	    Command: string;
 	    Count: number;
-	    // Go type: time
-	    LastUsed: any;
+	    LastUsed: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CommandHistoryEntry(source);
@@ -516,26 +591,8 @@ export namespace service {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Command = source["Command"];
 	        this.Count = source["Count"];
-	        this.LastUsed = this.convertValues(source["LastUsed"], null);
+	        this.LastUsed = source["LastUsed"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class DriverView {
 	    id: string;
@@ -804,8 +861,7 @@ export namespace service {
 	    SessionID: string;
 	    Path: string;
 	    Size: number;
-	    // Go type: time
-	    ModTime: any;
+	    ModTime: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SessionLogInfo(source);
@@ -818,26 +874,8 @@ export namespace service {
 	        this.SessionID = source["SessionID"];
 	        this.Path = source["Path"];
 	        this.Size = source["Size"];
-	        this.ModTime = this.convertValues(source["ModTime"], null);
+	        this.ModTime = source["ModTime"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class TableDDL {
 	    table_name: string;
@@ -990,6 +1028,24 @@ export namespace ssh {
 	        this.is_dir = source["is_dir"];
 	        this.is_symlink = source["is_symlink"];
 	        this.link_target = source["link_target"];
+	    }
+	}
+	export class RemoteTextFile {
+	    path: string;
+	    name: string;
+	    content: string;
+	    size: number;
+
+	    static createFrom(source: any = {}) {
+	        return new RemoteTextFile(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.content = source["content"];
+	        this.size = source["size"];
 	    }
 	}
 	export class MemoryMetrics {

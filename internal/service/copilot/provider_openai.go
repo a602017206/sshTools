@@ -34,11 +34,7 @@ func NewOpenAICompatible(baseURL, apiKey string, client *http.Client) *OpenAICom
 }
 
 func chatCompletionsURL(baseURL string) string {
-	base := strings.TrimRight(baseURL, "/")
-	if !strings.HasSuffix(base, "/v1") {
-		base += "/v1"
-	}
-	return base + "/chat/completions"
+	return openAIBase(baseURL) + "/chat/completions"
 }
 
 // Chat posts model, messages, and tools to /v1/chat/completions.
@@ -85,14 +81,18 @@ func (p *OpenAICompatible) Chat(ctx context.Context, model string, messages []Me
 }
 
 func httpStatusError(status int, body []byte, apiKey string) error {
+	return statusError("openai chat", status, body, apiKey)
+}
+
+func statusError(op string, status int, body []byte, apiKey string) error {
 	text := strings.TrimSpace(string(body))
 	if apiKey != "" {
 		text = strings.ReplaceAll(text, apiKey, "[REDACTED]")
 	}
 	if text == "" {
-		return fmt.Errorf("openai chat: HTTP %d", status)
+		return fmt.Errorf("%s: HTTP %d", op, status)
 	}
-	return fmt.Errorf("openai chat: HTTP %d: %s", status, text)
+	return fmt.Errorf("%s: HTTP %d: %s", op, status, text)
 }
 
 type openaiChatRequest struct {

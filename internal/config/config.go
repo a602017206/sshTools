@@ -50,11 +50,13 @@ type AppSettings struct {
 	JDBCRuntimeMode        string `json:"jdbc_runtime_mode"`
 	JDBCSystemJavaPath     string `json:"jdbc_system_java_path"`
 
-	CopilotProvider           string `json:"copilot_provider"`
-	CopilotBaseURL            string `json:"copilot_base_url"`
-	CopilotModel              string `json:"copilot_model"`
-	CopilotMaxToolRounds      int    `json:"copilot_max_tool_rounds"`
-	CopilotMaxToolResultChars int    `json:"copilot_max_tool_result_chars"`
+	CopilotProvider           string            `json:"copilot_provider"`
+	CopilotBaseURL            string            `json:"copilot_base_url"`
+	CopilotModel              string            `json:"copilot_model"`
+	CopilotProviders          []CopilotProvider `json:"copilot_providers"`
+	CopilotActiveModelID      string            `json:"copilot_active_model_id"`
+	CopilotMaxToolRounds      int               `json:"copilot_max_tool_rounds"`
+	CopilotMaxToolResultChars int               `json:"copilot_max_tool_result_chars"`
 
 	// Monitor panel settings
 	MonitorCollapsed       bool `json:"monitor_collapsed"`
@@ -70,9 +72,9 @@ type AppSettings struct {
 	FileManagerPerConnection map[string]FileManagerSettings `json:"file_manager_per_connection,omitempty"`
 
 	// Session log settings
-	SessionLogEnabled         bool `json:"session_log_enabled"`
-	SessionLogRetentionDays   int  `json:"session_log_retention_days"`
-	SessionLogRedactEnabled   bool `json:"session_log_redact_enabled"`
+	SessionLogEnabled       bool `json:"session_log_enabled"`
+	SessionLogRetentionDays int  `json:"session_log_retention_days"`
+	SessionLogRedactEnabled bool `json:"session_log_redact_enabled"`
 
 	// Command suggest settings
 	CommandSuggestEnabled bool `json:"command_suggest_enabled"`
@@ -193,6 +195,10 @@ func (cm *ConfigManager) Load() error {
 
 	if err := json.Unmarshal(data, cm.config); err != nil {
 		return fmt.Errorf("failed to parse config: %w", err)
+	}
+	if migrated, changed := MigrateLegacyCopilotSettings(cm.config.Settings); changed {
+		cm.config.Settings = migrated
+		return cm.Save()
 	}
 
 	return nil
@@ -386,6 +392,30 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 	if copilotModel, ok := updates["copilot_model"].(string); ok {
 		cm.config.Settings.CopilotModel = copilotModel
+	}
+	providersUpdated := false
+	if raw, ok := updates["copilot_providers"]; ok {
+		providers, err := ParseCopilotProviders(raw)
+		if err != nil {
+			return fmt.Errorf("invalid copilot_providers: %w", err)
+		}
+		cm.config.Settings.CopilotProviders = providers
+		providersUpdated = true
+	}
+	if activeModelID, ok := updates["copilot_active_model_id"].(string); ok {
+		cm.config.Settings.CopilotActiveModelID = strings.TrimSpace(activeModelID)
+	}
+	if !providersUpdated {
+		if migrated, changed := MigrateLegacyCopilotSettings(cm.config.Settings); changed {
+			cm.config.Settings = migrated
+		}
+	} else if len(cm.config.Settings.CopilotProviders) == 0 {
+		cm.config.Settings.CopilotActiveModelID = ""
+		cm.config.Settings.CopilotBaseURL = ""
+		cm.config.Settings.CopilotModel = ""
+	}
+	if len(cm.config.Settings.CopilotProviders) > 0 {
+		SyncLegacyCopilotFields(&cm.config.Settings)
 	}
 	if v, ok := updates["copilot_max_tool_rounds"].(float64); ok {
 		cm.config.Settings.CopilotMaxToolRounds = int(v)

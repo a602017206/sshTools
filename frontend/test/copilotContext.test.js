@@ -184,6 +184,11 @@ test('chat payload includes schema and the open object', () => {
   assert.equal(payload.DBType, 'oracle');
 });
 
+test('chat payload includes the selected model profile id', () => {
+  const payload = copilotChatPayload({}, { sessionID: 'ssh-1', mode: 'ssh', modelProfileID: 'm-42' });
+  assert.equal(payload.ModelProfileID, 'm-42');
+});
+
 test('助手标题按 SSH / SQL / 缓存 / 搜索 分流', () => {
   assert.equal(copilotAssistantTitle({ workspaceKind: 'ssh' }, 'ssh'), 'Shell 助手');
   assert.equal(copilotAssistantTitle({ workspaceKind: 'jdbc', dbType: 'mysql' }, 'database'), 'SQL 助手');

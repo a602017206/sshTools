@@ -75,6 +75,18 @@
     </span>
     <span class="file-manager__menu-shortcut">Enter</span>
   </button>
+  <button
+    class="file-manager__menu-item"
+    type="button"
+    disabled={!flags.canEdit}
+    title={flags.canEdit ? '在编辑器中打开' : '仅支持 1MB 以内的文本和配置文件'}
+    on:click={() => act('edit')}
+  >
+    <span class="file-manager__menu-label">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 20h8M4 16.5V20h3.5L17 10.5l-3.5-3.5L4 16.5z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 7l3.5 3.5" /></svg>
+      在线编辑
+    </span>
+  </button>
   <button class="file-manager__menu-item" type="button" on:click={() => act('refresh')}>
     <span class="file-manager__menu-label">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M20 20v-6h-6M5 15a7 7 0 0012.9 2M19 9A7 7 0 006.1 7" /></svg>

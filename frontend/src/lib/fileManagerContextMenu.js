@@ -1,7 +1,9 @@
+import { isEditableRemoteText } from './remoteTextFile.js';
+
 export const FILE_MANAGER_MENU_WIDTH = 248;
 export const FILE_MANAGER_SUBMENU_WIDTH = 200;
-export const FILE_MANAGER_MENU_HEIGHT_FILE = 448;
-export const FILE_MANAGER_MENU_HEIGHT_BLANK = 336;
+export const FILE_MANAGER_MENU_HEIGHT_FILE = 482;
+export const FILE_MANAGER_MENU_HEIGHT_BLANK = 370;
 export const FILE_MANAGER_MORE_INLINE_HEIGHT = 136;
 export const FILE_MANAGER_SUBMENU_OVERLAP = 6;
 
@@ -130,6 +132,7 @@ export function getFileManagerMenuFlags({
     canCopy: isFile,
     canPaste,
     canDownload: isFile,
+    canEdit: isEditableRemoteText(file),
     canChmod: hasFile,
     canFavorite: Boolean(historyEnabled && currentPath),
     isFavorite: isPathFavorite(history, currentPath),

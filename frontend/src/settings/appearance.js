@@ -326,6 +326,8 @@ export function getDefaultAppSettings() {
     copilot_provider: 'openai_compatible',
     copilot_base_url: '',
     copilot_model: '',
+    copilot_providers: [],
+    copilot_active_model_id: '',
     copilot_max_tool_rounds: 4,
     copilot_max_tool_result_chars: 8000,
     session_log_enabled: true,

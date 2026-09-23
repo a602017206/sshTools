@@ -12,6 +12,7 @@
   import { createCommandLineBuffer } from '../lib/commandLineBuffer.js';
   import { pickSuggestFill, shouldOfferSuggest } from '../lib/commandSuggest.js';
   import { readExecutedCommandFromTerminal } from '../lib/terminalCommandLine.js';
+  import { createXtermOptions } from '../lib/xtermOptions.js';
 
   export let sessionId = null;
   export let encoding = 'utf-8';
@@ -378,18 +379,11 @@
   onMount(async () => {
     const typography = readTerminalTypography();
 
-    terminal = new Terminal({
-      cursorBlink: true,
+    terminal = new Terminal(createXtermOptions({
       fontSize: typography.fontSize,
       fontFamily: typography.fontFamily,
-      theme: readTerminalXtermTheme(),
-      allowProposedApi: true,
-      scrollback: 1000,
-      scrollOnUserInput: true,
-      convertEol: true, // 启用自动换行转换，确保 \n 转换为 \r\n，光标回到行首
-      rightClickSelectsWord: false,
-      macOptionClickForcesSelection: true, // macOS Option+Click 强制选择
-    });
+      theme: readTerminalXtermTheme()
+    }));
 
     fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);

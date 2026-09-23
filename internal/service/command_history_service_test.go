@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -106,5 +107,22 @@ func TestCommandHistoryFilePermissions(t *testing.T) {
 	}
 	if fileInfo.Mode().Perm() != 0o600 {
 		t.Fatalf("expected file mode 0600, got %o", fileInfo.Mode().Perm())
+	}
+}
+
+func TestExportedTimeFieldsUseTSTypeString(t *testing.T) {
+	entry, ok := reflect.TypeOf(CommandHistoryEntry{}).FieldByName("LastUsed")
+	if !ok {
+		t.Fatal("CommandHistoryEntry.LastUsed missing")
+	}
+	if entry.Tag.Get("ts_type") != "string" {
+		t.Fatalf("CommandHistoryEntry.LastUsed ts_type=%q, want string (Wails cannot bind time.Time)", entry.Tag.Get("ts_type"))
+	}
+	info, ok := reflect.TypeOf(SessionLogInfo{}).FieldByName("ModTime")
+	if !ok {
+		t.Fatal("SessionLogInfo.ModTime missing")
+	}
+	if info.Tag.Get("ts_type") != "string" {
+		t.Fatalf("SessionLogInfo.ModTime ts_type=%q, want string (Wails cannot bind time.Time)", info.Tag.Get("ts_type"))
 	}
 }

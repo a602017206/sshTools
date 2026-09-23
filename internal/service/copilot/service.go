@@ -88,22 +88,23 @@ type CommandRunner interface {
 
 // ChatRequest is the user-facing copilot turn. It must not carry passwords.
 type ChatRequest struct {
-	SessionID     string
-	Mode          string // ssh | database
-	Message       string
-	Model         string
-	History       []Message
-	EditorContent string
-	TerminalTail  string
-	Host          string
-	User          string
-	DBType        string
-	Database      string
-	Schema        string
-	ObjectKind    string
-	ObjectName    string
-	ObjectParent  string
-	WorkingDir    string
+	SessionID      string
+	Mode           string // ssh | database
+	Message        string
+	Model          string
+	ModelProfileID string
+	History        []Message
+	EditorContent  string
+	TerminalTail   string
+	Host           string
+	User           string
+	DBType         string
+	Database       string
+	Schema         string
+	ObjectKind     string
+	ObjectName     string
+	ObjectParent   string
+	WorkingDir     string
 }
 
 // ChatResponse is the model reply plus any parsed artifact.

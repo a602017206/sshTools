@@ -14,12 +14,12 @@ const sessionLogTimeLayout = "2006-01-02T15-04-05"
 
 // SessionLogInfo describes a persisted session log file.
 type SessionLogInfo struct {
-	ID           string
-	ConnectionID string
-	SessionID    string
-	Path         string
-	Size         int64
-	ModTime      time.Time
+	ID           string    `json:"ID"`
+	ConnectionID string    `json:"ConnectionID"`
+	SessionID    string    `json:"SessionID"`
+	Path         string    `json:"Path"`
+	Size         int64     `json:"Size"`
+	ModTime      time.Time `json:"ModTime" ts_type:"string"`
 }
 
 // SessionLogHit is a single search match within a session log.

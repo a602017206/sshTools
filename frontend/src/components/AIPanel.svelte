@@ -21,7 +21,12 @@
     formatCopilotWorkspaceLabel,
     resolveWorkspaceFocus
   } from '../lib/copilotContext.js';
-  import { isCopilotCancelError, shouldSubmitComposerOnEnter } from '../lib/composerKeys.js';
+  import {
+    flattenCopilotModels,
+    modelPickerLabel,
+    providerKindAllowsEmptyAPIKey,
+    resolveActiveModelId
+  } from '../lib/copilotModels.js';
 
   export let sessionId = null;
   export let mode = 'ssh';
@@ -34,6 +39,8 @@
   let generationToken = 0;
   let hasApiKey = false;
   let checkingKey = true;
+  let modelOptions = [];
+  let selectedModelId = '';
   let errorMessage = '';
   let showDangerConfirm = false;
   let dangerTitle = '确认执行危险操作';
@@ -57,6 +64,9 @@
   });
   $: workspaceLabel = formatCopilotWorkspaceLabel(workspaceContext);
   $: assistantTitle = copilotAssistantTitle(workspaceContext, copilotMode);
+  $: hasModels = modelOptions.length > 0;
+  $: selectedModel = modelOptions.find((item) => item.id === selectedModelId) || modelOptions[0] || null;
+  $: canUseSelectedModel = Boolean(selectedModel) && (hasApiKey || providerKindAllowsEmptyAPIKey(selectedModel.provider_kind));
   $: composerPlaceholder = workspaceContext?.workspaceKind === 'native'
     ? (assistantTitle.includes('搜索')
       ? '描述要查的索引、DSL 或文档变更…'
@@ -80,35 +90,64 @@
     return window.go?.main?.App || window.wailsBindings || {};
   }
 
-  async function refreshHasApiKey() {
+  async function refreshModelsAndKey() {
     const api = getBindings();
-    checkingKey = true;
+    checkingKey = !modelOptions.length;
     try {
-      if (typeof api.HasCopilotAPIKey !== 'function') {
-        hasApiKey = false;
-        return;
+      let settings = {};
+      if (typeof api.GetSettings === 'function') {
+        settings = await api.GetSettings() || {};
       }
-      hasApiKey = Boolean(await api.HasCopilotAPIKey());
+      modelOptions = flattenCopilotModels(settings.copilot_providers || []);
+      selectedModelId = resolveActiveModelId(settings.copilot_providers || [], settings.copilot_active_model_id);
+      const selected = modelOptions.find((item) => item.id === selectedModelId) || modelOptions[0];
+      if (selected?.provider_id && typeof api.HasCopilotProviderAPIKey === 'function') {
+        hasApiKey = Boolean(await api.HasCopilotProviderAPIKey(selected.provider_id));
+      } else if (typeof api.HasCopilotAPIKey === 'function') {
+        hasApiKey = Boolean(await api.HasCopilotAPIKey());
+      } else {
+        hasApiKey = false;
+      }
     } catch (error) {
-      console.error('Failed to check copilot API key:', error);
+      console.error('Failed to load copilot models:', error);
+      modelOptions = [];
       hasApiKey = false;
     } finally {
       checkingKey = false;
     }
   }
 
+  async function handleModelChange(event) {
+    const nextId = event.currentTarget.value;
+    selectedModelId = nextId;
+    const api = getBindings();
+    if (typeof api.UpdateSettings === 'function' && nextId) {
+      try {
+        await api.UpdateSettings({ copilot_active_model_id: nextId });
+      } catch (error) {
+        console.warn('Failed to persist active copilot model:', error);
+      }
+    }
+    await refreshModelsAndKey();
+  }
+
   let keyCheckedForOpen = false;
+  let lastSettingsEpoch = -1;
 
   onMount(() => {
-    refreshHasApiKey();
+    refreshModelsAndKey();
   });
 
   $: if ($copilotStore.open && !keyCheckedForOpen) {
     keyCheckedForOpen = true;
-    refreshHasApiKey();
+    refreshModelsAndKey();
   }
   $: if (!$copilotStore.open) {
     keyCheckedForOpen = false;
+  }
+  $: if ($copilotStore.settingsEpoch !== lastSettingsEpoch) {
+    lastSettingsEpoch = $copilotStore.settingsEpoch;
+    if ($copilotStore.open) refreshModelsAndKey();
   }
 
   function historyForRequest() {
@@ -156,7 +195,7 @@
 
   async function sendMessage() {
     const text = String(draft || '').trim();
-    if (!text || generating || !hasSession || !hasApiKey) return;
+    if (!text || generating || !hasSession || !canUseSelectedModel) return;
     const api = getBindings();
     if (typeof api.CopilotChat !== 'function') {
       errorMessage = 'Copilot 绑定不可用';
@@ -177,7 +216,8 @@
         mode: copilotMode,
         message: text,
         history,
-        terminalTail
+        terminalTail,
+        modelProfileID: selectedModelId
       }));
       if (token !== generationToken) return;
       const normalized = normalizeChatResponse(response);
@@ -417,12 +457,28 @@
     </div>
   {:else if checkingKey}
     <div class="ai-panel__empty" role="status">
-      <span>正在检查 API Key…</span>
+      <span>正在检查模型配置…</span>
     </div>
-  {:else if !hasApiKey}
+  {:else if !hasModels}
     <div class="ai-panel__empty" role="status">
-      <strong>尚未配置 API Key</strong>
-      <span>请先在设置中填写 Base URL、模型名称和密钥。</span>
+      <strong>尚未配置模型</strong>
+      <span>请先在设置中添加服务商和模型，然后在对话里切换。</span>
+      <button type="button" class="ai-panel__cta" on:click={onOpenSettings}>去设置</button>
+    </div>
+  {:else if !canUseSelectedModel}
+    <div class="ai-panel__empty" role="status">
+      <strong>当前模型未配置 API Key</strong>
+      <span>请先为该服务商填写密钥，或换一个已配置的模型。</span>
+      {#if modelOptions.length}
+        <label class="ai-panel__model-field">
+          <span>选用模型</span>
+          <select value={selectedModelId} on:change={handleModelChange}>
+            {#each modelOptions as option}
+              <option value={option.id}>{modelPickerLabel(option)}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <button type="button" class="ai-panel__cta" on:click={onOpenSettings}>去设置</button>
     </div>
   {:else}
@@ -456,6 +512,16 @@
     </div>
 
     <form class="ai-panel__composer" on:submit|preventDefault={sendMessage}>
+      {#if modelOptions.length}
+        <label class="ai-panel__model-field">
+          <span>模型</span>
+          <select value={selectedModelId} on:change={handleModelChange} disabled={generating}>
+            {#each modelOptions as option}
+              <option value={option.id}>{modelPickerLabel(option)}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <textarea
         bind:value={draft}
         placeholder={composerPlaceholder}
@@ -649,6 +715,23 @@
     background: var(--accent-primary) !important;
     border-color: var(--accent-primary) !important;
     color: #fff !important;
+  }
+
+  .ai-panel__model-field {
+    display: grid;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .ai-panel__model-field select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
   }
 
   .ai-panel__composer {

@@ -23,6 +23,8 @@ export function ClearBackgroundImage():Promise<void>;
 
 export function ClearCopilotAPIKey():Promise<void>;
 
+export function ClearCopilotProviderAPIKey(arg1:string):Promise<void>;
+
 export function CloseDatabase(arg1:string):Promise<void>;
 
 export function CloseNativeDatabase(arg1:string):Promise<void>;
@@ -147,6 +149,8 @@ export function Greet(arg1:string):Promise<string>;
 
 export function HasCopilotAPIKey():Promise<boolean>;
 
+export function HasCopilotProviderAPIKey(arg1:string):Promise<boolean>;
+
 export function HasPassword(arg1:string):Promise<boolean>;
 
 export function ImportConnections(arg1:string):Promise<number>;
@@ -164,6 +168,8 @@ export function ImportJDBCRuntimeArchive(arg1:string):Promise<service.JDBCRuntim
 export function InstallJDBCDriver(arg1:string,arg2:string):Promise<void>;
 
 export function InstallJDBCManagedRuntime():Promise<service.JDBCRuntimeActivationResult>;
+
+export function ListCopilotProviderModels(arg1:string,arg2:string,arg3:string,arg4:string):Promise<Array<copilot.RemoteModel>>;
 
 export function ListDatabaseObjects(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<Array<string>>;
 
@@ -201,6 +207,8 @@ export function ParseURL(arg1:string):Promise<Record<string, any>>;
 
 export function PurgeExpiredSessionLogs():Promise<number>;
 
+export function ReadRemoteTextFile(arg1:string,arg2:string):Promise<ssh.RemoteTextFile>;
+
 export function RecordCommand(arg1:string,arg2:string):Promise<void>;
 
 export function RemoveConnection(arg1:string):Promise<void>;
@@ -218,6 +226,8 @@ export function RestartJDBCAgent():Promise<void>;
 export function SaveBinaryFile(arg1:string,arg2:string):Promise<string>;
 
 export function SavePassword(arg1:string,arg2:string):Promise<void>;
+
+export function SaveRemoteTextFile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function SearchDirectories(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<Array<ssh.SearchResult>>;
 
@@ -252,6 +262,8 @@ export function SendSSHData(arg1:string,arg2:string):Promise<void>;
 export function SendSSHDataBinary(arg1:string,arg2:string):Promise<void>;
 
 export function SetCopilotAPIKey(arg1:string):Promise<void>;
+
+export function SetCopilotProviderAPIKey(arg1:string,arg2:string):Promise<void>;
 
 export function SetJDBCRuntimeMode(arg1:string,arg2:string):Promise<service.JDBCRuntimeActivationResult>;
 
