@@ -7,7 +7,6 @@
   import { ClipboardGetText, ClipboardSetText } from '../../wailsjs/runtime/runtime.js';
   import { getTerminalShortcutAction, shouldScrollToBottomBeforeArrowKey } from '../lib/terminalShortcuts.js';
   import {
-    copyUsingHiddenTextarea,
     createSelectionMemory,
     prepareTerminalPaste,
     reduceSelectionMemory,
@@ -293,37 +292,17 @@
     );
   }
 
-  async function copyToClipboard(text, { sync = false } = {}) {
+  function copyToClipboard(text) {
     if (!text) {
       return;
     }
-
-    let synced = false;
-    if (sync) {
-      synced = copyUsingHiddenTextarea(text, typeof document !== 'undefined' ? document : null);
-      terminal?.focus?.();
-    }
-
-    try {
-      const ok = await ClipboardSetText(text);
-      if (ok !== false) {
-        return;
-      }
-      console.warn('Wails clipboard copy returned false, falling back to browser clipboard');
-    } catch (error) {
-      console.warn('Wails clipboard copy failed, falling back to browser clipboard:', error);
-    }
-
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-
-    if (synced) {
-      return;
-    }
-
-    throw new Error('Clipboard API is unavailable');
+    // 浏览器 copy / execCommand 遇到成对的 {} 会把剪贴板写成空白，并盖掉系统剪贴板。
+    // 等这次事件结束后再用 pbcopy 写入。
+    setTimeout(() => {
+      ClipboardSetText(text).catch((error) => {
+        console.error('Failed to copy terminal selection:', error);
+      });
+    }, 0);
   }
 
   async function readClipboardText() {
@@ -345,9 +324,7 @@
     if (!text) {
       return;
     }
-    copyToClipboard(text, { sync: true }).catch(error => {
-      console.error('Failed to copy terminal selection:', error);
-    });
+    copyToClipboard(text);
   }
 
   function pasteText(text) {
@@ -403,9 +380,7 @@
     const selectedText = contextMenu?.selectedText || '';
     closeContextMenu();
     if (id === 'copy' && selectedText) {
-      copyToClipboard(selectedText, { sync: true }).catch((error) => {
-        console.error('Failed to copy terminal selection:', error);
-      });
+      copyToClipboard(selectedText);
       return;
     }
     if (id === 'paste') {
@@ -469,19 +444,11 @@
     // 捕获阶段先于 xterm 自己的 copy 监听，避免它把空选区写进剪贴板。
     terminalElement.addEventListener('copy', (event) => {
       const text = resolvedSelectionText();
-      if (!text) {
-        if (terminal?.hasSelection?.()) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-        return;
-      }
-      event.clipboardData?.setData('text/plain', text);
       event.preventDefault();
       event.stopPropagation();
-      copyToClipboard(text).catch(error => {
-        console.error('Failed to copy terminal selection via copy event:', error);
-      });
+      if (text) {
+        copyToClipboard(text);
+      }
     }, true);
 
     terminalElement.addEventListener('paste', (event) => {
