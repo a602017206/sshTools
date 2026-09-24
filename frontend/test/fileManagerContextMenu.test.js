@@ -77,6 +77,15 @@ test('空白处右键禁用针对文件的动作，文件右键启用下载和�
   assert.equal(file.canOpen, true);
   assert.equal(file.canEdit, true);
   assert.equal(getFileManagerMenuFlags({
+    currentPath: '/opt/nginx',
+    history: ['/opt/nginx'],
+    favorites: [],
+  }).isFavorite, false);
+  assert.equal(getFileManagerMenuFlags({
+    currentPath: '/opt/nginx',
+    favorites: ['/opt/nginx'],
+  }).isFavorite, true);
+  assert.equal(getFileManagerMenuFlags({
     file: { name: 'photo.png', path: '/opt/photo.png', is_dir: false, size: 20 },
   }).canEdit, false);
 

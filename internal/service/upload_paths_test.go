@@ -6,6 +6,32 @@ import (
 	"testing"
 )
 
+func TestUploadBatchLabelUsesFileNames(t *testing.T) {
+	if got := UploadBatchLabel([]string{"logs/app.log"}); got != "logs/app.log" {
+		t.Fatalf("single = %q", got)
+	}
+	if got := UploadBatchLabel([]string{"a.txt", "b.txt"}); got != "a.txt、b.txt" {
+		t.Fatalf("many = %q", got)
+	}
+	long := ""
+	for i := 0; i < 20; i++ {
+		long += "abcdefghij"
+	}
+	got := UploadBatchLabel([]string{long, "b.txt"})
+	if got == "上传完成" || got == "" {
+		t.Fatalf("label = %q", got)
+	}
+}
+
+func TestTransferPercentageUsesBytes(t *testing.T) {
+	if got := transferPercentage(25, 100); got != 25 {
+		t.Fatalf("percentage = %v", got)
+	}
+	if got := transferPercentage(0, 0); got != 0 {
+		t.Fatalf("empty = %v", got)
+	}
+}
+
 func TestExpandLocalUploadPathsKeepsFilesAndWalksFolders(t *testing.T) {
 	root := t.TempDir()
 	filePath := filepath.Join(root, "readme.txt")

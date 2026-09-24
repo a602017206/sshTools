@@ -6,6 +6,13 @@
   import '@xterm/xterm/css/xterm.css';
   import { ClipboardGetText, ClipboardSetText } from '../../wailsjs/runtime/runtime.js';
   import { getTerminalShortcutAction, shouldScrollToBottomBeforeArrowKey } from '../lib/terminalShortcuts.js';
+  import {
+    copyUsingHiddenTextarea,
+    createSelectionMemory,
+    prepareTerminalPaste,
+    reduceSelectionMemory,
+    resolveTerminalCopyText
+  } from '../lib/terminalSelection.js';
   import { getXtermTheme, resolveTerminalThemeFromSettings } from '../lib/terminalTheme.js';
   import { decodeTerminalOutput, normalizeTerminalCharset, terminalContextMenuItems, TERMINAL_CHARSET_OPTIONS } from '../lib/terminalCharset.js';
   import { getViewportMenuPosition, portalToBody } from '../lib/contextMenu.js';
@@ -43,7 +50,10 @@
   let zmodemDownloadSavedPath = null;
   let zmodemTransferModal = null;
   let handleAppearanceUpdated = null;
+  let handleSelectionMouseUp = null;
   let contextMenu = null;
+  let selectionMemory = createSelectionMemory();
+  let selectionChangeDisposable = null;
   const commandLineBuffer = createCommandLineBuffer();
   let suggestItems = [];
   let suggestSelectedIndex = 0;
@@ -267,9 +277,31 @@
     fitAddon?.fit();
   }
 
-  async function copyToClipboard(text) {
+  function applySelectionEvent(type) {
+    selectionMemory = reduceSelectionMemory(selectionMemory, {
+      type,
+      liveText: terminal?.getSelection?.() || '',
+      hasSelection: Boolean(terminal?.hasSelection?.())
+    });
+  }
+
+  function resolvedSelectionText() {
+    return resolveTerminalCopyText(
+      terminal?.getSelection?.() || '',
+      Boolean(terminal?.hasSelection?.()),
+      selectionMemory.text
+    );
+  }
+
+  async function copyToClipboard(text, { sync = false } = {}) {
     if (!text) {
       return;
+    }
+
+    let synced = false;
+    if (sync) {
+      synced = copyUsingHiddenTextarea(text, typeof document !== 'undefined' ? document : null);
+      terminal?.focus?.();
     }
 
     try {
@@ -284,6 +316,10 @@
 
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    if (synced) {
       return;
     }
 
@@ -305,18 +341,19 @@
   }
 
   function copySelection() {
-    const text = terminal?.getSelection?.() || '';
+    const text = resolvedSelectionText();
     if (!text) {
       return;
     }
-    copyToClipboard(text).catch(error => {
+    copyToClipboard(text, { sync: true }).catch(error => {
       console.error('Failed to copy terminal selection:', error);
     });
   }
 
   function pasteText(text) {
-    if (text && sessionId) {
-      handleOutgoingInput(text);
+    const payload = prepareTerminalPaste(text, Boolean(terminal?.modes?.bracketedPasteMode));
+    if (payload && sessionId) {
+      handleOutgoingInput(payload);
     }
   }
 
@@ -342,7 +379,7 @@
   function openContextMenu(event) {
     event.preventDefault();
     event.stopPropagation();
-    const selectedText = terminal?.getSelection?.() || '';
+    const selectedText = resolvedSelectionText();
     contextMenu = {
       selectedText,
       ...getViewportMenuPosition({
@@ -366,7 +403,7 @@
     const selectedText = contextMenu?.selectedText || '';
     closeContextMenu();
     if (id === 'copy' && selectedText) {
-      copyToClipboard(selectedText).catch((error) => {
+      copyToClipboard(selectedText, { sync: true }).catch((error) => {
         console.error('Failed to copy terminal selection:', error);
       });
       return;
@@ -393,8 +430,8 @@
 
     fitAddon.fit();
 
-    // 常见复制、粘贴快捷键。无选区的 Ctrl+C 保持发送中断信号的终端语义。
-    // macOS 原生 Edit 菜单会先处理 Cmd+C；复制路径不要 preventDefault，以便触发 copy 事件。
+    // 无选区的 Ctrl+C 仍发送中断。有选区时 Ctrl/Cmd+C 复制，Ctrl/Cmd+V 粘贴。
+    // 复制要 preventDefault，避免随后的 copy 事件用空的 DOM 选区把剪贴板清掉。
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') {
         return true;
@@ -410,6 +447,7 @@
 
       const action = getTerminalShortcutAction(event, terminal.hasSelection());
       if (action === 'copy') {
+        event.preventDefault();
         copySelection();
         return false;
       }
@@ -424,18 +462,27 @@
       return true;
     });
 
-    // 承接浏览器 / macOS Edit 菜单的 copy 事件：xterm 选区不在 DOM selection 中。
+    selectionChangeDisposable = terminal.onSelectionChange?.(() => {
+      applySelectionEvent('change');
+    });
+
+    // 捕获阶段先于 xterm 自己的 copy 监听，避免它把空选区写进剪贴板。
     terminalElement.addEventListener('copy', (event) => {
-      const text = terminal?.getSelection?.() || '';
+      const text = resolvedSelectionText();
       if (!text) {
+        if (terminal?.hasSelection?.()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
         return;
       }
       event.clipboardData?.setData('text/plain', text);
       event.preventDefault();
+      event.stopPropagation();
       copyToClipboard(text).catch(error => {
         console.error('Failed to copy terminal selection via copy event:', error);
       });
-    });
+    }, true);
 
     terminalElement.addEventListener('paste', (event) => {
       const text = event.clipboardData?.getData('text/plain');
@@ -444,6 +491,25 @@
         pasteText(text);
       }
     });
+    terminalElement.addEventListener('mousedown', (event) => {
+      if (event.button === 0) {
+        applySelectionEvent('pointerdown');
+      }
+    }, true);
+    handleSelectionMouseUp = () => {
+      if (!selectionMemory.pointerSelecting) {
+        return;
+      }
+      // 先结束拖动，避免随后的 tail 输出把快照当成「正在框选空白」清掉。
+      applySelectionEvent('pointerup');
+      setTimeout(() => {
+        const liveText = terminal?.getSelection?.() || '';
+        if (liveText) {
+          applySelectionEvent('change');
+        }
+      }, 0);
+    };
+    window.addEventListener('mouseup', handleSelectionMouseUp);
     terminalElement.addEventListener('contextmenu', openContextMenu);
 
     // 动态导入 zmodem.js
@@ -545,6 +611,11 @@
       if (handleAppearanceUpdated) {
         window.removeEventListener('app:appearance-updated', handleAppearanceUpdated);
       }
+      if (handleSelectionMouseUp) {
+        window.removeEventListener('mouseup', handleSelectionMouseUp);
+      }
+      selectionChangeDisposable?.dispose?.();
+      selectionChangeDisposable = null;
     };
   });
 

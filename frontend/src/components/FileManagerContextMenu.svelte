@@ -16,7 +16,7 @@
   export let y = 0;
   export let file = null;
   export let currentPath = '/';
-  export let history = [];
+  export let favorites = [];
   export let historyEnabled = true;
   export let clipboard = null;
   export let moreOpen = false;
@@ -31,7 +31,7 @@
   $: flags = getFileManagerMenuFlags({
     file,
     currentPath,
-    history,
+    favorites,
     historyEnabled,
     clipboard,
   });

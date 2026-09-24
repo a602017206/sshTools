@@ -209,6 +209,7 @@ const defaultFileManagerConfig = {
   historyEnabled:    true,
   historyLimit:     5,
   history:          [],
+  favorites:        [],
 };
 
 export const fileManagerConfigStore = writable({
@@ -230,6 +231,7 @@ export async function loadFileManagerConfig(connectionId) {
       historyEnabled: config?.history_enabled ?? true,
       historyLimit: config?.history_limit ?? 5,
       history: config?.history ?? [],
+      favorites: config?.favorites ?? [],
     };
     fileManagerConfigStore.set(mappedConfig);
     return mappedConfig;

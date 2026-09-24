@@ -14,8 +14,8 @@ test('macOS Cmd+C 无选区时吞掉按键，避免泄漏到 PTY', () => {
   assert.equal(getTerminalShortcutAction({ code: 'KeyC', metaKey: true }, false), 'noop');
 });
 
-test('识别终端常用粘贴快捷键，保留 Ctrl+V 给远端终端', () => {
-  assert.equal(getTerminalShortcutAction({ key: 'v', ctrlKey: true }, false), null);
+test('Ctrl+V、Cmd+V、Ctrl+Shift+V 和 Shift+Insert 都粘贴', () => {
+  assert.equal(getTerminalShortcutAction({ key: 'v', ctrlKey: true }, false), 'paste');
   assert.equal(getTerminalShortcutAction({ key: 'V', metaKey: true }, false), 'paste');
   assert.equal(getTerminalShortcutAction({ key: 'v', ctrlKey: true, shiftKey: true }, false), 'paste');
   assert.equal(getTerminalShortcutAction({ key: 'Insert', shiftKey: true }, false), 'paste');
@@ -29,7 +29,7 @@ test('Ctrl+Shift+C 和 Ctrl+Insert 仅在有选区时复制', () => {
 
 test('支持通过 event.code 识别复制粘贴键', () => {
   assert.equal(getTerminalShortcutAction({ code: 'KeyC', metaKey: true }, true), 'copy');
-  assert.equal(getTerminalShortcutAction({ code: 'KeyV', ctrlKey: true }, false), null);
+  assert.equal(getTerminalShortcutAction({ code: 'KeyV', ctrlKey: true }, false), 'paste');
   assert.equal(getTerminalShortcutAction({ code: 'KeyV', ctrlKey: true, shiftKey: true }, false), 'paste');
   assert.equal(getTerminalShortcutAction({ code: 'Insert', ctrlKey: true }, true), 'copy');
 });
@@ -42,6 +42,8 @@ test('带有冲突修饰键的组合不被终端快捷键接管', () => {
 test('单独按下 Command 等修饰键不交给 xterm，避免滚到最底部', () => {
   assert.equal(getTerminalShortcutAction({ key: 'Meta', metaKey: true }, true), 'noop');
   assert.equal(getTerminalShortcutAction({ key: 'Control', ctrlKey: true }, false), 'noop');
+  assert.equal(getTerminalShortcutAction({ key: 'Ctrl', ctrlKey: true }, true), 'noop');
+  assert.equal(getTerminalShortcutAction({ code: 'ControlLeft', ctrlKey: true }, true), 'noop');
   assert.equal(getTerminalShortcutAction({ key: 'Alt', altKey: true }, false), 'noop');
   assert.equal(getTerminalShortcutAction({ key: 'Shift', shiftKey: true }, false), 'noop');
 });

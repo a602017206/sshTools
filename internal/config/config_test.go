@@ -253,6 +253,35 @@ func TestDefaultFileManagerDirectoryTrackingEnabled(t *testing.T) {
 	if !settings.DirectoryTracking {
 		t.Fatal("expected DirectoryTracking default true")
 	}
+	if settings.Favorites == nil {
+		t.Fatal("expected empty favorites list")
+	}
+}
+
+func TestUpdateSettingsPersistsFileManagerFavorites(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	cm := newDiskTestConfigManager(configPath)
+	if err := cm.UpdateSettings(map[string]interface{}{
+		"connection_id": "conn-1",
+		"file_manager_settings": map[string]interface{}{
+			"history":   []interface{}{"/tmp"},
+			"favorites": []interface{}{"/opt/nginx"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := newDiskTestConfigManager(configPath)
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	settings := reloaded.GetFileManagerSettings("conn-1")
+	if len(settings.History) != 1 || settings.History[0] != "/tmp" {
+		t.Fatalf("history = %#v", settings.History)
+	}
+	if len(settings.Favorites) != 1 || settings.Favorites[0] != "/opt/nginx" {
+		t.Fatalf("favorites = %#v", settings.Favorites)
+	}
 }
 
 func TestUpdateSettingsPersistsSessionLogFields(t *testing.T) {

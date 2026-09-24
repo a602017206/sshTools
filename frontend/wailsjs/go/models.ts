@@ -5,6 +5,7 @@ export namespace config {
 	    history_enabled: boolean;
 	    history_limit: number;
 	    history: string[];
+	    favorites: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new FileManagerSettings(source);
@@ -16,6 +17,7 @@ export namespace config {
 	        this.history_enabled = source["history_enabled"];
 	        this.history_limit = source["history_limit"];
 	        this.history = source["history"];
+	        this.favorites = source["favorites"];
 	    }
 	}
 	export class CopilotModelProfile {
@@ -1030,24 +1032,6 @@ export namespace ssh {
 	        this.link_target = source["link_target"];
 	    }
 	}
-	export class RemoteTextFile {
-	    path: string;
-	    name: string;
-	    content: string;
-	    size: number;
-
-	    static createFrom(source: any = {}) {
-	        return new RemoteTextFile(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.path = source["path"];
-	        this.name = source["name"];
-	        this.content = source["content"];
-	        this.size = source["size"];
-	    }
-	}
 	export class MemoryMetrics {
 	    total: number;
 	    used: number;
@@ -1156,6 +1140,24 @@ export namespace ssh {
 	}
 	
 	
+	export class RemoteTextFile {
+	    path: string;
+	    name: string;
+	    content: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteTextFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.content = source["content"];
+	        this.size = source["size"];
+	    }
+	}
 	export class SearchResult {
 	    path: string;
 	    name: string;

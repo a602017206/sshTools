@@ -4,9 +4,17 @@ function matchesKey(event, letter, code) {
   return shortcutKey(event) === letter || event.code === code;
 }
 
+const MODIFIER_ONLY_CODES = new Set([
+  'MetaLeft', 'MetaRight', 'ControlLeft', 'ControlRight',
+  'AltLeft', 'AltRight', 'ShiftLeft', 'ShiftRight'
+]);
+
 export function isModifierOnlyKey(event) {
   const key = event?.key;
-  return key === 'Meta' || key === 'Control' || key === 'Alt' || key === 'Shift' || key === 'OS';
+  if (key === 'Meta' || key === 'Control' || key === 'Alt' || key === 'Shift' || key === 'OS' || key === 'Ctrl') {
+    return true;
+  }
+  return MODIFIER_ONLY_CODES.has(event?.code);
 }
 
 /** 终端滚屏后，方向键会被 xterm 用来翻历史输出；先回到底部再发给 shell 读命令历史。 */
@@ -43,9 +51,8 @@ export function getTerminalShortcutAction(event, hasSelection) {
     return 'copy';
   }
 
-  // Ctrl+V 是终端控制字符（例如 Vim 搜索中输入字面量），不能作为粘贴快捷键拦截。
-  // macOS 使用 Cmd+V；其他平台仍支持 Ctrl+Shift+V 和 Shift+Insert 粘贴。
-  if ((event.metaKey && isV) || (event.ctrlKey && event.shiftKey && isV) || (event.shiftKey && isInsert)) {
+  // Ctrl+V / Cmd+V 粘贴。无选区的 Ctrl+C 仍交给远端做中断。
+  if ((event.metaKey && isV) || (event.ctrlKey && isV) || (event.shiftKey && isInsert)) {
     return 'paste';
   }
 

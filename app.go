@@ -36,6 +36,7 @@ var sessionLogAppendWarnOnce sync.Once
 
 const (
 	sftpProgressEventPrefix               = "sftp:progress:"
+	sftpSessionProgressEventPrefix        = "sftp:session-progress:"
 	jdbcAgentSupervisorUnavailableMessage = "JDBC agent supervisor 未初始化"
 )
 
@@ -1068,11 +1069,15 @@ func (a *App) UpdateFileManagerSettings(connectionId string, settings map[string
 }
 
 // UploadFiles uploads multiple files
+func (a *App) emitSFTPProgress(progress ssh.TransferProgress) {
+	runtime.EventsEmit(a.ctx, sftpProgressEventPrefix+progress.TransferID, progress)
+	if progress.SessionID != "" {
+		runtime.EventsEmit(a.ctx, sftpSessionProgressEventPrefix+progress.SessionID, progress)
+	}
+}
+
 func (a *App) UploadFiles(sessionID string, localPaths []string, remotePath string) ([]string, error) {
-	return a.sftpService.UploadFiles(sessionID, localPaths, remotePath, func(progress ssh.TransferProgress) {
-		// Emit event to frontend
-		runtime.EventsEmit(a.ctx, sftpProgressEventPrefix+progress.TransferID, progress)
-	})
+	return a.sftpService.UploadFiles(sessionID, localPaths, remotePath, a.emitSFTPProgress)
 }
 
 // ExpandUploadPaths walks local files and folders into a remote-relative tree.
@@ -1082,9 +1087,7 @@ func (a *App) ExpandUploadPaths(localPaths []string) ([]service.LocalUploadItem,
 
 // UploadExpandedItems uploads a previously expanded local tree, including renamed RelPaths.
 func (a *App) UploadExpandedItems(sessionID string, remotePath string, items []service.LocalUploadItem) ([]string, error) {
-	return a.sftpService.UploadItems(sessionID, remotePath, items, func(progress ssh.TransferProgress) {
-		runtime.EventsEmit(a.ctx, sftpProgressEventPrefix+progress.TransferID, progress)
-	})
+	return a.sftpService.UploadItems(sessionID, remotePath, items, a.emitSFTPProgress)
 }
 
 // DownloadFile downloads a single file

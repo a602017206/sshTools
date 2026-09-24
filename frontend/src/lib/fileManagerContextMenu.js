@@ -62,6 +62,8 @@ export function isPathFavorite(history, path) {
   return Array.isArray(history) && history.includes(path);
 }
 
+export const FAVORITE_PATH_LIMIT = 50;
+
 export function toggleFavoriteHistory(history, path, limit = 5) {
   const next = [...(history || [])];
   const index = next.indexOf(path);
@@ -114,6 +116,7 @@ export function getFileManagerMenuFlags({
   file = null,
   currentPath = '/',
   history = [],
+  favorites = [],
   historyEnabled = true,
   clipboard = null,
 } = {}) {
@@ -134,8 +137,8 @@ export function getFileManagerMenuFlags({
     canDownload: isFile,
     canEdit: isEditableRemoteText(file),
     canChmod: hasFile,
-    canFavorite: Boolean(historyEnabled && currentPath),
-    isFavorite: isPathFavorite(history, currentPath),
+    canFavorite: Boolean(currentPath),
+    isFavorite: isPathFavorite(favorites, currentPath),
   };
 }
 

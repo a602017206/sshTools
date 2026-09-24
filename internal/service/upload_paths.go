@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -118,6 +119,48 @@ func markSeen(seen map[string]struct{}, key string) bool {
 	}
 	seen[key] = struct{}{}
 	return true
+}
+
+// UploadBatchLabel is the history title for one transfer.
+// A single file keeps its relative path. Several files keep every name when
+// the line is short, otherwise the first name plus a count.
+func UploadBatchLabel(relPaths []string) string {
+	names := make([]string, 0, len(relPaths))
+	for _, rel := range relPaths {
+		rel = strings.TrimSpace(rel)
+		if rel == "" {
+			continue
+		}
+		names = append(names, rel)
+	}
+	if len(names) == 0 {
+		return "未命名文件"
+	}
+	if len(names) == 1 {
+		return names[0]
+	}
+	joined := strings.Join(names, "、")
+	if len([]rune(joined)) <= 80 {
+		return joined
+	}
+	return fmt.Sprintf("%s 等 %d 个文件", names[0], len(names))
+}
+
+func transferPercentage(sent, total int64) float64 {
+	if total <= 0 {
+		if sent > 0 {
+			return 100
+		}
+		return 0
+	}
+	percentage := float64(sent) / float64(total) * 100
+	if percentage > 100 {
+		return 100
+	}
+	if percentage < 0 {
+		return 0
+	}
+	return percentage
 }
 
 func joinRemoteUploadPath(remoteDir, relPath string) string {

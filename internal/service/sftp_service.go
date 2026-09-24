@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 
@@ -179,40 +180,72 @@ func (s *SFTPService) runItemUpload(
 	defer unlock()
 
 	_, files := partitionLocalUploadItems(items)
-	total := len(files)
-	done := 0
-	emit := func(filename, status, errMsg string) {
-		percentage := 100.0
-		if total > 0 {
-			percentage = float64(done) / float64(total) * 100
+	rels := make([]string, 0, len(files))
+	sizes := make(map[string]int64, len(files))
+	var totalBytes int64
+	for _, file := range files {
+		name := stringsTrimUploadName(file.RelPath, file.LocalPath)
+		rels = append(rels, name)
+		info, statErr := os.Stat(file.LocalPath)
+		if statErr != nil {
+			s.emitUpload(transfer, sessionID, progressCallback, ssh.TransferProgress{
+				Filename: name,
+				Status:   "failed",
+				Error:    statErr.Error(),
+			})
+			return
 		}
-		progress := ssh.TransferProgress{
-			TransferID: transfer.ID,
-			SessionID:  sessionID,
-			Filename:   filename,
+		sizes[file.LocalPath] = info.Size()
+		totalBytes += info.Size()
+	}
+
+	label := UploadBatchLabel(rels)
+	currentName := label
+	var completedBytes int64
+	emit := func(name string, sent int64, speed int64, status, errMsg string) {
+		if name == "" {
+			name = currentName
+		}
+		percentage := transferPercentage(sent, totalBytes)
+		if status == "completed" {
+			percentage = 100
+			sent = totalBytes
+		}
+		s.emitUpload(transfer, sessionID, progressCallback, ssh.TransferProgress{
+			Filename:   name,
+			BytesSent:  sent,
+			TotalBytes: totalBytes,
 			Percentage: percentage,
+			Speed:      speed,
 			Status:     status,
 			Error:      errMsg,
-		}
-		s.transferManager.UpdateProgress(transfer.ID, progress)
-		if progressCallback != nil {
-			progressCallback(progress)
-		}
+		})
+	}
+
+	if len(rels) > 0 {
+		emit(rels[0], 0, 0, "running", "")
 	}
 
 	err := runFolderUpload(folderUploadRunner{
 		mkdir: sftpClient.EnsureDirectory,
-		upload: func(localPath, remotePath string) error {
-			rel := remotePath
-			if total > 0 {
-				rel = fmt.Sprintf("%s (%d/%d)", filepath.ToSlash(filepath.Base(remotePath)), done+1, total)
+		upload: func(localPath, remoteFile string) error {
+			name := stringsTrimUploadName("", localPath)
+			for _, file := range files {
+				if file.LocalPath == localPath {
+					name = stringsTrimUploadName(file.RelPath, file.LocalPath)
+					break
+				}
 			}
-			emit(rel, "running", "")
-			if err := sftpClient.UploadFile(localPath, remotePath, nil); err != nil {
-				return err
+			currentName = name
+			fileSize := sizes[localPath]
+			uploadErr := sftpClient.UploadFile(localPath, remoteFile, func(progress ssh.TransferProgress) {
+				emit(name, completedBytes+progress.BytesSent, progress.Speed, "running", "")
+			})
+			if uploadErr != nil {
+				return uploadErr
 			}
-			done++
-			emit(rel, "running", "")
+			completedBytes += fileSize
+			emit(name, completedBytes, 0, "running", "")
 			return nil
 		},
 		cancelled: transfer.IsCancelled,
@@ -220,11 +253,28 @@ func (s *SFTPService) runItemUpload(
 
 	switch {
 	case errors.Is(err, errFolderUploadCancelled):
-		emit("已取消", "cancelled", err.Error())
+		emit(currentName, completedBytes, 0, "cancelled", err.Error())
 	case err != nil:
-		emit("上传失败", "failed", err.Error())
+		emit(currentName, completedBytes, 0, "failed", err.Error())
 	default:
-		emit("上传完成", "completed", "")
+		emit(label, totalBytes, 0, "completed", "")
+	}
+}
+
+func stringsTrimUploadName(relPath, localPath string) string {
+	name := filepath.ToSlash(relPath)
+	if name == "" || name == "." {
+		name = filepath.Base(localPath)
+	}
+	return name
+}
+
+func (s *SFTPService) emitUpload(transfer *ssh.TransferContext, sessionID string, progressCallback ProgressCallback, progress ssh.TransferProgress) {
+	progress.TransferID = transfer.ID
+	progress.SessionID = sessionID
+	s.transferManager.UpdateProgress(transfer.ID, progress)
+	if progressCallback != nil {
+		progressCallback(progress)
 	}
 }
 

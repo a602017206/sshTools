@@ -87,6 +87,7 @@ type FileManagerSettings struct {
 	HistoryEnabled    bool     `json:"history_enabled"`    // Enable history tracking
 	HistoryLimit      int      `json:"history_limit"`      // Max history entries
 	History           []string `json:"history"`            // History path list
+	Favorites         []string `json:"favorites"`          // Explicitly favorited paths
 }
 
 // DefaultSettings returns default application settings
@@ -133,6 +134,7 @@ func DefaultFileManagerSettings() FileManagerSettings {
 		HistoryEnabled:    true,
 		HistoryLimit:      5,
 		History:           []string{},
+		Favorites:         []string{},
 	}
 }
 
@@ -459,13 +461,10 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 				settings.HistoryLimit = int(historyLimit)
 			}
 			if history, ok := fmSettings["history"].([]interface{}); ok {
-				historyList := []string{}
-				for _, h := range history {
-					if path, ok := h.(string); ok {
-						historyList = append(historyList, path)
-					}
-				}
-				settings.History = historyList
+				settings.History = stringListFromSettings(history)
+			}
+			if favorites, ok := fmSettings["favorites"].([]interface{}); ok {
+				settings.Favorites = stringListFromSettings(favorites)
 			}
 
 			cm.config.Settings.FileManagerPerConnection[connID] = settings
@@ -473,6 +472,16 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 
 	return cm.Save()
+}
+
+func stringListFromSettings(values []interface{}) []string {
+	list := []string{}
+	for _, value := range values {
+		if text, ok := value.(string); ok {
+			list = append(list, text)
+		}
+	}
+	return list
 }
 
 // GetFileManagerSettings returns file manager settings for a specific connection

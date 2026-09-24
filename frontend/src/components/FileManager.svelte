@@ -41,6 +41,7 @@
     FILE_MANAGER_MENU_HEIGHT_BLANK,
     FILE_MANAGER_MENU_HEIGHT_FILE,
     FILE_MANAGER_MENU_WIDTH,
+    FAVORITE_PATH_LIMIT,
     isMacPlatform,
     joinRemotePath,
     matchFileManagerShortcut,
@@ -68,6 +69,7 @@
     historyEnabled: true,
     historyLimit: 5,
     history: [],
+    favorites: [],
   };
 
   // Session-level temporary tracking toggle (not saved to config)
@@ -80,6 +82,7 @@
 
   // History dropdown state
   let showHistoryDropdown = false;
+  let showFavoritesDropdown = false;
   let historyFilter = '';
 
   // Directory fuzzy search state
@@ -98,6 +101,7 @@
 
   // Transfer progress unsubscribers
   let progressUnsubscribers = [];
+  let sessionProgressSession = null;
 
   // Context menu state
   let fileManagerEl;
@@ -179,6 +183,7 @@
         historyEnabled: config?.history_enabled ?? true,
         historyLimit: config?.history_limit ?? 5,
         history: config?.history ?? [],
+        favorites: config?.favorites ?? [],
       };
 
       // Initialize session tracking state from server config only if not already set
@@ -204,6 +209,7 @@
         history_enabled: fileManagerConfig.historyEnabled,
         history_limit: fileManagerConfig.historyLimit,
         history: fileManagerConfig.history,
+        favorites: fileManagerConfig.favorites || [],
       });
 
       // Note: Don't update sessionDirectoryTracking here
@@ -402,7 +408,7 @@
       await DeleteFiles($activeSessionIdStore, [joinRemotePath(remotePath, rel)]);
     }
 
-    const transferIDs = await UploadExpandedItems(
+    await UploadExpandedItems(
       $activeSessionIdStore,
       remotePath,
       plan.items.map((item) => ({
@@ -414,7 +420,7 @@
         IsDir: item.isDir,
       })),
     );
-    transferIDs.forEach((id) => subscribeToTransfer(id, 'upload'));
+    uploadStore.setActiveTab('active');
     setTimeout(() => loadDirectory(currentPath), 2000);
   }
 
@@ -647,11 +653,10 @@
   }
 
   async function handleToggleFavorite() {
-    if (!fileManagerConfig.historyEnabled) return;
-    fileManagerConfig.history = toggleFavoriteHistory(
-      fileManagerConfig.history,
+    fileManagerConfig.favorites = toggleFavoriteHistory(
+      fileManagerConfig.favorites,
       currentPath,
-      fileManagerConfig.historyLimit || 5,
+      FAVORITE_PATH_LIMIT,
     );
     await handleSaveSettings();
   }
@@ -794,28 +799,48 @@
     handleMenuAction({ detail: action });
   }
 
+  let sessionProgressUnsub = null;
+
+  function applyUploadProgress(progress) {
+    const transferID = progress?.transfer_id || progress?.transferId;
+    if (!transferID) return;
+    const transfer = {
+      id: transferID,
+      filename: progress.filename || progress.fileName || '未命名文件',
+      bytesSent: progress.bytes_sent ?? progress.bytesSent ?? 0,
+      totalBytes: progress.total_bytes ?? progress.totalBytes ?? 0,
+      percentage: progress.percentage ?? 0,
+      speed: progress.speed ?? 0,
+      status: progress.status || 'running',
+      error: progress.error || '',
+    };
+
+    const existing = $uploadStore.transfers.find(t => t.id === transferID);
+    if (existing) {
+      uploadStore.updateTransfer(transferID, transfer);
+      return;
+    }
+    uploadStore.addTransfer(transfer);
+    if (transfer.status === 'running') {
+      uploadStore.setActiveTab('active');
+    }
+  }
+
+  $: if ($activeSessionIdStore !== sessionProgressSession) {
+    sessionProgressUnsub?.();
+    sessionProgressUnsub = null;
+    sessionProgressSession = $activeSessionIdStore;
+    if (sessionProgressSession) {
+      sessionProgressUnsub = EventsOn(`sftp:session-progress:${sessionProgressSession}`, applyUploadProgress);
+    }
+  }
+
   // Transfer progress subscription
   function subscribeToTransfer(transferID, kind) {
     const eventName = `sftp:progress:${transferID}`;
     const unsubscriber = EventsOn(eventName, (progress) => {
       if (kind === 'upload') {
-        const transfer = {
-          id: transferID,
-          filename: progress.filename || progress.fileName || 'unknown',
-          bytesSent: progress.bytes_sent ?? progress.bytesSent ?? 0,
-          totalBytes: progress.total_bytes ?? progress.totalBytes ?? 0,
-          percentage: progress.percentage ?? 0,
-          speed: progress.speed ?? 0,
-          status: progress.status || 'running',
-          error: progress.error || '',
-        };
-
-        const existing = $uploadStore.transfers.find(t => t.id === transferID);
-        if (existing) {
-          uploadStore.updateTransfer(transferID, transfer);
-        } else {
-          uploadStore.addTransfer(transfer);
-        }
+        applyUploadProgress({ ...progress, transfer_id: progress?.transfer_id || transferID });
       }
     });
 
@@ -1057,10 +1082,12 @@
       historyEnabled: true,
       historyLimit: 5,
       history: [],
+      favorites: [],
     };
     // Close any open UI elements
     showSettingsDialog = false;
     showHistoryDropdown = false;
+    showFavoritesDropdown = false;
     isDirSearchOpen = false;
     contextMenu = { open: false, x: 0, y: 0, file: null };
     moreOpen = false;
@@ -1104,6 +1131,7 @@
   });
 
   onDestroy(() => {
+    sessionProgressUnsub?.();
     progressUnsubscribers.forEach((unsub) => unsub());
     stopCWDTracking();
     clearTimeout(dirSearchTimeout);
@@ -1275,7 +1303,61 @@
 
        <div class="relative">
          <button
-           on:click={() => showHistoryDropdown = !showHistoryDropdown}
+           on:click={() => {
+             showFavoritesDropdown = !showFavoritesDropdown;
+             showHistoryDropdown = false;
+           }}
+           class="p-2 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded-lg transition-colors"
+           title="收藏路径"
+         >
+           <svg class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" fill={fileManagerConfig.favorites?.length ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18l-6 3 1.5-7L3 9.5l7-.6L12 2l2 6.9 7 .6-4.5 4.5L18 21z" />
+           </svg>
+         </button>
+         {#if showFavoritesDropdown}
+           <div class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg w-64 max-h-64 overflow-y-auto z-10">
+             <div class="px-3 py-2 text-xs font-medium border-b border-gray-200 dark:border-gray-700" style="color: var(--text-secondary);">收藏路径</div>
+             {#if fileManagerConfig.favorites?.length}
+               {#each fileManagerConfig.favorites as path (path)}
+                 <div class="flex items-center gap-1 pr-1">
+                   <button
+                     type="button"
+                     on:click={() => {
+                       navigateTo(path, true);
+                       showFavoritesDropdown = false;
+                     }}
+                     class="flex-1 min-w-0 text-left px-3 py-1.5 text-xs text-gray-900 dark:text-white file-manager__row truncate"
+                   >
+                     {path}
+                   </button>
+                   <button
+                     type="button"
+                     class="p-1 rounded text-gray-400 hover:text-red-500"
+                     title="取消收藏"
+                     on:click={() => {
+                       fileManagerConfig.favorites = fileManagerConfig.favorites.filter((item) => item !== path);
+                       handleSaveSettings();
+                     }}
+                   >
+                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                     </svg>
+                   </button>
+                 </div>
+               {/each}
+             {:else}
+               <div class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">还没有收藏。在目录空白处右键可收藏当前路径。</div>
+             {/if}
+           </div>
+         {/if}
+       </div>
+
+       <div class="relative">
+         <button
+           on:click={() => {
+             showHistoryDropdown = !showHistoryDropdown;
+             showFavoritesDropdown = false;
+           }}
            class="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
            title="路径历史"
          >
@@ -1499,7 +1581,7 @@
       y={contextMenu.y}
       file={contextMenu.file}
       currentPath={currentPath}
-      history={fileManagerConfig.history}
+      favorites={fileManagerConfig.favorites}
       historyEnabled={fileManagerConfig.historyEnabled}
       clipboard={fileClipboard}
       moreOpen={moreOpen}
@@ -1788,6 +1870,7 @@
                 historyEnabled: true,
                 historyLimit: 5,
                 history: [],
+                favorites: [],
               };
               handleSaveSettings();
             }}

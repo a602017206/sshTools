@@ -34,7 +34,9 @@ test('文件夹上传由后端串行排队，不再为每个文件单独订阅�
   assert.match(service, /runFolderUpload/);
   assert.match(service, /runItemUpload/);
   assert.doesNotMatch(service, /startFileUpload\(\s*\n\s*sessionID,\s*\n\s*sftpClient/);
-  assert.match(manager, /transferIDs\.forEach\(\(id\) => subscribeToTransfer\(id, 'upload'\)\)/);
+  assert.match(manager, /sftp:session-progress:/);
+  assert.match(service, /BytesSent:/);
+  assert.doesNotMatch(service, /emit\("上传完成"/);
 });
 
 test('文件管理器提供文件夹上传入口，拖放与按钮共用 UploadFiles', async () => {
