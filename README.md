@@ -3,7 +3,7 @@
 [![最新版本](https://img.shields.io/github/v/release/a602017206/sshTools?label=最新版本)](https://github.com/a602017206/sshTools/releases/latest)
 [![总下载量](https://img.shields.io/github/downloads/a602017206/sshTools/total?label=总下载量)](https://github.com/a602017206/sshTools/releases)
 [![最新版下载量](https://img.shields.io/github/downloads/a602017206/sshTools/latest/total?label=最新版下载量)](https://github.com/a602017206/sshTools/releases/latest)
-![访问次数](https://visitor-badge.laobi.icu/badge?page_id=a602017206.sshTools&left_text=访问次数)
+![访问次数](https://hits.sh/github.com/a602017206/sshTools.svg?label=%E8%AE%BF%E9%97%AE%E6%AC%A1%E6%95%B0&color=0e75b6&style=flat)
 
 一个功能完整的跨平台SSH桌面客户端工具，使用Go和Wails构建。
 
@@ -15,7 +15,7 @@
 | macOS（Apple Silicon） | `AHaSSHTools-macos-arm64.zip` | ![macOS arm64](https://img.shields.io/github/downloads/a602017206/sshTools/latest/AHaSSHTools-macos-arm64.zip?label=下载) |
 | macOS（Intel） | `AHaSSHTools-macos-amd64.zip` | ![macOS amd64](https://img.shields.io/github/downloads/a602017206/sshTools/latest/AHaSSHTools-macos-amd64.zip?label=下载) |
 
-徽章数据由 [shields.io](https://shields.io) 实时读取 GitHub Releases，只统计安装包下载，不含 Source code 压缩包；访问次数为 README 被打开的次数。
+徽章数据由 [shields.io](https://shields.io) 实时读取 GitHub Releases，只统计安装包下载，不含 Source code 压缩包；访问次数由 [hits.sh](https://hits.sh) 统计 README 被打开的次数。
 
 **功能齐全** · **安全可靠** · **跨平台** · **现代化UI** · **可扩展**
 
