@@ -50,6 +50,14 @@ func TestJDBCClosedOracleConnectionIsStaleSession(t *testing.T) {
 	if !isJDBCSessionStale(streamErr) {
 		t.Fatalf("ORA-17027 should be treated as a stale JDBC session, got %v", streamErr)
 	}
+	kingbaseErr := MapJDBCAgentError("rpc error: code = Unknown desc = This _connection has been closed.")
+	if !isJDBCSessionStale(kingbaseErr) {
+		t.Fatalf("Kingbase closed connection should be treated as a stale JDBC session, got %v", kingbaseErr)
+	}
+	var jdbcErr *JDBCError
+	if !errors.As(kingbaseErr, &jdbcErr) || jdbcErr.Code != JDBCErrorConnectionLost {
+		t.Fatalf("expected CONNECTION_LOST, got %v", kingbaseErr)
+	}
 	syntaxErr := MapJDBCAgentError("rpc error: code = Unknown desc = ORA-00933: SQL 命令未正确结束")
 	if isJDBCSessionStale(syntaxErr) {
 		t.Fatal("SQL syntax errors must not trigger session reconnect")

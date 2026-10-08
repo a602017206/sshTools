@@ -238,7 +238,11 @@ func managedGatewayCall[T any](s *ManagedJDBCGateway, ctx context.Context, sessi
 	if isJDBCSessionStale(err) {
 		_ = gateway.CloseDatabase(ctx, sessionID)
 		if reopenErr := gateway.ConnectDatabase(ctx, sessionID, cfg); reopenErr != nil {
-			return zero, fmt.Errorf("恢复 JDBC session 失败: %w", reopenErr)
+			return zero, &JDBCError{
+				Code:    JDBCErrorConnectionLost,
+				Message: fmt.Sprintf("数据库连接已断开，自动重连失败: %v", reopenErr),
+				Err:     reopenErr,
+			}
 		}
 		return call(gateway)
 	}

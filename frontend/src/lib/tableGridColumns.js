@@ -17,6 +17,20 @@ export function getInitialColumnWidth(columnName, column = {}) {
   return clampColumnWidth(48 + labelLength * 8);
 }
 
+const LONG_TEXT_TYPE_PATTERN = /text|json|xml|clob|blob|bytea/i;
+const MAX_CELL_TITLE_LENGTH = 100;
+
+export function isLongTextColumn(column) {
+  return LONG_TEXT_TYPE_PATTERN.test(String(column?.type || ''));
+}
+
+export function getCellTitle(cell, column) {
+  if (cell === null || cell === undefined) return 'NULL';
+  const text = String(cell);
+  if (isLongTextColumn(column) || text.length > MAX_CELL_TITLE_LENGTH || /[\r\n]/.test(text)) return undefined;
+  return text;
+}
+
 export function buildGridTemplateColumns(columns, columnWidths = {}, columnMetadata = {}) {
   const widths = columns.map(column => {
     const width = columnWidths[column] ?? getInitialColumnWidth(column, columnMetadata[column]);

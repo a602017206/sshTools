@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"AHaSSHTools/internal/config"
@@ -185,6 +186,53 @@ func TestManagedJDBCGatewayReopensSessionAfterOracleClosedConnection(t *testing.
 	}
 }
 
+func TestManagedJDBCGatewayReopensSessionAfterKingbaseIdleDisconnect(t *testing.T) {
+	client := &managedGatewayClient{
+		columnErr: status.Error(codes.Unknown, "This _connection has been closed."),
+	}
+	supervisor := &managedGatewaySupervisor{
+		current: &JDBCAgentConnection{Client: client, Token: "token"},
+	}
+	gateway := NewManagedJDBCGateway(supervisor)
+	gateway.SetProfileResolver(func(context.Context, config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return config.JDBCDriverProfile{ID: "kingbase", DriverClass: "com.kingbase8.Driver"}, nil
+	})
+	if err := gateway.ConnectDatabase(context.Background(), "kingbase-session", config.DatabaseConfig{DBType: "kingbase", Database: "rpms"}); err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+
+	if _, err := gateway.GetTableSchemaInDatabaseAndSchema(context.Background(), "kingbase-session", "rpms", "public", "app_advertisement"); err != nil {
+		t.Fatalf("schema recovery failed: %v", err)
+	}
+	if client.columnCalls != 2 || len(client.openRequests) != 2 {
+		t.Fatalf("expected one reopen and one retry, got %d calls and %d opens", client.columnCalls, len(client.openRequests))
+	}
+}
+
+func TestManagedJDBCGatewayReportsConnectionLostWhenReopenFails(t *testing.T) {
+	client := &managedGatewayClient{
+		columnErr:    status.Error(codes.Unknown, "This _connection has been closed."),
+		openErrAfter: 1,
+		openErr:      status.Error(codes.Unknown, "Connection refused"),
+	}
+	supervisor := &managedGatewaySupervisor{
+		current: &JDBCAgentConnection{Client: client, Token: "token"},
+	}
+	gateway := NewManagedJDBCGateway(supervisor)
+	gateway.SetProfileResolver(func(context.Context, config.DatabaseConfig) (config.JDBCDriverProfile, error) {
+		return config.JDBCDriverProfile{ID: "kingbase", DriverClass: "com.kingbase8.Driver"}, nil
+	})
+	if err := gateway.ConnectDatabase(context.Background(), "kingbase-session", config.DatabaseConfig{DBType: "kingbase", Database: "rpms"}); err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+
+	_, err := gateway.GetTableSchemaInDatabaseAndSchema(context.Background(), "kingbase-session", "rpms", "public", "app_advertisement")
+	var jdbcErr *JDBCError
+	if !errors.As(err, &jdbcErr) || jdbcErr.Code != JDBCErrorConnectionLost {
+		t.Fatalf("expected CONNECTION_LOST, got %v", err)
+	}
+}
+
 func TestManagedJDBCGatewayClearsOracleCatalogForMetadata(t *testing.T) {
 	client := &managedGatewayClient{}
 	supervisor := &managedGatewaySupervisor{
@@ -231,6 +279,8 @@ func (s *managedGatewaySupervisor) Restart(context.Context) (*JDBCAgentConnectio
 
 type managedGatewayClient struct {
 	openRequests   []*jdbcproto.OpenSessionRequest
+	openErrAfter   int
+	openErr        error
 	queryRequests  []*jdbcproto.ExecuteQueryRequest
 	columnRequests []*jdbcproto.ListColumnsRequest
 	tablesRequest  *jdbcproto.ListTablesRequest
@@ -243,6 +293,9 @@ type managedGatewayClient struct {
 
 func (c *managedGatewayClient) OpenSession(_ context.Context, request *jdbcproto.OpenSessionRequest) (*jdbcproto.OpenSessionResponse, error) {
 	c.openRequests = append(c.openRequests, request)
+	if c.openErr != nil && len(c.openRequests) > c.openErrAfter {
+		return nil, c.openErr
+	}
 	return &jdbcproto.OpenSessionResponse{SessionId: request.GetSessionId()}, nil
 }
 

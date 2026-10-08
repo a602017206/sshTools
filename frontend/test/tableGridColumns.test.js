@@ -3,8 +3,24 @@ import test from 'node:test';
 import {
   buildGridTemplateColumns,
   clampColumnWidth,
+  getCellTitle,
   getInitialColumnWidth
 } from '../src/lib/tableGridColumns.js';
+
+test('text 等长文本列不显示悬停预览，普通列和 NULL 保持提示', () => {
+  assert.equal(getCellTitle('<p>html</p>', { type: 'text' }), undefined);
+  assert.equal(getCellTitle('{}', { type: 'LONGTEXT' }), undefined);
+  assert.equal(getCellTitle('{}', { type: 'jsonb' }), undefined);
+  assert.equal(getCellTitle(null, { type: 'text' }), 'NULL');
+  assert.equal(getCellTitle('root', { type: 'varchar' }), 'root');
+  assert.equal(getCellTitle(1, undefined), '1');
+});
+
+test('缺少列元数据时，超长或多行内容也不显示悬停预览', () => {
+  assert.equal(getCellTitle('<p>'.padEnd(500, 'x'), undefined), undefined);
+  assert.equal(getCellTitle('line1\nline2', undefined), undefined);
+  assert.equal(getCellTitle('短文本', undefined), '短文本');
+});
 
 test('根据字段名和类型生成紧凑的初始列宽，不使用字段声明长度或描述撑宽', () => {
   const width = getInitialColumnWidth('config_title', {

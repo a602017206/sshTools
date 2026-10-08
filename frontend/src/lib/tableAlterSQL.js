@@ -1,3 +1,5 @@
+import { typeAcceptsLength } from './columnTypeOptions.js';
+
 function dialectOf(databaseType) {
   const dialect = String(databaseType).toLowerCase();
   if (dialect === 'kingbase' || dialect === 'opengauss') return 'postgresql';
@@ -25,7 +27,7 @@ function fieldType(field, dialect) {
   const length = String(field.length || '').trim();
   const skipLength = (dialect === 'postgresql' || dialect === 'oracle') && /^(BIGINT|INT|INTEGER|SMALLINT|TIMESTAMP|DATE|BOOLEAN|TEXT|CLOB|BLOB)$/i.test(type);
   if (!length || skipLength) return type;
-  return /^(VARCHAR2?|CHAR|NVARCHAR2?|DECIMAL|NUMERIC|NUMBER|INT|INTEGER|BIGINT|SMALLINT)$/i.test(type) ? `${type}(${length})` : type;
+  return typeAcceptsLength(type) ? `${type}(${length})` : type;
 }
 
 function defaultClause(field) {

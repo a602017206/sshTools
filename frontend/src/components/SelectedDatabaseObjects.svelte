@@ -9,6 +9,7 @@
   import InputDialog from './ui/InputDialog.svelte';
   import { portalToBody, resolveContextMenuPoint } from '../lib/contextMenu.js';
   import { copilotStore } from '../stores/copilot.js';
+  import { CONNECTION_LOST_MESSAGE, isConnectionLostError } from '../lib/databaseConnectionError.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -341,7 +342,14 @@
         {:else if loadingCategory === activeCategoryId}
           <div class="object-browser__empty">正在加载{activeCategory.label}...</div>
         {:else if errors[activeCategoryId]}
-          <div class="object-browser__error">加载失败：{errors[activeCategoryId]}</div>
+          {#if isConnectionLostError(errors[activeCategoryId])}
+            <div class="object-browser__error object-browser__error--reconnect" title={errors[activeCategoryId]}>
+              <span>{CONNECTION_LOST_MESSAGE}</span>
+              <button type="button" on:click={() => loadCategory(activeCategoryId, true)}>重新连接</button>
+            </div>
+          {:else}
+            <div class="object-browser__error">加载失败：{errors[activeCategoryId]}</div>
+          {/if}
         {:else if !filteredObjects.length}
           <div class="object-browser__empty">{searchText ? '没有匹配的对象' : `暂无${activeCategory.label}`}</div>
         {:else}
@@ -493,6 +501,9 @@
   .object-browser__item-icon { display: inline-block; width: 25px; padding: 0 !important; color: #1687d4; }
   .object-browser__empty, .object-browser__error { padding: 28px 18px; font-size: 13px; color: var(--text-secondary); }
   .object-browser__error { color: #dc2626; }
+  .object-browser__error--reconnect { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .object-browser__error--reconnect button { padding: 4px 12px; border: 1px solid #1586d1; border-radius: 4px; background: #1586d1; color: #fff; cursor: pointer; font-size: 12px; }
+  .object-browser__error--reconnect button:hover { background: #0f6fae; }
   .object-browser__status { min-height: 28px; padding: 6px 18px; border-top: 1px solid var(--border-primary); color: var(--text-secondary); font-size: 12px; }
   .object-browser__context-menu {
     position: fixed;

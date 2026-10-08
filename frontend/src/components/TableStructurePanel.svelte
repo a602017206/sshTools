@@ -1,6 +1,7 @@
 <script>
   import { buildCreateTableSQL } from '../lib/tableDefinitionSQL.js';
   import { buildAlterTableStatements } from '../lib/tableAlterSQL.js';
+  import { columnTypeOptions, typeAcceptsLength } from '../lib/columnTypeOptions.js';
 
   export let sessionId = null;
   export let dbConfig = null;
@@ -83,6 +84,10 @@
     fieldDrafts = fieldDrafts.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...patch } : field);
   }
 
+  function changeFieldType(index, type) {
+    updateField(index, typeAcceptsLength(type) ? { type } : { type, length: '' });
+  }
+
   async function saveNewTable() {
     if (!ddlPreview || !window.wailsBindings || !sessionId) return;
     isSaving = true;
@@ -140,7 +145,7 @@
       <table class="table-designer__grid"><thead><tr><th>字段名</th><th>类型</th><th>长度</th><th>非空</th><th>主键</th><th>默认值</th><th>注释</th>{#if !fieldsReadOnly}<th></th>{/if}</tr></thead>
         <tbody>{#each fieldDrafts as field, index}<tr>
           <td><input value={field.name} on:input={(event) => updateField(index, { name: event.currentTarget.value })} disabled={fieldsReadOnly} /></td>
-          <td><select value={field.type} on:change={(event) => updateField(index, { type: event.currentTarget.value })} disabled={fieldsReadOnly}>{#each ['BIGINT', 'INT', 'NUMBER', 'VARCHAR', 'VARCHAR2', 'TEXT', 'CLOB', 'DECIMAL', 'TIMESTAMP', 'DATE', 'BOOLEAN'] as type}<option value={type}>{type}</option>{/each}</select></td>
+          <td><select value={field.type} on:change={(event) => changeFieldType(index, event.currentTarget.value)} disabled={fieldsReadOnly}>{#each columnTypeOptions(databaseType, field.type) as type}<option value={type}>{type}</option>{/each}</select></td>
           <td><input value={field.length} on:input={(event) => updateField(index, { length: event.currentTarget.value })} disabled={fieldsReadOnly} /></td>
           <td><input type="checkbox" checked={!field.nullable} on:change={(event) => updateField(index, { nullable: !event.currentTarget.checked })} disabled={fieldsReadOnly} /></td>
           <td><input type="checkbox" checked={field.primary} on:change={(event) => updateField(index, { primary: event.currentTarget.checked })} disabled={fieldsReadOnly} /></td>

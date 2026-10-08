@@ -10,7 +10,8 @@
     tableFilterOperations
   } from '../lib/tableQueryBuilder.js';
   import { formatColumnDescription, formatColumnLength, formatColumnType } from '../lib/tableStructureMetadata.js';
-  import { buildGridTemplateColumns, clampColumnWidth, getInitialColumnWidth } from '../lib/tableGridColumns.js';
+  import { CONNECTION_LOST_MESSAGE, isConnectionLostError } from '../lib/databaseConnectionError.js';
+  import { buildGridTemplateColumns, clampColumnWidth, getCellTitle, getInitialColumnWidth } from '../lib/tableGridColumns.js';
   import { buildDeleteSQL, buildDeleteStatements, buildInsertSQL, buildInsertStatements, buildUpdateSQL, buildBatchUpdateStatements } from '../lib/tableDataMutations.js';
   import { allRowsSelected, rowsFromIndexes, toggleAllRowSelection, toggleRowSelection } from '../lib/tableRowSelection.js';
   import { formatRowsAsTsv } from '../lib/tableGridSelection.js';
@@ -269,6 +270,11 @@
     const rows = selectedRows();
     if (!rows.length) return;
     copyText(buildInsertStatements(mutationBaseInput(), rows).join('\n'));
+  }
+
+  async function reconnect() {
+    await executeQuery();
+    if (!errorMessage) await loadColumnMetadata();
   }
 
   async function loadColumnMetadata() {
@@ -652,7 +658,16 @@
     </section>
   {/if}
 
-  {#if errorMessage}<div class="table-workspace__notice table-workspace__notice--error">{errorMessage}</div>{/if}
+  {#if errorMessage}
+    {#if isConnectionLostError(errorMessage)}
+      <div class="table-workspace__notice table-workspace__notice--error table-workspace__notice--reconnect" title={errorMessage}>
+        <span>{CONNECTION_LOST_MESSAGE}</span>
+        <button type="button" disabled={isLoading} on:click={reconnect}>重新连接</button>
+      </div>
+    {:else}
+      <div class="table-workspace__notice table-workspace__notice--error">{errorMessage}</div>
+    {/if}
+  {/if}
   {#if warningMessage}<div class="table-workspace__notice table-workspace__notice--warning">{warningMessage}</div>{/if}
 
   <div class="table-workspace__content">
@@ -698,7 +713,7 @@
                   role="cell"
                   value={editedValue(rowIndex, columnIndex, cell) ?? ''}
                   placeholder={cell === null || cell === undefined ? 'NULL' : cell === '' ? '∅' : ''}
-                  title={cell === null || cell === undefined ? 'NULL' : String(cell)}
+                  title={getCellTitle(cell, columnMetadata[resultData.columns[columnIndex]])}
                   on:focus={() => selectedCell = { row: rowIndex, column: columnIndex }}
                   on:input={(event) => editCell(rowIndex, columnIndex, event.currentTarget.value)}
                   on:contextmenu={(event) => openContextMenu(event, rowIndex, row)}
@@ -849,6 +864,9 @@
   .table-workspace__sql-panel button { border: 0; background: transparent; color: #1586d1; cursor: pointer; font-size: 12px; }
   .table-workspace__notice { padding: 7px 12px; border-bottom: 1px solid var(--border-primary); font-size: 12px; }
   .table-workspace__notice--error { color: #c43832; background: #fff1f0; }
+  .table-workspace__notice--reconnect { display: flex; align-items: center; gap: 12px; }
+  .table-workspace__notice--reconnect button { padding: 2px 10px; border: 1px solid #c43832; border-radius: 3px; background: #fff; color: #c43832; cursor: pointer; font-size: 12px; }
+  .table-workspace__notice--reconnect button:disabled { opacity: 0.6; cursor: default; }
   .table-workspace__notice--warning { color: #945b00; background: #fff8e5; }
   .table-workspace__content { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 236px; overflow: hidden; }
   .table-workspace__grid-wrap { min-width: 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; }

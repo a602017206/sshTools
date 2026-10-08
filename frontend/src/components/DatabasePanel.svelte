@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { buildQualifiedTableName, buildTableBrowseSQL } from '../lib/tableQueryBuilder.js';
   import { formatConnectionError } from '../lib/formatConnectionError.js';
+  import { CONNECTION_LOST_MESSAGE } from '../lib/databaseConnectionError.js';
   import { COPILOT_APPLY_SQL, COPILOT_EXECUTE_SQL, COPILOT_PEEK_SQL } from '../lib/copilotApply.js';
 
   export let sessionId = null;
@@ -183,6 +184,7 @@
       'DRIVER_MISSING',
       'DRIVER_INVALID',
       'AGENT_UNAVAILABLE',
+      'CONNECTION_LOST',
       'QUERY_TIMEOUT',
       'QUERY_FAILED',
       'DB_CONNECT_FAILED'
@@ -201,6 +203,8 @@
         return '当前数据库驱动文件无效';
       case 'AGENT_UNAVAILABLE':
         return 'JDBC agent 当前不可用';
+      case 'CONNECTION_LOST':
+        return CONNECTION_LOST_MESSAGE;
       case 'QUERY_TIMEOUT':
         return '查询执行超时';
       case 'QUERY_FAILED':
@@ -233,6 +237,11 @@
         return [
           { id: 'restart-agent', label: '重启 agent' },
           { id: 'view-agent-log', label: '查看日志' }
+        ];
+      case 'CONNECTION_LOST':
+        return [
+          { id: 'reconnect', label: '重新连接' },
+          { id: 'raw-error', label: '查看原始错误' }
         ];
       case 'DB_CONNECT_FAILED':
         return [
@@ -284,6 +293,9 @@
           break;
         case 'restart-agent':
           await window.wailsBindings.RestartJDBCAgent();
+          await loadTables();
+          break;
+        case 'reconnect':
           await loadTables();
           break;
         case 'view-agent-log':

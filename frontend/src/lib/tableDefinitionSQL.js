@@ -1,3 +1,5 @@
+import { typeAcceptsLength } from './columnTypeOptions.js';
+
 function quoteIdentifier(value, databaseType) {
   const quote = String(databaseType).toLowerCase() === 'mysql' ? '`' : '"';
   return `${quote}${String(value).replaceAll(quote, `${quote}${quote}`)}${quote}`;
@@ -25,7 +27,7 @@ function fieldType(field, databaseType) {
     && /^(BIGINT|INT|INTEGER|SMALLINT|TIMESTAMP|DATE|BOOLEAN|TEXT)$/i.test(type))
     || (dialect === 'oracle' && /^(TIMESTAMP|DATE|CLOB|BLOB)$/i.test(type));
   if (!length || skipLength) return type;
-  return /^(VARCHAR2?|CHAR|NVARCHAR2?|DECIMAL|NUMERIC|NUMBER|INT|INTEGER|BIGINT|SMALLINT)$/i.test(type) ? `${type}(${length})` : type;
+  return typeAcceptsLength(type) ? `${type}(${length})` : type;
 }
 
 export function buildCreateTableSQL({ databaseType, databaseName = '', schemaName = '', tableName, fields = [] }) {

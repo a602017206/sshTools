@@ -12,6 +12,7 @@ const (
 	JDBCErrorDriverInvalid    = "DRIVER_INVALID"
 	JDBCErrorAgentUnavailable = "AGENT_UNAVAILABLE"
 	JDBCErrorDBConnectFailed  = "DB_CONNECT_FAILED"
+	JDBCErrorConnectionLost   = "CONNECTION_LOST"
 	JDBCErrorQueryTimeout     = "QUERY_TIMEOUT"
 	JDBCErrorQueryFailed      = "QUERY_FAILED"
 )
@@ -77,6 +78,8 @@ func newJDBCError(message string, cause error) *JDBCError {
 		"agent_unavailable", "agent unavailable", "agent client not configured",
 		"connection refused", "code = unavailable", "transport is closing"):
 		code = JDBCErrorAgentUnavailable
+	case containsAny(normalized, staleConnectionPatterns...):
+		code = JDBCErrorConnectionLost
 	case containsAny(normalized,
 		"deadlineexceeded", "context deadline exceeded", "client.timeout exceeded",
 		"i/o timeout", "query timeout"):
@@ -91,28 +94,41 @@ func newJDBCError(message string, cause error) *JDBCError {
 	return &JDBCError{Code: code, Message: friendly, Err: cause}
 }
 
+// staleConnectionPatterns 匹配数据库服务端已断开（如空闲超时）后驱动抛出的错误，
+// 覆盖 Oracle、PostgreSQL/人大金仓/openGauss、MySQL、SQL Server、达梦等常见驱动。
+var staleConnectionPatterns = []string{
+	"ora-17008",
+	"ora-17027",
+	"ora-03113",
+	"ora-03114",
+	"ora-12571",
+	"closed connection",
+	"connection closed",
+	"connection is closed",
+	"connection has been closed",
+	"connection has already been closed",
+	"connection was closed",
+	"已关闭连接",
+	"连接已关闭",
+	"连接已断开",
+	"流已被关闭",
+	"stream has already been closed",
+	"socket closed",
+	"broken pipe",
+	"connection reset",
+	"no more data to read from socket",
+	"communications link failure",
+	"an i/o error occurred while sending to the backend",
+	"terminating connection",
+	"网络通信异常",
+	"session not found",
+}
+
 func isJDBCSessionStale(err error) bool {
 	if err == nil {
 		return false
 	}
-	normalized := strings.ToLower(err.Error())
-	return containsAny(normalized,
-		"ora-17008",
-		"ora-17027",
-		"closed connection",
-		"connection closed",
-		"connection is closed",
-		"已关闭连接",
-		"流已被关闭",
-		"stream has already been closed",
-		"socket closed",
-		"broken pipe",
-		"connection reset",
-		"no more data to read from socket",
-		"ora-03113",
-		"ora-03114",
-		"ora-12571",
-	)
+	return containsAny(strings.ToLower(err.Error()), staleConnectionPatterns...)
 }
 
 func containsAny(message string, values ...string) bool {
