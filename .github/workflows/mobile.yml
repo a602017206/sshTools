@@ -1,0 +1,139 @@
+name: Mobile Build
+
+# 移动端（Flutter + 内嵌 Go）打包验证流水线。
+# 本地不做打包：所有 gomobile 绑定与 Flutter 构建都在 GitHub 托管 runner 上完成。
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'feat/mobile-flutter-gomobile'
+    paths:
+      - 'mobile/**'
+      - 'internal/**'
+      - 'flutter_ui/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/mobile.yml'
+
+jobs:
+  android:
+    name: Android APK (Flutter + gomobile)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install gomobile
+        shell: bash
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch gomobile bind runtime
+        shell: bash
+        run: go get golang.org/x/mobile/bind@latest
+
+      - name: Build Android AAR from Go core
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          mkdir -p flutter_ui/plugins/sshtools_go/android/libs
+          gomobile bind -target=android -androidapi 24 \
+            -o flutter_ui/plugins/sshtools_go/android/libs/sshtools.aar \
+            ./mobile
+          ls -lh flutter_ui/plugins/sshtools_go/android/libs/
+
+      # 仓库未提交 Flutter 平台工程脚手架，统一在流水线里生成，
+      # 避免本地无 Flutter SDK 时手写模板与工具链版本漂移。
+      - name: Generate Android scaffolding
+        working-directory: flutter_ui
+        run: flutter create --platforms=android --org com.ahasshtools --project-name ahasshtools_flutter .
+
+      - name: Build debug APK
+        working-directory: flutter_ui
+        run: |
+          flutter pub get
+          flutter build apk --debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sshtools-android-debug-apk
+          path: flutter_ui/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
+
+  ios:
+    name: iOS build no-codesign (Flutter + gomobile)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install gomobile
+        shell: bash
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch gomobile bind runtime
+        shell: bash
+        run: go get golang.org/x/mobile/bind@latest
+
+      - name: Build iOS XCFramework from Go core
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          mkdir -p flutter_ui/plugins/sshtools_go/ios/Frameworks
+          gomobile bind -target=ios \
+            -o flutter_ui/plugins/sshtools_go/ios/Frameworks/Mobile.xcframework \
+            ./mobile
+          ls flutter_ui/plugins/sshtools_go/ios/Frameworks/
+
+      - name: Generate iOS scaffolding
+        working-directory: flutter_ui
+        run: flutter create --platforms=ios --org com.ahasshtools --project-name ahasshtools_flutter .
+
+      - name: Build iOS app (no codesign)
+        working-directory: flutter_ui
+        run: |
+          flutter pub get
+          flutter build ios --no-codesign --debug
+
+      - name: Upload iOS app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sshtools-ios-runner-app
+          path: flutter_ui/build/ios/iphoneos/Runner.app
+          retention-days: 7

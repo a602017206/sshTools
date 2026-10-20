@@ -29,8 +29,15 @@ type Services struct {
 	Settings   *service.SettingsService
 }
 
-// NewServer creates a new HTTP/WebSocket server
+// NewServer creates a new HTTP/WebSocket server listening on all interfaces
 func NewServer(services *Services, port int) *Server {
+	return NewServerWithHost(services, "", port)
+}
+
+// NewServerWithHost creates a new HTTP/WebSocket server bound to the given
+// host. Passing "127.0.0.1" restricts the server to loopback, which is what
+// the embedded mobile build uses so the API is never exposed to the LAN.
+func NewServerWithHost(services *Services, host string, port int) *Server {
 	// Set Gin to release mode
 	gin.SetMode(gin.ReleaseMode)
 
@@ -46,9 +53,14 @@ func NewServer(services *Services, port int) *Server {
 	// Setup routes
 	server.setupRoutes()
 
+	addr := fmt.Sprintf(":%d", port)
+	if host != "" {
+		addr = fmt.Sprintf("%s:%d", host, port)
+	}
+
 	// Create HTTP server
 	server.httpServer = &http.Server{
-		Addr:           fmt.Sprintf(":%d", port),
+		Addr:           addr,
 		Handler:        router,
 		ReadTimeout:    30 * time.Second,
 		WriteTimeout:   30 * time.Second,

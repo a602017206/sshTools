@@ -1,0 +1,25 @@
+name: sshtools_go
+description: AHaSSHTools 内嵌 Go 核心（gomobile 绑定）的 Flutter 桥接插件：在应用进程内启动 Go API 服务器，供 Flutter 侧通过本机回环 HTTP/WebSocket 调用。
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.ahasshtools.sshtools_go
+        pluginClass: SshtoolsGoPlugin
+      ios:
+        pluginClass: SshtoolsGoPlugin

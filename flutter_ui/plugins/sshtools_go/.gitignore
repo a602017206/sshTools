@@ -1,0 +1,3 @@
+# gomobile 产物由 CI 打包前生成，不纳入版本管理
+android/libs/*.aar
+ios/Frameworks/*.xcframework
