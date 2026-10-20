@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/connection_model.dart';
 import '../../providers/connection_provider.dart' as conn_provider;
+import '../terminal/terminal_screen.dart';
 import 'widgets/connection_form_page.dart';
 
 /// 连接列表页（移动端）。
 ///
-/// 针对真机反馈重做了交互：每张卡片直接给出「测试 / 编辑 / 删除」按钮，
-/// 不再把操作全埋进右上角菜单；点卡片即测试连接（终端未就绪前先用它
-/// 验证连通性）；测试优先用已保存密码，不再每次弹窗索要。
+/// 针对真机反馈重做了交互：每张卡片直接给出「连接 / 测试 / 编辑 / 删除」
+/// 按钮，不再把操作全埋进右上角菜单；点卡片或「连接」进入 SSH 终端，
+/// 「测试」只验证连通性；两者都优先用已保存密码，不再每次弹窗索要。
 class ConnectionListScreen extends ConsumerWidget {
   const ConnectionListScreen({super.key});
 
@@ -108,7 +109,8 @@ class ConnectionListScreen extends ConsumerWidget {
         final connection = state.connections[index];
         return _ConnectionCard(
           connection: connection,
-          onTap: () => _testConnection(context, ref, connection),
+          onTap: () => _openTerminal(context, ref, connection),
+          onConnect: () => _openTerminal(context, ref, connection),
           onEdit: () => _showConnectionForm(context, ref, connection),
           onDelete: () => _deleteConnection(context, ref, connection),
           onTest: () => _testConnection(context, ref, connection),
@@ -188,6 +190,44 @@ class ConnectionListScreen extends ConsumerWidget {
           ),
         );
       }
+    }
+  }
+
+  /// 进入 SSH 终端。没有已保存凭据时先弹窗索要，
+  /// 连接成功后服务端会回存，后续直接进终端。
+  Future<void> _openTerminal(
+    BuildContext context,
+    WidgetRef ref,
+    ConnectionModel connection,
+  ) async {
+    var authValue = '';
+    final canUseSaved = connection.hasPassword ||
+        (connection.authType == 'key' &&
+            (connection.keyPath?.isNotEmpty ?? false));
+    if (!canUseSaved) {
+      final input = await showDialog<String>(
+        context: context,
+        builder: (context) => _AuthInputDialog(connection: connection),
+      );
+      if (input == null || input.isEmpty) {
+        return;
+      }
+      authValue = input;
+    }
+
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TerminalScreen(
+          connection: connection,
+          authValue: authValue,
+        ),
+      ),
+    );
+    // 从终端返回后刷新一次，让 has_password 等状态与服务端对齐
+    if (context.mounted) {
+      await ref.read(conn_provider.connectionProvider.notifier).loadConnections();
     }
   }
 
@@ -279,6 +319,7 @@ class ConnectionListScreen extends ConsumerWidget {
 class _ConnectionCard extends StatelessWidget {
   final ConnectionModel connection;
   final VoidCallback onTap;
+  final VoidCallback onConnect;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onTest;
@@ -286,6 +327,7 @@ class _ConnectionCard extends StatelessWidget {
   const _ConnectionCard({
     required this.connection,
     required this.onTap,
+    required this.onConnect,
     required this.onEdit,
     required this.onDelete,
     required this.onTest,
@@ -383,6 +425,12 @@ class _ConnectionCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  FilledButton.icon(
+                    onPressed: onConnect,
+                    icon: const Icon(Icons.terminal, size: 20),
+                    label: const Text('连接'),
+                  ),
+                  const SizedBox(width: 4),
                   TextButton.icon(
                     onPressed: onTest,
                     icon: const Icon(Icons.play_arrow, size: 20),

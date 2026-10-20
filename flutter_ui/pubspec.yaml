@@ -17,8 +17,8 @@ dependencies:
   # HTTP Client
   dio: ^5.4.0
 
-  # WebSocket
-  web_socket_channel: ^2.4.0
+  # WebSocket（3.x 才有 channel.ready，终端需要可靠地等连接就绪再订阅）
+  web_socket_channel: ^3.0.3
 
   # Terminal Emulator
   xterm: ^3.5.0

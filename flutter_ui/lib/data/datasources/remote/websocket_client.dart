@@ -13,6 +13,10 @@ class WebSocketClient {
   // Event handlers mapped by message type
   final Map<String, Function(Map<String, dynamic>)> _handlers = {};
 
+  // 期望保持的订阅集合：未连接时 subscribe 只登记，
+  // 连接（含重连）成功后统一补发，避免订阅抢跑丢失早期输出
+  final Set<String> _subscriptions = {};
+
   // Connection state
   bool _isConnected = false;
   bool _isConnecting = false;
@@ -35,6 +39,24 @@ class WebSocketClient {
   /// Check if connected
   bool get isConnected => _isConnected;
 
+  /// 等待 WebSocket 真正就绪（连接中会顺带发起连接）。
+  /// 终端在订阅会话、发起 SSH 连接前调用，避免输出在订阅生效前丢失。
+  Future<void> ensureConnected({
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (_isConnected) {
+      return;
+    }
+    final ready = _connectionStateController.stream
+        .firstWhere((state) => state)
+        .timeout(
+          timeout,
+          onTimeout: () => throw Exception('WebSocket 连接超时'),
+        );
+    await connect();
+    await ready;
+  }
+
   /// Connect to WebSocket server
   Future<void> connect() async {
     if (_isConnected || _isConnecting) {
@@ -56,14 +78,23 @@ class WebSocketClient {
         cancelOnError: false,
       );
 
+      // 等待握手真正完成（3.x 的 ready），失败会走 catch 安排重连
+      await _channel!.ready;
+
       _isConnected = true;
       _isConnecting = false;
       _reconnectAttempts = 0;
       _connectionStateController.add(true);
 
+      // 补发断线期间登记的订阅
+      for (final target in _subscriptions) {
+        _sendSubscribe(target);
+      }
+
       _logger.i('WebSocket connected successfully');
     } catch (e) {
       _isConnecting = false;
+      _isConnected = false;
       _logger.e('WebSocket connection error: $e');
       _scheduleReconnect();
     }
@@ -116,35 +147,34 @@ class WebSocketClient {
     });
   }
 
-  /// Subscribe to a session or transfer
+  /// Subscribe to a session or transfer.
+  /// 未连接时只登记，等连接（含重连）成功后自动补发。
   void subscribe(String target) {
-    if (!_isConnected) {
-      _logger.w('Cannot subscribe: WebSocket not connected');
-      return;
+    _subscriptions.add(target);
+    if (_isConnected) {
+      _sendSubscribe(target);
     }
+    _logger.d('Subscribed to: $target');
+  }
 
-    final message = {
+  void _sendSubscribe(String target) {
+    send({
       'action': ApiConstants.wsActionSubscribe,
       'target': target,
-    };
-
-    send(message);
-    _logger.d('Subscribed to: $target');
+    });
   }
 
   /// Unsubscribe from a session or transfer
   void unsubscribe(String target) {
+    _subscriptions.remove(target);
     if (!_isConnected) {
-      _logger.w('Cannot unsubscribe: WebSocket not connected');
       return;
     }
 
-    final message = {
+    send({
       'action': ApiConstants.wsActionUnsubscribe,
       'target': target,
-    };
-
-    send(message);
+    });
     _logger.d('Unsubscribed from: $target');
   }
 
@@ -175,6 +205,7 @@ class WebSocketClient {
   /// Close WebSocket connection
   void close() {
     _reconnectTimer?.cancel();
+    _subscriptions.clear();
     _channel?.sink.close();
     _isConnected = false;
     _connectionStateController.add(false);

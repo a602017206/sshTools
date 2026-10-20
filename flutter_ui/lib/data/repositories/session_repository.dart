@@ -9,13 +9,17 @@ class SessionRepository {
   SessionRepository(this._apiClient);
 
   /// Connect to SSH server
+  ///
+  /// 已保存密码的连接可省略 [authValue]、只带 [connectionId]，
+  /// 服务端回退使用加密存储的密码开会话。
   Future<String> connectSSH({
     required String sessionId,
     required String host,
     required int port,
     required String user,
     required String authType,
-    required String authValue,
+    String authValue = '',
+    String? connectionId,
     String? passphrase,
     required int cols,
     required int rows,
@@ -29,6 +33,8 @@ class SessionRepository {
         'user': user,
         'auth_type': authType,
         'auth_value': authValue,
+        if (connectionId != null && connectionId.isNotEmpty)
+          'connection_id': connectionId,
         if (passphrase != null) 'passphrase': passphrase,
         'cols': cols,
         'rows': rows,

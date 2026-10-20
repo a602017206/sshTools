@@ -102,7 +102,7 @@ func (s *Server) setupRoutes() {
 	// SSH session routes
 	sessions := api.Group("/sessions")
 	{
-		sessHandler := handlers.NewSessionHandler(s.services.Session, s.wsHub)
+		sessHandler := handlers.NewSessionHandler(s.services.Session, s.wsHub, s.services.Connection)
 		sessions.POST("/connect", sessHandler.Connect)
 		sessions.POST("/:id/send", sessHandler.SendData)
 		sessions.POST("/:id/resize", sessHandler.Resize)
