@@ -7,7 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sshtools_go/sshtools_go.dart';
 
 import 'core/constants/api_constants.dart';
-import 'core/router/app_router.dart';
+import 'core/theme/theme_provider.dart';
+import 'presentation/screens/app_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,21 +41,34 @@ Future<void> _startEmbeddedGoIfMobile() async {
   }
 }
 
-class SSHToolsApp extends StatelessWidget {
+class SSHToolsApp extends ConsumerWidget {
   const SSHToolsApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'SSH Tools',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+
+    final lightTheme = ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.blue,
+        brightness: Brightness.light,
       ),
-      routerConfig: appRouter,
+      useMaterial3: true,
+    );
+    final darkTheme = ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.blue,
+        brightness: Brightness.dark,
+      ),
+      useMaterial3: true,
+    );
+
+    return MaterialApp(
+      title: 'SSH Tools',
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: themeMode,
+      home: const AppShell(),
       debugShowCheckedModeBanner: false,
     );
   }

@@ -109,6 +109,12 @@ func (s *Server) setupRoutes() {
 		sessions.DELETE("/:id", sessHandler.Disconnect)
 		sessions.GET("", sessHandler.ListSessions)
 
+		// 系统监控（挂在已建立的 SSH 会话上）
+		if s.services.Monitor != nil {
+			monitorHandler := handlers.NewMonitorHandler(s.services.Monitor)
+			sessions.GET("/:id/monitor", monitorHandler.GetMetrics)
+		}
+
 		// SFTP 文件操作（挂在已建立的 SSH 会话上）
 		if s.services.SFTP != nil {
 			sftpHandler := handlers.NewSFTPHandler(s.services.SFTP)

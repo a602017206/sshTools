@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/remote/api_client.dart';
 import '../../data/datasources/remote/websocket_client.dart';
 import '../../data/repositories/connection_repository.dart';
+import '../../data/repositories/monitor_repository.dart';
 import '../../data/repositories/session_repository.dart';
 import '../../data/repositories/sftp_repository.dart';
 
@@ -37,4 +38,9 @@ final sessionRepositoryProvider = Provider<SessionRepository>((ref) {
 /// SFTP Repository Provider
 final sftpRepositoryProvider = Provider<SftpRepository>((ref) {
   return SftpRepository(ref.watch(apiClientProvider));
+});
+
+/// Monitor Repository Provider
+final monitorRepositoryProvider = Provider<MonitorRepository>((ref) {
+  return MonitorRepository(ref.watch(apiClientProvider));
 });
