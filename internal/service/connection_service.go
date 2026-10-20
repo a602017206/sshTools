@@ -6,6 +6,7 @@ import (
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/ssh"
 	"AHaSSHTools/internal/store"
+	"github.com/google/uuid"
 )
 
 // ConnectionService handles SSH connection management operations
@@ -54,12 +55,40 @@ func (s *ConnectionService) UpdateConnection(conn config.ConnectionConfig) error
 	return s.configManager.UpdateConnection(conn)
 }
 
-// RemoveConnection removes an SSH connection
+// RemoveConnection removes an SSH connection and its saved password
 func (s *ConnectionService) RemoveConnection(id string) error {
 	if s.configManager == nil {
 		return fmt.Errorf("config manager not initialized")
 	}
-	return s.configManager.RemoveConnection(id)
+	if err := s.configManager.RemoveConnection(id); err != nil {
+		return err
+	}
+	// 连带删除保存的密码；删密码失败不阻断连接删除本身
+	if s.credentialStore != nil {
+		_ = s.credentialStore.Delete(id)
+	}
+	return nil
+}
+
+// EnsureConnectionIDs 给历史数据中缺少 ID 的连接补生成 ID 并落盘。
+// 早期移动端新增连接时传了空 ID，导致按 ID 的删除/更新全部失效；
+// 服务启动时调用一次本方法即可修复存量数据。
+func (s *ConnectionService) EnsureConnectionIDs() error {
+	if s.configManager == nil {
+		return fmt.Errorf("config manager not initialized")
+	}
+	cfg := s.configManager.GetConfig()
+	changed := false
+	for i := range cfg.Connections {
+		if cfg.Connections[i].ID == "" {
+			cfg.Connections[i].ID = uuid.NewString()
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return s.configManager.Save()
 }
 
 // TestConnection tests an SSH connection

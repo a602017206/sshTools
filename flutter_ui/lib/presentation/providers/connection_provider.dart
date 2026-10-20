@@ -101,7 +101,8 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
     required int port,
     required String user,
     required String authType,
-    required String authValue,
+    String authValue = '',
+    String? connectionId,
     String? passphrase,
   }) async {
     try {
@@ -111,6 +112,7 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
         user: user,
         authType: authType,
         authValue: authValue,
+        connectionId: connectionId,
         passphrase: passphrase,
       );
     } catch (e) {

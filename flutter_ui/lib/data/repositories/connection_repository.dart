@@ -27,11 +27,21 @@ class ConnectionRepository {
         .toList();
   }
 
+  /// 把模型转成请求体：表单带了密码才拼 password 字段，
+  /// 服务端收到后加密保存（不落 config.json），编辑留空即不修改。
+  Map<String, dynamic> _toRequestBody(ConnectionModel connection) {
+    return {
+      ...connection.toJson(),
+      if (connection.password != null && connection.password!.isNotEmpty)
+        'password': connection.password,
+    };
+  }
+
   /// Add a new connection
   Future<ConnectionModel> addConnection(ConnectionModel connection) async {
     final response = await _apiClient.post(
       ApiConstants.connectionsEndpoint,
-      data: connection.toJson(),
+      data: _toRequestBody(connection),
     );
 
     final apiResponse = ApiResponse<Map<String, dynamic>>.fromJson(
@@ -46,7 +56,7 @@ class ConnectionRepository {
   Future<ConnectionModel> updateConnection(ConnectionModel connection) async {
     final response = await _apiClient.put(
       '${ApiConstants.connectionsEndpoint}/${connection.id}',
-      data: connection.toJson(),
+      data: _toRequestBody(connection),
     );
 
     final apiResponse = ApiResponse<Map<String, dynamic>>.fromJson(
@@ -63,29 +73,32 @@ class ConnectionRepository {
   }
 
   /// Test a connection
+  ///
+  /// 已保存密码的连接可省略 [authValue]、只带 [connectionId]，
+  /// 服务端会回退使用加密存储的密码；临时输入新密码测试成功后
+  /// 服务端也会顺手保存（与桌面端行为一致）。
   Future<bool> testConnection({
     required String host,
     required int port,
     required String user,
     required String authType,
-    required String authValue,
+    String authValue = '',
+    String? connectionId,
     String? passphrase,
   }) async {
-    try {
-      await _apiClient.post(
-        '${ApiConstants.connectionsEndpoint}/test',
-        data: {
-          'host': host,
-          'port': port,
-          'user': user,
-          'auth_type': authType,
-          'auth_value': authValue,
-          if (passphrase != null) 'passphrase': passphrase,
-        },
-      );
-      return true;
-    } catch (e) {
-      rethrow;
-    }
+    await _apiClient.post(
+      '${ApiConstants.connectionsEndpoint}/test',
+      data: {
+        'host': host,
+        'port': port,
+        'user': user,
+        'auth_type': authType,
+        'auth_value': authValue,
+        if (connectionId != null && connectionId.isNotEmpty)
+          'connection_id': connectionId,
+        if (passphrase != null) 'passphrase': passphrase,
+      },
+    );
+    return true;
   }
 }

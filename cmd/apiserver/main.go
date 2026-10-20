@@ -43,6 +43,10 @@ func main() {
 		Monitor:    service.NewMonitorService(sessionManager),
 		Settings:   service.NewSettingsService(configManager),
 	}
+	// 修复历史数据中缺少 ID 的连接，保证按 ID 的删除/更新可用
+	if err := services.Connection.EnsureConnectionIDs(); err != nil {
+		log.Printf("Warning: failed to ensure connection IDs: %v\n", err)
+	}
 	fmt.Println("✓ Business services initialized")
 
 	// Create API server (default port 8080)

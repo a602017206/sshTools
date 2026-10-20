@@ -73,8 +73,14 @@ func Start(dataDir string) error {
 	sessionManager := ssh.NewSessionManager()
 	transferManager := ssh.NewTransferManager()
 
+	connectionService := service.NewConnectionService(configManager, credentialStore)
+	// 修复早期版本存量数据中缺少 ID 的连接（否则删除/更新都会失败）
+	if err := connectionService.EnsureConnectionIDs(); err != nil {
+		return fmt.Errorf("ensure connection ids: %w", err)
+	}
+
 	services := &api.Services{
-		Connection: service.NewConnectionService(configManager, credentialStore),
+		Connection: connectionService,
 		Session:    service.NewSessionService(sessionManager),
 		SFTP:       service.NewSFTPService(sessionManager, transferManager),
 		Monitor:    service.NewMonitorService(sessionManager),

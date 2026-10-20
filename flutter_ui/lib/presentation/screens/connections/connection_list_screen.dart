@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/connection_model.dart';
 import '../../providers/connection_provider.dart' as conn_provider;
-import 'widgets/connection_form_dialog.dart';
+import 'widgets/connection_form_page.dart';
 
-/// Connection list screen
+/// 连接列表页（移动端）。
+///
+/// 针对真机反馈重做了交互：每张卡片直接给出「测试 / 编辑 / 删除」按钮，
+/// 不再把操作全埋进右上角菜单；点卡片即测试连接（终端未就绪前先用它
+/// 验证连通性）；测试优先用已保存密码，不再每次弹窗索要。
 class ConnectionListScreen extends ConsumerWidget {
   const ConnectionListScreen({super.key});
 
@@ -14,22 +18,22 @@ class ConnectionListScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SSH Connections'),
+        title: const Text('SSH 连接'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
               ref.read(conn_provider.connectionProvider.notifier).loadConnections();
             },
-            tooltip: 'Refresh',
+            tooltip: '刷新',
           ),
         ],
       ),
       body: _buildBody(context, ref, connectionState),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showConnectionDialog(context, ref),
+        onPressed: () => _showConnectionForm(context, ref),
         icon: const Icon(Icons.add),
-        label: const Text('Add Connection'),
+        label: const Text('添加连接'),
       ),
     );
   }
@@ -39,15 +43,15 @@ class ConnectionListScreen extends ConsumerWidget {
     WidgetRef ref,
     conn_provider.ConnectionState state,
   ) {
-    // Show error if present
     if (state.error != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(state.error!),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
             action: SnackBarAction(
-              label: 'Dismiss',
+              label: '关闭',
               textColor: Colors.white,
               onPressed: () {
                 ref.read(conn_provider.connectionProvider.notifier).clearError();
@@ -59,54 +63,53 @@ class ConnectionListScreen extends ConsumerWidget {
       });
     }
 
-    // Show loading
     if (state.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
-    // Show empty state
     if (state.connections.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.storage_outlined,
-              size: 80,
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No Connections',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Add your first SSH connection to get started',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.6),
-                  ),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.storage_outlined,
+                size: 80,
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '暂无连接',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '点击右下角「添加连接」，填写主机、用户名和密码即可保存',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.6),
+                    ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    // Show connection list
     return ListView.builder(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
       itemCount: state.connections.length,
       itemBuilder: (context, index) {
         final connection = state.connections[index];
         return _ConnectionCard(
           connection: connection,
-          onTap: () => _onConnectionTap(context, ref, connection),
-          onEdit: () => _showConnectionDialog(context, ref, connection),
+          onTap: () => _testConnection(context, ref, connection),
+          onEdit: () => _showConnectionForm(context, ref, connection),
           onDelete: () => _deleteConnection(context, ref, connection),
           onTest: () => _testConnection(context, ref, connection),
         );
@@ -114,25 +117,16 @@ class ConnectionListScreen extends ConsumerWidget {
     );
   }
 
-  void _onConnectionTap(
-    BuildContext context,
-    WidgetRef ref,
-    ConnectionModel connection,
-  ) {
-    // TODO: Navigate to terminal screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Connect to ${connection.name}')),
-    );
-  }
-
-  Future<void> _showConnectionDialog(
+  Future<void> _showConnectionForm(
     BuildContext context,
     WidgetRef ref, [
     ConnectionModel? connection,
   ]) async {
-    final result = await showDialog<ConnectionModel>(
-      context: context,
-      builder: (context) => ConnectionFormDialog(connection: connection),
+    final result = await Navigator.push<ConnectionModel>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ConnectionFormPage(connection: connection),
+      ),
     );
 
     if (result != null) {
@@ -146,8 +140,8 @@ class ConnectionListScreen extends ConsumerWidget {
           SnackBar(
             content: Text(
               success
-                  ? '${connection == null ? 'Added' : 'Updated'} ${result.name}'
-                  : 'Failed to ${connection == null ? 'add' : 'update'} connection',
+                  ? '${connection == null ? '已添加' : '已更新'} ${result.name}'
+                  : '${connection == null ? '添加' : '更新'}失败，请查看错误提示',
             ),
             backgroundColor: success ? Colors.green : Colors.red,
           ),
@@ -164,17 +158,17 @@ class ConnectionListScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Connection'),
-        content: Text('Are you sure you want to delete "${connection.name}"?'),
+        title: const Text('删除连接'),
+        content: Text('确定要删除「${connection.name}」吗？已保存的密码会一并删除。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            child: const Text('删除'),
           ),
         ],
       ),
@@ -189,11 +183,7 @@ class ConnectionListScreen extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              success
-                  ? 'Deleted ${connection.name}'
-                  : 'Failed to delete connection',
-            ),
+            content: Text(success ? '已删除 ${connection.name}' : '删除失败，请查看错误提示'),
             backgroundColor: success ? Colors.green : Colors.red,
           ),
         );
@@ -206,22 +196,26 @@ class ConnectionListScreen extends ConsumerWidget {
     WidgetRef ref,
     ConnectionModel connection,
   ) async {
-    // Show password/key input dialog
-    final authValue = await showDialog<String>(
-      context: context,
-      builder: (context) => _AuthInputDialog(
-        authType: connection.authType,
-        connectionName: connection.name,
-      ),
-    );
+    String authValue = '';
 
-    if (authValue == null || authValue.isEmpty) {
-      return; // User cancelled
+    // 没有已保存密码时才向用户索要；测试成功后服务端会顺手保存，
+    // 下次点测试就不用再输了。
+    final canUseSaved = connection.hasPassword ||
+        (connection.authType == 'key' &&
+            (connection.keyPath?.isNotEmpty ?? false));
+    if (!canUseSaved) {
+      final input = await showDialog<String>(
+        context: context,
+        builder: (context) => _AuthInputDialog(connection: connection),
+      );
+      if (input == null || input.isEmpty) {
+        return;
+      }
+      authValue = input;
     }
 
     if (!context.mounted) return;
 
-    // Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -234,7 +228,7 @@ class ConnectionListScreen extends ConsumerWidget {
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('Testing connection...'),
+                Text('正在测试连接...'),
               ],
             ),
           ),
@@ -242,33 +236,46 @@ class ConnectionListScreen extends ConsumerWidget {
       ),
     );
 
-    final success =
-        await ref.read(conn_provider.connectionProvider.notifier).testConnection(
-              host: connection.host,
-              port: connection.port,
-              user: connection.user,
-              authType: connection.authType,
-              authValue: authValue,
-            );
+    final notifier = ref.read(conn_provider.connectionProvider.notifier);
+    final success = await notifier.testConnection(
+      host: connection.host,
+      port: connection.port,
+      user: connection.user,
+      authType: connection.authType,
+      authValue: authValue,
+      connectionId: connection.id,
+    );
 
     if (context.mounted) {
-      Navigator.pop(context); // Close loading dialog
+      Navigator.pop(context); // 关闭 loading
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success
-                ? 'Connection successful!'
-                : 'Connection failed. Check credentials.',
+      if (success) {
+        // 测试成功后刷新一次，让 has_password 等状态与服务端对齐
+        await notifier.loadConnections();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('连接成功'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        final error = ref.read(conn_provider.connectionProvider).error;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error ?? '连接失败，请检查地址与凭据'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
           ),
-          backgroundColor: success ? Colors.green : Colors.red,
-        ),
-      );
+        );
+        notifier.clearError();
+      }
     }
   }
 }
 
-/// Connection card widget
+/// 连接卡片：名称、账号地址、已保存密码标记，以及一排可见的操作按钮。
 class _ConnectionCard extends StatelessWidget {
   final ConnectionModel connection;
   final VoidCallback onTap;
@@ -292,7 +299,7 @@ class _ConnectionCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -323,60 +330,44 @@ class _ConnectionCard extends StatelessWidget {
                                         .withValues(alpha: 0.7),
                                   ),
                         ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              connection.hasPassword ||
+                                      connection.authType == 'key'
+                                  ? Icons.lock
+                                  : Icons.lock_open,
+                              size: 14,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.6),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              connection.authType == 'key'
+                                  ? '私钥认证'
+                                  : (connection.hasPassword ? '密码已保存' : '未保存密码'),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.6),
+                                  ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
-                  ),
-                  PopupMenuButton<String>(
-                    onSelected: (value) {
-                      switch (value) {
-                        case 'test':
-                          onTest();
-                          break;
-                        case 'edit':
-                          onEdit();
-                          break;
-                        case 'delete':
-                          onDelete();
-                          break;
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'test',
-                        child: Row(
-                          children: [
-                            Icon(Icons.play_arrow),
-                            SizedBox(width: 8),
-                            Text('Test Connection'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit),
-                            SizedBox(width: 8),
-                            Text('Edit'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('Delete', style: TextStyle(color: Colors.red)),
-                          ],
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
               if (connection.tags != null && connection.tags!.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   children: connection.tags!.map((tag) {
@@ -389,6 +380,26 @@ class _ConnectionCard extends StatelessWidget {
                   }).toList(),
                 ),
               ],
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    onPressed: onTest,
+                    icon: const Icon(Icons.play_arrow, size: 20),
+                    label: const Text('测试'),
+                  ),
+                  TextButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit, size: 20),
+                    label: const Text('编辑'),
+                  ),
+                  TextButton.icon(
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                    label: const Text('删除', style: TextStyle(color: Colors.red)),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -397,15 +408,11 @@ class _ConnectionCard extends StatelessWidget {
   }
 }
 
-/// Auth input dialog for testing connections
+/// 无已保存密码时的一次性密码输入框（测试成功后由服务端回存）。
 class _AuthInputDialog extends StatefulWidget {
-  final String authType;
-  final String connectionName;
+  final ConnectionModel connection;
 
-  const _AuthInputDialog({
-    required this.authType,
-    required this.connectionName,
-  });
+  const _AuthInputDialog({required this.connection});
 
   @override
   State<_AuthInputDialog> createState() => _AuthInputDialogState();
@@ -423,16 +430,16 @@ class _AuthInputDialogState extends State<_AuthInputDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isPassword = widget.authType == 'password';
+    final isPassword = widget.connection.authType == 'password';
 
     return AlertDialog(
-      title: Text('Test Connection: ${widget.connectionName}'),
+      title: Text('输入凭据：${widget.connection.name}'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            isPassword ? 'Enter password:' : 'Enter private key path:',
+            isPassword ? '该连接还没有保存密码，请输入（测试成功后自动保存）：' : '请输入私钥路径：',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 16),
@@ -440,9 +447,11 @@ class _AuthInputDialogState extends State<_AuthInputDialog> {
             controller: _controller,
             obscureText: isPassword && _obscureText,
             autofocus: true,
+            textCapitalization: TextCapitalization.none,
+            autocorrect: false,
+            enableSuggestions: false,
             decoration: InputDecoration(
-              labelText: isPassword ? 'Password' : 'Private Key Path',
-              hintText: isPassword ? 'Your password' : '/path/to/private/key',
+              labelText: isPassword ? '密码' : '私钥路径',
               border: const OutlineInputBorder(),
               prefixIcon: Icon(isPassword ? Icons.lock : Icons.vpn_key),
               suffixIcon: isPassword
@@ -451,9 +460,7 @@ class _AuthInputDialogState extends State<_AuthInputDialog> {
                         _obscureText ? Icons.visibility : Icons.visibility_off,
                       ),
                       onPressed: () {
-                        setState(() {
-                          _obscureText = !_obscureText;
-                        });
+                        setState(() => _obscureText = !_obscureText);
                       },
                     )
                   : null,
@@ -465,18 +472,18 @@ class _AuthInputDialogState extends State<_AuthInputDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: const Text('取消'),
         ),
         FilledButton(
           onPressed: _submit,
-          child: const Text('Test'),
+          child: const Text('测试连接'),
         ),
       ],
     );
   }
 
   void _submit() {
-    final value = _controller.text.trim();
+    final value = _controller.text;
     if (value.isNotEmpty) {
       Navigator.pop(context, value);
     }
