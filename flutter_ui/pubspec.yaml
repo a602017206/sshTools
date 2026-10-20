@@ -42,9 +42,6 @@ dependencies:
   # Charts for Monitoring
   fl_chart: ^0.65.0
 
-  # File Picker
-  file_picker: ^6.1.1
-
   # Logging
   logger: ^2.0.2+1
 

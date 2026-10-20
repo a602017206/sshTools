@@ -14,6 +14,8 @@ Pod::Spec.new do |s|
   s.author           = { 'AHaSSHTools' => '602017206@qq.com' }
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
+  # Go 内嵌二进制（cgo DNS 解析）需要 libresolv，否则链接报 _res_9_* 未定义
+  s.libraries        = 'resolv'
   s.dependency 'Flutter'
   s.platform         = :ios, '13.0'
   s.vendored_frameworks = 'Frameworks/Mobile.xcframework'
