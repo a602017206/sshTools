@@ -64,7 +64,7 @@ jobs:
           PLUGIN_ANDROID=flutter_ui/plugins/sshtools_go/android
           mkdir -p "$PLUGIN_ANDROID/libs" "$PLUGIN_ANDROID/src/main/jniLibs"
           cd mobile
-          gomobile bind -target=android -androidapi 24 \
+          gomobile bind -target=android -androidapi 24 -ldflags "-s -w" \
             -o "$RUNNER_TEMP/sshtools.aar" .
           cd "$RUNNER_TEMP"
           unzip -o -q sshtools.aar -d sshtools_aar
@@ -79,17 +79,76 @@ jobs:
         working-directory: flutter_ui
         run: flutter create --platforms=android --org com.ahasshtools --project-name ahasshtools_flutter .
 
-      - name: Build debug APK
+      # 固定发布签名：密钥只存在于 GitHub Secrets，解出后写 key.properties
+      # 并给脚手架的 app/build.gradle.kts 追加签名配置（模板默认没有）。
+      # 有了固定签名，后续版本才能覆盖安装、保留应用数据。
+      # Secrets 缺失时（如 fork）跳过，走下面的 debug 兜底构建。
+      - name: Inject release signing
+        working-directory: flutter_ui/android
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "signing secrets missing, will fall back to debug build"
+            exit 0
+          fi
+          KS_PATH="$RUNNER_TEMP/release.jks"
+          echo "$KS_B64" | base64 -d > "$KS_PATH"
+          cat > key.properties <<EOF
+          storeFile=$KS_PATH
+          storePassword=$KS_PW
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PW
+          EOF
+          cat >> app/build.gradle.kts <<'EOF'
+
+          // 由 mobile.yml 注入的发布签名（flutter create 的脚手架默认只有 debug 签名）
+          val keystorePropsFile = rootProject.file("key.properties")
+          val keystoreProps = java.util.Properties()
+          if (keystorePropsFile.exists()) {
+              keystoreProps.load(java.io.FileInputStream(keystorePropsFile))
+          }
+          android {
+              signingConfigs {
+                  create("release") {
+                      if (keystorePropsFile.exists()) {
+                          storeFile = file(keystoreProps.getProperty("storeFile"))
+                          storePassword = keystoreProps.getProperty("storePassword")
+                          keyAlias = keystoreProps.getProperty("keyAlias")
+                          keyPassword = keystoreProps.getProperty("keyPassword")
+                      }
+                  }
+              }
+              buildTypes {
+                  getByName("release") {
+                      signingConfig = signingConfigs.getByName("release")
+                  }
+              }
+          }
+          EOF
+          echo "release signing injected"
+
+      - name: Build APK
         working-directory: flutter_ui
         run: |
           flutter pub get
-          flutter build apk --debug
+          if [ -f android/key.properties ]; then
+            # 按 ABI 拆分，避免单个 APK 背着三个架构的 Go 库
+            flutter build apk --release --split-per-abi
+          else
+            flutter build apk --debug
+          fi
+          ls -lh build/app/outputs/flutter-apk/
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sshtools-android-debug-apk
-          path: flutter_ui/build/app/outputs/flutter-apk/app-debug.apk
+          name: sshtools-android-apk
+          path: flutter_ui/build/app/outputs/flutter-apk/*.apk
           retention-days: 7
 
   ios:
@@ -127,7 +186,7 @@ jobs:
         run: |
           mkdir -p flutter_ui/plugins/sshtools_go/ios/Frameworks
           cd mobile
-          gomobile bind -target=ios \
+          gomobile bind -target=ios -ldflags "-s -w" \
             -o ../flutter_ui/plugins/sshtools_go/ios/Frameworks/Mobile.xcframework \
             .
           ls ../flutter_ui/plugins/sshtools_go/ios/Frameworks/
