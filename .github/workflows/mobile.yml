@@ -54,17 +54,24 @@ jobs:
         working-directory: mobile
         run: go test ./...
 
-      - name: Build Android AAR from Go core
+      - name: Build Android library from Go core
         shell: bash
         env:
           CGO_ENABLED: '1'
         run: |
-          mkdir -p flutter_ui/plugins/sshtools_go/android/libs
+          # gomobile 生成 AAR 后必须解包：Android 库工程（Flutter 插件）
+          # 不能直接依赖本地 .aar，需拆成 classes.jar + jniLibs/*.so。
+          PLUGIN_ANDROID=flutter_ui/plugins/sshtools_go/android
+          mkdir -p "$PLUGIN_ANDROID/libs" "$PLUGIN_ANDROID/src/main/jniLibs"
           cd mobile
           gomobile bind -target=android -androidapi 24 \
-            -o ../flutter_ui/plugins/sshtools_go/android/libs/sshtools.aar \
-            .
-          ls -lh ../flutter_ui/plugins/sshtools_go/android/libs/
+            -o "$RUNNER_TEMP/sshtools.aar" .
+          cd "$RUNNER_TEMP"
+          unzip -o -q sshtools.aar -d sshtools_aar
+          cp sshtools_aar/classes.jar "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/libs/sshtools-classes.jar"
+          cp -r sshtools_aar/jni/* "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/src/main/jniLibs/"
+          find "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/src/main/jniLibs" -name '*.so' | sort
+          ls -lh "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/libs/"
 
       # 仓库未提交 Flutter 平台工程脚手架，统一在流水线里生成，
       # 避免本地无 Flutter SDK 时手写模板与工具链版本漂移。

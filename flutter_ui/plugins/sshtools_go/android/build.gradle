@@ -48,6 +48,9 @@ android {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    // gomobile 产物，由 CI 在打包前生成到 libs/（见 .github/workflows/mobile.yml）
-    implementation fileTree(dir: 'libs', include: ['*.aar'])
+    // gomobile 产物经 CI 解包后放入：classes.jar 进 libs/，各 ABI 的
+    // libgojni.so 进 src/main/jniLibs/（见 .github/workflows/mobile.yml）。
+    // 不能直接依赖 .aar 文件：Android 库工程打包 AAR 时不允许内嵌本地 AAR，
+    // AGP 会在 bundleDebugAar 阶段直接报错。
+    implementation files('libs/sshtools-classes.jar')
 }
