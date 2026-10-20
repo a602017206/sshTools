@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/connection_model.dart';
 import '../../providers/connection_provider.dart' as conn_provider;
+import '../sftp/sftp_screen.dart';
 import '../terminal/terminal_screen.dart';
 import 'widgets/connection_form_page.dart';
 
@@ -111,6 +112,7 @@ class ConnectionListScreen extends ConsumerWidget {
           connection: connection,
           onTap: () => _openTerminal(context, ref, connection),
           onConnect: () => _openTerminal(context, ref, connection),
+          onFiles: () => _openSftp(context, ref, connection),
           onEdit: () => _showConnectionForm(context, ref, connection),
           onDelete: () => _deleteConnection(context, ref, connection),
           onTest: () => _testConnection(context, ref, connection),
@@ -231,6 +233,43 @@ class ConnectionListScreen extends ConsumerWidget {
     }
   }
 
+  /// 进入 SFTP 文件管理。凭据处理与终端一致：
+  /// 已保存直接进，未保存先弹窗索要一次。
+  Future<void> _openSftp(
+    BuildContext context,
+    WidgetRef ref,
+    ConnectionModel connection,
+  ) async {
+    var authValue = '';
+    final canUseSaved = connection.hasPassword ||
+        (connection.authType == 'key' &&
+            (connection.keyPath?.isNotEmpty ?? false));
+    if (!canUseSaved) {
+      final input = await showDialog<String>(
+        context: context,
+        builder: (context) => _AuthInputDialog(connection: connection),
+      );
+      if (input == null || input.isEmpty) {
+        return;
+      }
+      authValue = input;
+    }
+
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SftpScreen(
+          connection: connection,
+          authValue: authValue,
+        ),
+      ),
+    );
+    if (context.mounted) {
+      await ref.read(conn_provider.connectionProvider.notifier).loadConnections();
+    }
+  }
+
   Future<void> _testConnection(
     BuildContext context,
     WidgetRef ref,
@@ -320,6 +359,7 @@ class _ConnectionCard extends StatelessWidget {
   final ConnectionModel connection;
   final VoidCallback onTap;
   final VoidCallback onConnect;
+  final VoidCallback onFiles;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onTest;
@@ -328,6 +368,7 @@ class _ConnectionCard extends StatelessWidget {
     required this.connection,
     required this.onTap,
     required this.onConnect,
+    required this.onFiles,
     required this.onEdit,
     required this.onDelete,
     required this.onTest,
@@ -431,6 +472,11 @@ class _ConnectionCard extends StatelessWidget {
                     label: const Text('连接'),
                   ),
                   const SizedBox(width: 4),
+                  TextButton.icon(
+                    onPressed: onFiles,
+                    icon: const Icon(Icons.folder, size: 20),
+                    label: const Text('文件'),
+                  ),
                   TextButton.icon(
                     onPressed: onTest,
                     icon: const Icon(Icons.play_arrow, size: 20),

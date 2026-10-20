@@ -35,6 +35,9 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   path_provider: ^2.1.5
 
+  # SFTP 上传时选本地文件（6.x 用已移除的旧嵌入 API，必须用新版）
+  file_picker: ^10.0.0
+
   # 内嵌 Go 核心（gomobile）：在应用进程内启动 API 服务器
   sshtools_go:
     path: plugins/sshtools_go

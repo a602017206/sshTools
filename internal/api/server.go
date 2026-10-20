@@ -108,6 +108,22 @@ func (s *Server) setupRoutes() {
 		sessions.POST("/:id/resize", sessHandler.Resize)
 		sessions.DELETE("/:id", sessHandler.Disconnect)
 		sessions.GET("", sessHandler.ListSessions)
+
+		// SFTP 文件操作（挂在已建立的 SSH 会话上）
+		if s.services.SFTP != nil {
+			sftpHandler := handlers.NewSFTPHandler(s.services.SFTP)
+			sftp := sessions.Group("/:id/sftp")
+			sftp.GET("/list", sftpHandler.List)
+			sftp.GET("/pwd", sftpHandler.Pwd)
+			sftp.GET("/stat", sftpHandler.Stat)
+			sftp.POST("/mkdir", sftpHandler.Mkdir)
+			sftp.POST("/rename", sftpHandler.Rename)
+			sftp.DELETE("", sftpHandler.Delete)
+			sftp.GET("/read", sftpHandler.ReadText)
+			sftp.PUT("/write", sftpHandler.WriteText)
+			sftp.POST("/upload", sftpHandler.Upload)
+			sftp.GET("/download", sftpHandler.Download)
+		}
 	}
 
 	// WebSocket endpoint
@@ -115,7 +131,7 @@ func (s *Server) setupRoutes() {
 		websocket.ServeWs(s.wsHub, c.Writer, c.Request)
 	})
 
-	// TODO: Add more routes for SFTP, Monitor, Settings
+	// TODO: Add more routes for Monitor, Settings
 }
 
 // Start starts the HTTP server and WebSocket hub
