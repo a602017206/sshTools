@@ -104,13 +104,15 @@ jobs:
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PW
           EOF
+          # 新版 Gradle 里 java 被扩展访问器占用，java.util.* 需靠文件头 import
+          sed -i '1i import java.util.Properties\nimport java.io.FileInputStream' app/build.gradle.kts
           cat >> app/build.gradle.kts <<'EOF'
 
           // 由 mobile.yml 注入的发布签名（flutter create 的脚手架默认只有 debug 签名）
           val keystorePropsFile = rootProject.file("key.properties")
-          val keystoreProps = java.util.Properties()
+          val keystoreProps = Properties()
           if (keystorePropsFile.exists()) {
-              keystoreProps.load(java.io.FileInputStream(keystorePropsFile))
+              keystoreProps.load(FileInputStream(keystorePropsFile))
           }
           android {
               signingConfigs {
