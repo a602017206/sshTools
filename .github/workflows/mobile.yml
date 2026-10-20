@@ -23,10 +23,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # mobile 子模块的 go 指令以 x/mobile 锁定版本为准（见 mobile/go.mod）
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -40,16 +41,18 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Install gomobile
+      - name: Install gomobile (version locked by mobile/go.mod)
         shell: bash
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+          GOMOBILE_VERSION="$(cd mobile && go list -m -f '{{.Version}}' golang.org/x/mobile)"
+          echo "gomobile version: $GOMOBILE_VERSION"
+          go install "golang.org/x/mobile/cmd/gomobile@${GOMOBILE_VERSION}"
+          go install "golang.org/x/mobile/cmd/gobind@${GOMOBILE_VERSION}"
           echo "$HOME/go/bin" >> "$GITHUB_PATH"
 
-      - name: Fetch gomobile bind runtime
-        shell: bash
-        run: go get golang.org/x/mobile/bind@latest
+      - name: Test embedded Go module
+        working-directory: mobile
+        run: go test ./...
 
       - name: Build Android AAR from Go core
         shell: bash
@@ -57,10 +60,11 @@ jobs:
           CGO_ENABLED: '1'
         run: |
           mkdir -p flutter_ui/plugins/sshtools_go/android/libs
+          cd mobile
           gomobile bind -target=android -androidapi 24 \
-            -o flutter_ui/plugins/sshtools_go/android/libs/sshtools.aar \
-            ./mobile
-          ls -lh flutter_ui/plugins/sshtools_go/android/libs/
+            -o ../flutter_ui/plugins/sshtools_go/android/libs/sshtools.aar \
+            .
+          ls -lh ../flutter_ui/plugins/sshtools_go/android/libs/
 
       # 仓库未提交 Flutter 平台工程脚手架，统一在流水线里生成，
       # 避免本地无 Flutter SDK 时手写模板与工具链版本漂移。
@@ -88,10 +92,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # mobile 子模块的 go 指令以 x/mobile 锁定版本为准（见 mobile/go.mod）
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -99,16 +104,14 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Install gomobile
+      - name: Install gomobile (version locked by mobile/go.mod)
         shell: bash
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+          GOMOBILE_VERSION="$(cd mobile && go list -m -f '{{.Version}}' golang.org/x/mobile)"
+          echo "gomobile version: $GOMOBILE_VERSION"
+          go install "golang.org/x/mobile/cmd/gomobile@${GOMOBILE_VERSION}"
+          go install "golang.org/x/mobile/cmd/gobind@${GOMOBILE_VERSION}"
           echo "$HOME/go/bin" >> "$GITHUB_PATH"
-
-      - name: Fetch gomobile bind runtime
-        shell: bash
-        run: go get golang.org/x/mobile/bind@latest
 
       - name: Build iOS XCFramework from Go core
         shell: bash
@@ -116,10 +119,11 @@ jobs:
           CGO_ENABLED: '1'
         run: |
           mkdir -p flutter_ui/plugins/sshtools_go/ios/Frameworks
+          cd mobile
           gomobile bind -target=ios \
-            -o flutter_ui/plugins/sshtools_go/ios/Frameworks/Mobile.xcframework \
-            ./mobile
-          ls flutter_ui/plugins/sshtools_go/ios/Frameworks/
+            -o ../flutter_ui/plugins/sshtools_go/ios/Frameworks/Mobile.xcframework \
+            .
+          ls ../flutter_ui/plugins/sshtools_go/ios/Frameworks/
 
       - name: Generate iOS scaffolding
         working-directory: flutter_ui

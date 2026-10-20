@@ -14,6 +14,7 @@
 采用 **Flutter UI + gomobile 内嵌 Go**：
 
 - Go 侧新增 `mobile` 包，用 gomobile 绑定把现有 API 服务器装配（与 `cmd/apiserver` 相同的服务组合）跑在应用进程内，仅监听 `127.0.0.1` 随机端口。选择「进程内库」而不是桌面式独立进程，是因为 iOS 禁止子进程、Android 也不适合以裸二进制常驻。
+- `mobile` 做成独立 Go 子模块（`replace` 引用主模块）：首次流水线验证发现，CI 里动态 `go get golang.org/x/mobile/bind@latest` 会把 2019 年的旧版 `genproto` 写进主模块，与已拆分的 `genproto/googleapis/rpc` 冲突，导致 gobind 全图加载报 ambiguous import；同时 `@latest` 还会抬升 grpc 等一票桌面依赖。子模块把这些版本变动关在移动端范围内，桌面主模块 `go.mod` 不动，gomobile 工具版本也由子模块 `go.mod` 锁定、流水线按锁定版本安装。
 - Flutter 侧新增本地插件 `flutter_ui/plugins/sshtools_go`（MethodChannel `sshtools_go`），Android 链接 gomobile 产出的 AAR，iOS 链接 `Mobile.xcframework`，负责把沙盒目录传入 Go 并拿回端口。
 - Flutter 现有数据层（Dio + WebSocket，走 `/api/v1`）保持不变，只是基地址在移动端改为内嵌服务器地址；桌面调试仍连独立运行的 `cmd/apiserver`（`localhost:8080`）。
 - Flutter 平台工程脚手架（`android/`、`ios/`）暂不入库，统一由 CI 用 `flutter create` 按当前稳定版 Flutter 生成，避免在无 Flutter SDK 的开发机上手工维护易漂移的模板文件；后续真机调试常态化后再把脚手架入库固化。
