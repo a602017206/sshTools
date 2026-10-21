@@ -133,14 +133,32 @@ jobs:
           flutter pub get
           dart run flutter_launcher_icons
 
-      # 应用显示名与桌面端统一（wails.json 的 name：AHaSSHTools），
-      # 脚手架默认是 ahasshtools_flutter。iOS 在 iOS job 里同样处理。
-      - name: Set app display name (Android)
+      # 应用清单三件事（脚手架默认都不满足正式包需求）：
+      # 1) 显示名与桌面端统一（wails.json 的 name：AHaSSHTools）；
+      # 2) INTERNET 权限：脚手架只在 debug 清单里给，正式包主清单没有，
+      #    否则连 127.0.0.1 的内嵌 Go 服务都会被系统拒（真机表现为
+      #    前端报 No internet connection、添加连接失败）；
+      # 3) 明文放行：安卓 9+ 默认禁明文，我们的 API 只走本机回环，
+      #    用 network_security_config 只对 127.0.0.1/localhost 放行。
+      - name: Configure Android manifest (name, INTERNET, loopback cleartext)
         working-directory: flutter_ui
+        shell: bash
         run: |
-          sed -i 's/android:label="[^"]*"/android:label="AHaSSHTools"/' \
-            android/app/src/main/AndroidManifest.xml
-          grep -o 'android:label="[^"]*"' android/app/src/main/AndroidManifest.xml | head -1
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's|android:label="[^"]*"|android:label="AHaSSHTools"\n        android:networkSecurityConfig="@xml/network_security_config"|' "$MANIFEST"
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
+          mkdir -p android/app/src/main/res/xml
+          cat > android/app/src/main/res/xml/network_security_config.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <!-- API 只走本机回环（内嵌 Go 服务），仅对回环地址放行明文 HTTP -->
+          <network-security-config>
+              <domain-config cleartextTrafficPermitted="true">
+                  <domain includeSubdomains="false">127.0.0.1</domain>
+                  <domain includeSubdomains="false">localhost</domain>
+              </domain-config>
+          </network-security-config>
+          EOF
+          grep -E 'label|INTERNET|networkSecurityConfig' "$MANIFEST" | head -5
 
       # R8 保留 gomobile 桥接类：Seq.getRef 等方法只被 Go 运行时经 JNI
       # 按名查找，Java 侧无静态引用，release 的 R8 会裁剪/改名，
@@ -240,9 +258,13 @@ jobs:
           fi
           ls -lh build/app/outputs/flutter-apk/
 
-      # R8 回归断言：Seq.getRef 必须原样留在 dex 里，缺失直接红。
-      # 它只被 Go 经 JNI 按名调用，被裁后真机启动即 SIGABRT（见上）。
-      - name: Assert gomobile bridge survived R8
+      # 发布断言（任一不满足直接红）：
+      # 1) Seq.getRef 必须原样留在 dex 里：它只被 Go 经 JNI 按名调用，
+      #    被 R8 裁后真机启动即 SIGABRT（见上）；
+      # 2) 清单必须含 INTERNET 权限：脚手架只在 debug 清单给，
+      #    正式包缺了连 127.0.0.1 都被系统拒（真机报 No internet connection）。
+      #    二进制清单是 UTF-16，tr 去空字节后再 grep。
+      - name: Assert release APK invariants (bridge kept, INTERNET granted)
         working-directory: flutter_ui/build/app/outputs/flutter-apk
         shell: bash
         run: |
@@ -251,6 +273,12 @@ jobs:
               echo "$apk: Seq.getRef present"
             else
               echo "$apk: Seq.getRef MISSING (R8 stripped gomobile bridge)"
+              exit 1
+            fi
+            if unzip -p "$apk" AndroidManifest.xml | tr -d '\000' | grep -aq 'android.permission.INTERNET'; then
+              echo "$apk: INTERNET permission present"
+            else
+              echo "$apk: INTERNET permission MISSING"
               exit 1
             fi
           done
@@ -325,6 +353,8 @@ jobs:
               plist = plistlib.load(fh)
           plist["CFBundleName"] = "AHaSSHTools"
           plist["CFBundleDisplayName"] = "AHaSSHTools"
+          # 与 Android 的回环明文放行对应：ATS 仅放行本地网络明文
+          plist["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
           with open(path, "wb") as fh:
               plistlib.dump(plist, fh)
           print("iOS display name set to AHaSSHTools")
