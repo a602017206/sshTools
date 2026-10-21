@@ -13,6 +13,9 @@ class AccountScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
+    final accent = ref.watch(accentProvider);
+    final terminalThemeMode = ref.watch(terminalThemeModeProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(title: const Text('账户')),
@@ -69,7 +72,7 @@ class AccountScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '终端区域保持深色以贴近桌面习惯，其余界面跟随此处设置',
+                    '明暗、主题色与终端配色均与桌面版同一套预设，选择即时生效并保存',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context)
                               .colorScheme
@@ -100,6 +103,63 @@ class AccountScreen extends ConsumerWidget {
                     onSelectionChanged: (selection) {
                       ref
                           .read(themeModeProvider.notifier)
+                          .setMode(selection.first);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text('主题色',
+                          style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(width: 8),
+                      Text(
+                        accent.label,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (final item in appAccents)
+                        _AccentDot(
+                          accent: item,
+                          dark: isDark,
+                          selected: item.id == accent.id,
+                          onTap: () => ref
+                              .read(accentProvider.notifier)
+                              .setAccent(item),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text('终端主题',
+                      style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 10),
+                  SegmentedButton<TerminalThemeMode>(
+                    segments: const [
+                      ButtonSegment(
+                        value: TerminalThemeMode.dark,
+                        label: Text('深色'),
+                      ),
+                      ButtonSegment(
+                        value: TerminalThemeMode.light,
+                        label: Text('浅色'),
+                      ),
+                      ButtonSegment(
+                        value: TerminalThemeMode.follow,
+                        label: Text('跟随界面'),
+                      ),
+                    ],
+                    selected: {terminalThemeMode},
+                    onSelectionChanged: (selection) {
+                      ref
+                          .read(terminalThemeModeProvider.notifier)
                           .setMode(selection.first);
                     },
                   ),
@@ -159,6 +219,60 @@ class AccountScreen extends ConsumerWidget {
           ),
           Expanded(child: Text(value)),
         ],
+      ),
+    );
+  }
+}
+
+/// 主题色选择圆点：桌面预设的主→辅渐变，选中时带描边与对勾。
+class _AccentDot extends StatelessWidget {
+  final AppAccent accent;
+  final bool dark;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _AccentDot({
+    required this.accent,
+    required this.dark,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final main = dark ? accent.darkSeed : accent.lightSeed;
+    final secondary = dark ? accent.darkSecondary : accent.lightSecondary;
+    return Tooltip(
+      message: accent.label,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [main, secondary],
+            ),
+            border: selected
+                ? Border.all(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    width: 2.5,
+                  )
+                : Border.all(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.15),
+                  ),
+          ),
+          child: selected
+              ? const Icon(Icons.check, size: 20, color: Colors.white)
+              : null,
+        ),
       ),
     );
   }

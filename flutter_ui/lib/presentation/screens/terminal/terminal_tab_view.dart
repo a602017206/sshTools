@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:xterm/xterm.dart';
 
+import '../../../core/theme/theme_provider.dart';
 import '../../providers/api_providers.dart';
 import '../../providers/terminal_tabs_provider.dart';
 
@@ -212,6 +213,11 @@ class _TerminalTabViewState extends ConsumerState<TerminalTabView> {
 
   @override
   Widget build(BuildContext context) {
+    // 终端配色独立于界面明暗：深/浅/跟随界面（配色表与桌面端一致）
+    final terminalTheme = resolveXtermTheme(
+      ref.watch(terminalThemeModeProvider),
+      Theme.of(context).brightness,
+    );
     return Column(
       children: [
         if (_status == TerminalTabStatus.connecting)
@@ -259,6 +265,7 @@ class _TerminalTabViewState extends ConsumerState<TerminalTabView> {
         Expanded(
           child: TerminalView(
             _terminal,
+            theme: terminalTheme,
             focusNode: _focusNode,
             autofocus: widget.isActive,
             // visiblePassword 让 Android 键盘关闭联想/自动纠正，

@@ -47,17 +47,19 @@ class SSHToolsApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
+    final accent = ref.watch(accentProvider);
 
+    // 主题色与桌面端对齐：同一强调色在浅/深下各取桌面预设主色作种子
     final lightTheme = ThemeData(
       colorScheme: ColorScheme.fromSeed(
-        seedColor: Colors.blue,
+        seedColor: accent.lightSeed,
         brightness: Brightness.light,
       ),
       useMaterial3: true,
     );
     final darkTheme = ThemeData(
       colorScheme: ColorScheme.fromSeed(
-        seedColor: Colors.blue,
+        seedColor: accent.darkSeed,
         brightness: Brightness.dark,
       ),
       useMaterial3: true,
