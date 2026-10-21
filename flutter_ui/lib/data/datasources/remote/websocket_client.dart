@@ -10,8 +10,10 @@ class WebSocketClient {
   final String url;
   final Logger _logger = Logger();
 
-  // Event handlers mapped by message type
-  final Map<String, Function(Map<String, dynamic>)> _handlers = {};
+  // Event handlers mapped by message type.
+  // 同一 type 允许多个处理器并存（多标签终端各订各的会话，
+  // 靠 session_id 自行过滤），注册/移除都以处理器实例为单位。
+  final Map<String, Set<Function(Map<String, dynamic>)>> _handlers = {};
 
   // 期望保持的订阅集合：未连接时 subscribe 只登记，
   // 连接（含重连）成功后统一补发，避免订阅抢跑丢失早期输出
@@ -106,8 +108,12 @@ class WebSocketClient {
       final data = jsonDecode(message as String) as Map<String, dynamic>;
       final type = data['type'] as String?;
 
-      if (type != null && _handlers.containsKey(type)) {
-        _handlers[type]!(data);
+      final handlers = type == null ? null : _handlers[type];
+      if (handlers != null && handlers.isNotEmpty) {
+        // 复制一份再遍历：处理器可能在回调里注销自己
+        for (final handler in List.of(handlers)) {
+          handler(data);
+        }
       } else {
         _logger.w('No handler for message type: $type');
       }
@@ -178,14 +184,27 @@ class WebSocketClient {
     _logger.d('Unsubscribed from: $target');
   }
 
-  /// Register event handler for a message type
+  /// Register event handler for a message type（同 type 可多处理器并存）
   void onEvent(String type, Function(Map<String, dynamic>) handler) {
-    _handlers[type] = handler;
+    _handlers.putIfAbsent(type, () => {}).add(handler);
   }
 
-  /// Remove event handler
-  void removeHandler(String type) {
-    _handlers.remove(type);
+  /// Remove event handler：传入具体处理器时只移除该个
+  /// （多标签终端互不影响）；不传则移除该 type 的全部处理器。
+  void removeHandler(String type,
+      [Function(Map<String, dynamic>)? handler]) {
+    if (handler == null) {
+      _handlers.remove(type);
+      return;
+    }
+    final handlers = _handlers[type];
+    if (handlers == null) {
+      return;
+    }
+    handlers.remove(handler);
+    if (handlers.isEmpty) {
+      _handlers.remove(type);
+    }
   }
 
   /// Send message to server

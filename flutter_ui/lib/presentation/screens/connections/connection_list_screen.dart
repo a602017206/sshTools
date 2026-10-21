@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/connection_model.dart';
 import '../../providers/connection_provider.dart' as conn_provider;
+import '../../providers/terminal_tabs_provider.dart';
+import '../../widgets/auth_input_dialog.dart';
 import '../sftp/sftp_screen.dart';
-import '../terminal/terminal_screen.dart';
 import 'widgets/connection_form_page.dart';
 
 /// 连接列表页（移动端）。
@@ -195,42 +196,25 @@ class ConnectionListScreen extends ConsumerWidget {
     }
   }
 
-  /// 进入 SSH 终端。没有已保存凭据时先弹窗索要，
-  /// 连接成功后服务端会回存，后续直接进终端。
+  /// 打开 SSH 终端标签：同一资产已有标签时直接激活，
+  /// 否则新建；随后切到终端栏。没有已保存凭据时先弹窗索要，
+  /// 连接成功后服务端会回存，后续直接开标签。
   Future<void> _openTerminal(
     BuildContext context,
     WidgetRef ref,
     ConnectionModel connection,
   ) async {
-    var authValue = '';
-    final canUseSaved = connection.hasPassword ||
-        (connection.authType == 'key' &&
-            (connection.keyPath?.isNotEmpty ?? false));
-    if (!canUseSaved) {
-      final input = await showDialog<String>(
-        context: context,
-        builder: (context) => _AuthInputDialog(connection: connection),
-      );
-      if (input == null || input.isEmpty) {
-        return;
-      }
-      authValue = input;
+    final authValue = await requestAuthValue(context, connection);
+    if (authValue == null || !context.mounted) {
+      return;
     }
 
-    if (!context.mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TerminalScreen(
-          connection: connection,
-          authValue: authValue,
-        ),
-      ),
-    );
-    // 从终端返回后刷新一次，让 has_password 等状态与服务端对齐
-    if (context.mounted) {
-      await ref.read(conn_provider.connectionProvider.notifier).loadConnections();
-    }
+    ref
+        .read(terminalTabsProvider.notifier)
+        .openOrActivate(connection, authValue: authValue);
+    ref.read(appShellIndexProvider.notifier).state = AppShellTabs.terminal;
+    // 开标签后刷新一次，让 has_password 等状态与服务端对齐
+    await ref.read(conn_provider.connectionProvider.notifier).loadConnections();
   }
 
   /// 进入 SFTP 文件管理。凭据处理与终端一致：
@@ -240,19 +224,9 @@ class ConnectionListScreen extends ConsumerWidget {
     WidgetRef ref,
     ConnectionModel connection,
   ) async {
-    var authValue = '';
-    final canUseSaved = connection.hasPassword ||
-        (connection.authType == 'key' &&
-            (connection.keyPath?.isNotEmpty ?? false));
-    if (!canUseSaved) {
-      final input = await showDialog<String>(
-        context: context,
-        builder: (context) => _AuthInputDialog(connection: connection),
-      );
-      if (input == null || input.isEmpty) {
-        return;
-      }
-      authValue = input;
+    final authValue = await requestAuthValue(context, connection);
+    if (authValue == null || !context.mounted) {
+      return;
     }
 
     if (!context.mounted) return;
@@ -275,23 +249,13 @@ class ConnectionListScreen extends ConsumerWidget {
     WidgetRef ref,
     ConnectionModel connection,
   ) async {
-    String authValue = '';
-
     // 没有已保存密码时才向用户索要；测试成功后服务端会顺手保存，
     // 下次点测试就不用再输了。
-    final canUseSaved = connection.hasPassword ||
-        (connection.authType == 'key' &&
-            (connection.keyPath?.isNotEmpty ?? false));
-    if (!canUseSaved) {
-      final input = await showDialog<String>(
-        context: context,
-        builder: (context) => _AuthInputDialog(connection: connection),
-      );
-      if (input == null || input.isEmpty) {
-        return;
-      }
-      authValue = input;
+    final authInput = await requestAuthValue(context, connection);
+    if (authInput == null || !context.mounted) {
+      return;
     }
+    final authValue = authInput;
 
     if (!context.mounted) return;
 
@@ -499,87 +463,5 @@ class _ConnectionCard extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// 无已保存密码时的一次性密码输入框（测试成功后由服务端回存）。
-class _AuthInputDialog extends StatefulWidget {
-  final ConnectionModel connection;
-
-  const _AuthInputDialog({required this.connection});
-
-  @override
-  State<_AuthInputDialog> createState() => _AuthInputDialogState();
-}
-
-class _AuthInputDialogState extends State<_AuthInputDialog> {
-  final _controller = TextEditingController();
-  bool _obscureText = true;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isPassword = widget.connection.authType == 'password';
-
-    return AlertDialog(
-      title: Text('输入凭据：${widget.connection.name}'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            isPassword ? '该连接还没有保存密码，请输入（测试成功后自动保存）：' : '请输入私钥路径：',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _controller,
-            obscureText: isPassword && _obscureText,
-            autofocus: true,
-            textCapitalization: TextCapitalization.none,
-            autocorrect: false,
-            enableSuggestions: false,
-            decoration: InputDecoration(
-              labelText: isPassword ? '密码' : '私钥路径',
-              border: const OutlineInputBorder(),
-              prefixIcon: Icon(isPassword ? Icons.lock : Icons.vpn_key),
-              suffixIcon: isPassword
-                  ? IconButton(
-                      icon: Icon(
-                        _obscureText ? Icons.visibility : Icons.visibility_off,
-                      ),
-                      onPressed: () {
-                        setState(() => _obscureText = !_obscureText);
-                      },
-                    )
-                  : null,
-            ),
-            onSubmitted: (_) => _submit(),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('测试连接'),
-        ),
-      ],
-    );
-  }
-
-  void _submit() {
-    final value = _controller.text;
-    if (value.isNotEmpty) {
-      Navigator.pop(context, value);
-    }
   }
 }

@@ -5,39 +5,41 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:xterm/xterm.dart';
 
-import '../../../data/models/connection_model.dart';
 import '../../providers/api_providers.dart';
+import '../../providers/terminal_tabs_provider.dart';
 
-enum _SessionStatus { connecting, connected, disconnected, error }
-
-/// SSH 终端页：xterm 渲染 + WebSocket 收输出 + HTTP 发输入/尺寸。
+/// 单个终端标签页：xterm 渲染 + WebSocket 收输出 + HTTP 发输入/尺寸。
 ///
-/// 数据通路与桌面端一致地复用既有 API：
-/// 先经 WebSocket 订阅会话，再 POST /sessions/connect（凭 connection_id
-/// 回退已保存密码开会话），远端 PTY 输出经 ws 的 ssh:output 回推渲染；
-/// 键入经 POST /sessions/:id/send 回传。退出页面即关会话。
-class TerminalScreen extends ConsumerStatefulWidget {
-  final ConnectionModel connection;
+/// 数据通路与桌面端一致地复用既有 API：先经 WebSocket 订阅会话，
+/// 再 POST /sessions/connect（凭 connection_id 回退已保存密码开会话），
+/// 远端 PTY 输出经 ws 的 ssh:output 回推渲染；键入经
+/// POST /sessions/:id/send 回传。
+///
+/// 生命周期绑定标签：组件在 IndexedStack 里保活，切栏/切标签不销毁；
+/// 只有关闭标签（组件真正 dispose）时才退订并关闭 SSH 会话。
+/// 连接状态与会话 ID 通过 terminalTabsProvider 回报给标签栏。
+class TerminalTabView extends ConsumerStatefulWidget {
+  final TerminalTab tab;
 
-  /// 临时输入的凭据（尚未保存密码的连接）；为空时服务端回退已保存密码。
-  final String authValue;
+  /// 是否为当前激活标签（切到本标签时抢焦点弹键盘）
+  final bool isActive;
 
-  const TerminalScreen({
+  const TerminalTabView({
     super.key,
-    required this.connection,
-    this.authValue = '',
+    required this.tab,
+    required this.isActive,
   });
 
   @override
-  ConsumerState<TerminalScreen> createState() => _TerminalScreenState();
+  ConsumerState<TerminalTabView> createState() => _TerminalTabViewState();
 }
 
-class _TerminalScreenState extends ConsumerState<TerminalScreen> {
+class _TerminalTabViewState extends ConsumerState<TerminalTabView> {
   final Terminal _terminal = Terminal(maxLines: 10000);
   final FocusNode _focusNode = FocusNode();
 
   String _sessionId = '';
-  _SessionStatus _status = _SessionStatus.connecting;
+  TerminalTabStatus _status = TerminalTabStatus.connecting;
   String? _errorText;
   bool _ctrlActive = false;
   bool _disposed = false;
@@ -59,7 +61,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       unawaited(_send(out));
     };
     _terminal.onResize = (width, height, pixelWidth, pixelHeight) {
-      if (_status == _SessionStatus.connected) {
+      if (_status == TerminalTabStatus.connected) {
         unawaited(
           ref
               .read(sessionRepositoryProvider)
@@ -72,29 +74,57 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     unawaited(_startSession());
   }
 
+  @override
+  void didUpdateWidget(TerminalTabView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 切到本标签时把焦点交给终端，软键盘随之弹起
+    if (widget.isActive && !oldWidget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _focusNode.requestFocus();
+        }
+      });
+    }
+  }
+
+  void _reportStatus(TerminalTabStatus status) {
+    if (!mounted || _disposed) {
+      return;
+    }
+    setState(() => _status = status);
+    ref.read(terminalTabsProvider.notifier).setStatus(widget.tab.id, status);
+  }
+
   Future<void> _startSession() async {
     final ws = ref.read(webSocketClientProvider);
     final sessionRepo = ref.read(sessionRepositoryProvider);
 
-    // 重连时先收尾旧会话
+    // 重连时先收尾旧会话（处理器只注册一次，靠 _sessionId 过滤）
     if (_sessionId.isNotEmpty) {
       ws.unsubscribe(_sessionId);
       unawaited(sessionRepo.closeSession(_sessionId).catchError((_) {}));
+    } else {
+      ws.onEvent('ssh:output', _onWsEvent);
+      ws.onEvent('ssh:closed', _onWsEvent);
     }
 
     final sessionId = 'mobile-${const Uuid().v4()}';
     _sessionId = sessionId;
+    ref
+        .read(terminalTabsProvider.notifier)
+        .setSessionId(widget.tab.id, sessionId);
 
     if (mounted) {
       setState(() {
-        _status = _SessionStatus.connecting;
+        _status = TerminalTabStatus.connecting;
         _errorText = null;
       });
     }
-    _terminal.write('正在连接 ${widget.connection.user}@${widget.connection.host}:${widget.connection.port} ...\r\n');
-
-    ws.onEvent('ssh:output', _onWsEvent);
-    ws.onEvent('ssh:closed', _onWsEvent);
+    ref
+        .read(terminalTabsProvider.notifier)
+        .setStatus(widget.tab.id, TerminalTabStatus.connecting);
+    final conn = widget.tab.connection;
+    _terminal.write('正在连接 ${conn.user}@${conn.host}:${conn.port} ...\r\n');
 
     try {
       // 先把 WS 订上再开会话，避免登录横幅等早期输出丢失
@@ -103,25 +133,25 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
       await sessionRepo.connectSSH(
         sessionId: sessionId,
-        host: widget.connection.host,
-        port: widget.connection.port,
-        user: widget.connection.user,
-        authType: widget.connection.authType,
-        authValue: widget.authValue,
-        connectionId: widget.connection.id,
+        host: conn.host,
+        port: conn.port,
+        user: conn.user,
+        authType: conn.authType,
+        authValue: widget.tab.authValue,
+        connectionId: conn.id,
         cols: _terminal.viewWidth,
         rows: _terminal.viewHeight,
       );
 
       if (!mounted || _disposed) return;
-      setState(() => _status = _SessionStatus.connected);
-      _focusNode.requestFocus();
+      _reportStatus(TerminalTabStatus.connected);
+      if (widget.isActive) {
+        _focusNode.requestFocus();
+      }
     } catch (e) {
       if (!mounted || _disposed) return;
-      setState(() {
-        _status = _SessionStatus.error;
-        _errorText = e.toString();
-      });
+      setState(() => _errorText = e.toString());
+      _reportStatus(TerminalTabStatus.error);
       _terminal.write('\r\n\x1b[31m连接失败：$e\x1b[0m\r\n');
     }
   }
@@ -139,13 +169,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         break;
       case 'ssh:closed':
         _terminal.write('\r\n\x1b[33m[连接已断开]\x1b[0m\r\n');
-        setState(() => _status = _SessionStatus.disconnected);
+        _reportStatus(TerminalTabStatus.disconnected);
         break;
     }
   }
 
   Future<void> _send(String data) async {
-    if (_status != _SessionStatus.connected || data.isEmpty) {
+    if (_status != TerminalTabStatus.connected || data.isEmpty) {
       return;
     }
     try {
@@ -164,12 +194,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   void dispose() {
     _disposed = true;
     final ws = ref.read(webSocketClientProvider);
-    ws.removeHandler('ssh:output');
-    ws.removeHandler('ssh:closed');
+    // 只摘自己的处理器，不影响其它标签
+    ws.removeHandler('ssh:output', _onWsEvent);
+    ws.removeHandler('ssh:closed', _onWsEvent);
     if (_sessionId.isNotEmpty) {
       ws.unsubscribe(_sessionId);
       unawaited(
-        ref.read(sessionRepositoryProvider).closeSession(_sessionId).catchError((_) {}),
+        ref
+            .read(sessionRepositoryProvider)
+            .closeSession(_sessionId)
+            .catchError((_) {}),
       );
     }
     _focusNode.dispose();
@@ -178,83 +212,65 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final conn = widget.connection;
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(conn.name, style: const TextStyle(fontSize: 16)),
-            Text(
-              '${conn.user}@${conn.host}:${conn.port} · ${_statusLabel()}',
-              style: const TextStyle(fontSize: 12),
+    return Column(
+      children: [
+        if (_status == TerminalTabStatus.connecting)
+          const LinearProgressIndicator(),
+        if (_status == TerminalTabStatus.error && _errorText != null)
+          Container(
+            width: double.infinity,
+            color: Colors.red.withValues(alpha: 0.15),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _errorText!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => unawaited(_startSession()),
+                  child: const Text('重试'),
+                ),
+              ],
             ),
-          ],
+          ),
+        if (_status == TerminalTabStatus.disconnected)
+          Container(
+            width: double.infinity,
+            color: Colors.orange.withValues(alpha: 0.15),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    '连接已断开',
+                    style: TextStyle(color: Colors.orange, fontSize: 12),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => unawaited(_startSession()),
+                  child: const Text('重新连接'),
+                ),
+              ],
+            ),
+          ),
+        Expanded(
+          child: TerminalView(
+            _terminal,
+            focusNode: _focusNode,
+            autofocus: widget.isActive,
+            // visiblePassword 让 Android 键盘关闭联想/自动纠正，
+            // 避免命令被改写（xterm 未单独暴露 enableSuggestions）
+            keyboardType: TextInputType.visiblePassword,
+            textStyle: const TerminalStyle(fontSize: 13),
+            padding: const EdgeInsets.all(4),
+          ),
         ),
-        actions: [
-          Icon(
-            Icons.circle,
-            size: 12,
-            color: switch (_status) {
-              _SessionStatus.connected => Colors.green,
-              _SessionStatus.connecting => Colors.orange,
-              _ => Colors.red,
-            },
-          ),
-          const SizedBox(width: 8),
-          if (_status == _SessionStatus.disconnected ||
-              _status == _SessionStatus.error)
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: '重新连接',
-              onPressed: () => unawaited(_startSession()),
-            ),
-          IconButton(
-            icon: const Icon(Icons.close),
-            tooltip: '断开并返回',
-            onPressed: () => Navigator.pop(context),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          if (_status == _SessionStatus.connecting)
-            const LinearProgressIndicator(),
-          if (_status == _SessionStatus.error && _errorText != null)
-            Container(
-              width: double.infinity,
-              color: Colors.red.withValues(alpha: 0.15),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Text(
-                _errorText!,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
-              ),
-            ),
-          Expanded(
-            child: TerminalView(
-              _terminal,
-              focusNode: _focusNode,
-              autofocus: true,
-              // visiblePassword 让 Android 键盘关闭联想/自动纠正，
-              // 避免命令被改写（xterm 未单独暴露 enableSuggestions）
-              keyboardType: TextInputType.visiblePassword,
-              textStyle: const TerminalStyle(fontSize: 13),
-              padding: const EdgeInsets.all(4),
-            ),
-          ),
-          _buildKeyBar(),
-        ],
-      ),
+        _buildKeyBar(),
+      ],
     );
-  }
-
-  String _statusLabel() {
-    return switch (_status) {
-      _SessionStatus.connecting => '连接中',
-      _SessionStatus.connected => '已连接',
-      _SessionStatus.disconnected => '已断开',
-      _SessionStatus.error => '连接失败',
-    };
   }
 
   /// 移动端软键盘没有 Esc/Ctrl/方向键，补一条特殊按键栏；

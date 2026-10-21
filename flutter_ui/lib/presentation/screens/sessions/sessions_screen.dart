@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/api_providers.dart';
+import '../../providers/terminal_tabs_provider.dart';
 
 /// 会话列表：展示服务端当前活跃的 SSH 会话（终端/文件/监控各自的连接），
 /// 可逐个关闭。复刻 HexHub 底部「会话列表」的定位，做成可管理的清单。
@@ -110,6 +111,8 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             subtitle: Text(id, overflow: TextOverflow.ellipsis),
+            // 终端会话点一下跳到对应标签；文件/监控会话无对应页，只作展示
+            onTap: () => _openIfTerminalTab(id),
             trailing: IconButton(
               icon: const Icon(Icons.close, color: Colors.red),
               tooltip: '关闭会话',
@@ -119,6 +122,13 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
         },
       ),
     );
+  }
+
+  void _openIfTerminalTab(String sessionId) {
+    final notifier = ref.read(terminalTabsProvider.notifier);
+    if (notifier.activateBySessionId(sessionId)) {
+      ref.read(appShellIndexProvider.notifier).state = AppShellTabs.terminal;
+    }
   }
 
   String _friendlyName(String id) {
