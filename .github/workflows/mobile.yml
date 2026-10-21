@@ -85,17 +85,29 @@ jobs:
           for path in sorted(glob.glob(root + "/**/*.so", recursive=True)):
               with open(path, "rb") as fh:
                   data = fh.read(65536)
-              phoff = struct.unpack("<Q", data[32:40])[0]
-              phentsize = struct.unpack("<H", data[54:56])[0]
-              phnum = struct.unpack("<H", data[56:58])[0]
+              is64 = data[4] == 2  # EI_CLASS: 2=ELF64，1=ELF32（armeabi-v7a）
+              if is64:
+                  phoff = struct.unpack("<Q", data[32:40])[0]
+                  phentsize = struct.unpack("<H", data[54:56])[0]
+                  phnum = struct.unpack("<H", data[56:58])[0]
+                  align_at = 48
+              else:
+                  phoff = struct.unpack("<I", data[28:32])[0]
+                  phentsize = struct.unpack("<H", data[42:44])[0]
+                  phnum = struct.unpack("<H", data[44:46])[0]
+                  align_at = 28
               with open(path, "rb") as fh:
                   fh.seek(phoff)
                   ph = fh.read(phentsize * phnum)
-              aligns = [
-                  struct.unpack("<Q", ph[i * phentsize + 48 : i * phentsize + 56])[0]
-                  for i in range(phnum)
-                  if struct.unpack("<I", ph[i * phentsize : i * phentsize + 4])[0] == 1
-              ]
+              aligns = []
+              for i in range(phnum):
+                  off = i * phentsize
+                  if struct.unpack("<I", ph[off : off + 4])[0] != 1:
+                      continue
+                  if is64:
+                      aligns.append(struct.unpack("<Q", ph[off + align_at : off + align_at + 8])[0])
+                  else:
+                      aligns.append(struct.unpack("<I", ph[off + align_at : off + align_at + 4])[0])
               print(path, [hex(a) for a in aligns])
               if not aligns or min(aligns) < 0x4000:
                   bad.append(path)
