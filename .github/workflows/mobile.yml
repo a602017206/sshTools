@@ -79,6 +79,14 @@ jobs:
         working-directory: flutter_ui
         run: flutter create --platforms=android --org com.ahasshtools --project-name ahasshtools_flutter .
 
+      # 应用图标与桌面端共用一张图（flutter_ui/assets/icon/icon.png，
+      # 拷贝自 build/appicon.png），脚手架生成后刷进各密度目录
+      - name: Apply app icon
+        working-directory: flutter_ui
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons
+
       # 固定发布签名：密钥只存在于 GitHub Secrets，解出后写 key.properties
       # 并给脚手架的 app/build.gradle.kts 追加签名配置（模板默认没有）。
       # 有了固定签名，后续版本才能覆盖安装、保留应用数据。
@@ -196,6 +204,13 @@ jobs:
       - name: Generate iOS scaffolding
         working-directory: flutter_ui
         run: flutter create --platforms=ios --org com.ahasshtools --project-name ahasshtools_flutter .
+
+      # 同 Android：把与桌面端共用的图标刷进 AppIcon.appiconset
+      - name: Apply app icon
+        working-directory: flutter_ui
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons
 
       - name: Build iOS app (no codesign)
         working-directory: flutter_ui

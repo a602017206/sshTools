@@ -63,6 +63,20 @@ dev_dependencies:
   freezed: ^2.4.6
   riverpod_generator: ^2.3.9
 
+  # App 图标生成（源图与桌面端 build/appicon.png 同一张）
+  flutter_launcher_icons: ^0.14.4
+
+# 应用图标：与桌面端共用 build/appicon.png 的拷贝（终端窗 + >_ aha）。
+# 源图为 1024×1024 白底满幅插画：Android 自适应图标以白色作背景、
+# 整图作前景（系统安全区缩放后四周是同色白边）；iOS 要求无透明通道。
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/icon.png"
+  remove_alpha_ios: true
+
 flutter:
   uses-material-design: true
 
