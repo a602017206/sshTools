@@ -75,9 +75,11 @@ jobs:
 
       # 仓库未提交 Flutter 平台工程脚手架，统一在流水线里生成，
       # 避免本地无 Flutter SDK 时手写模板与工具链版本漂移。
+      # 双平台脚手架一起生成：图标生成工具会同时写 Android 与 iOS，
+      # 缺一端目录会直接失败；多出的另一端模板只是文件，不参与本次构建
       - name: Generate Android scaffolding
         working-directory: flutter_ui
-        run: flutter create --platforms=android --org com.ahasshtools --project-name ahasshtools_flutter .
+        run: flutter create --platforms=android,ios --org com.ahasshtools --project-name ahasshtools_flutter .
 
       # 应用图标与桌面端共用一张图（flutter_ui/assets/icon/icon.png，
       # 拷贝自 build/appicon.png），脚手架生成后刷进各密度目录
@@ -201,9 +203,10 @@ jobs:
             .
           ls ../flutter_ui/plugins/sshtools_go/ios/Frameworks/
 
+      # 同 Android job：双平台脚手架一起生成，避免图标工具缺目录失败
       - name: Generate iOS scaffolding
         working-directory: flutter_ui
-        run: flutter create --platforms=ios --org com.ahasshtools --project-name ahasshtools_flutter .
+        run: flutter create --platforms=android,ios --org com.ahasshtools --project-name ahasshtools_flutter .
 
       # 同 Android：把与桌面端共用的图标刷进 AppIcon.appiconset
       - name: Apply app icon
