@@ -64,7 +64,11 @@ jobs:
           PLUGIN_ANDROID=flutter_ui/plugins/sshtools_go/android
           mkdir -p "$PLUGIN_ANDROID/libs" "$PLUGIN_ANDROID/src/main/jniLibs"
           cd mobile
-          gomobile bind -target=android -androidapi 24 -ldflags "-s -w" \
+          # -z max-page-size=16384：安卓 16 启用 16KB 内存页的设备（如三星
+          # S23+ 升 One UI 8）会拒绝加载仅 4KB 对齐的 .so，App 一启动就
+          # 闪退。Go 核心库必须按 16KB 最大页尺寸链接。
+          gomobile bind -target=android -androidapi 24 \
+            -ldflags "-s -w -extldflags=-Wl,-z,max-page-size=16384" \
             -o "$RUNNER_TEMP/sshtools.aar" .
           cd "$RUNNER_TEMP"
           unzip -o -q sshtools.aar -d sshtools_aar
@@ -72,6 +76,34 @@ jobs:
           cp -r sshtools_aar/jni/* "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/src/main/jniLibs/"
           find "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/src/main/jniLibs" -name '*.so' | sort
           ls -lh "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/libs/"
+          # 16KB 页对齐断言：任一 ABI 的 libgojni.so 段对齐 <16KB 直接红，
+          # 防止链接参数被误改后，安卓 16 设备闪退的问题悄悄回归
+          python3 - "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/src/main/jniLibs" <<'PYEOF'
+          import glob, struct, sys
+          root = sys.argv[1]
+          bad = []
+          for path in sorted(glob.glob(root + "/**/*.so", recursive=True)):
+              with open(path, "rb") as fh:
+                  data = fh.read(65536)
+              phoff = struct.unpack("<Q", data[32:40])[0]
+              phentsize = struct.unpack("<H", data[54:56])[0]
+              phnum = struct.unpack("<H", data[56:58])[0]
+              with open(path, "rb") as fh:
+                  fh.seek(phoff)
+                  ph = fh.read(phentsize * phnum)
+              aligns = [
+                  struct.unpack("<Q", ph[i * phentsize + 48 : i * phentsize + 56])[0]
+                  for i in range(phnum)
+                  if struct.unpack("<I", ph[i * phentsize : i * phentsize + 4])[0] == 1
+              ]
+              print(path, [hex(a) for a in aligns])
+              if not aligns or min(aligns) < 0x4000:
+                  bad.append(path)
+          if bad:
+              print("FAIL: not 16KB aligned:", bad)
+              sys.exit(1)
+          print("all .so are 16KB aligned")
+          PYEOF
 
       # 仓库未提交 Flutter 平台工程脚手架，统一在流水线里生成，
       # 避免本地无 Flutter SDK 时手写模板与工具链版本漂移。
