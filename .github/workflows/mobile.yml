@@ -133,6 +133,46 @@ jobs:
           flutter pub get
           dart run flutter_launcher_icons
 
+      # 应用显示名与桌面端统一（wails.json 的 name：AHaSSHTools），
+      # 脚手架默认是 ahasshtools_flutter。iOS 在 iOS job 里同样处理。
+      - name: Set app display name (Android)
+        working-directory: flutter_ui
+        run: |
+          sed -i 's/android:label="[^"]*"/android:label="AHaSSHTools"/' \
+            android/app/src/main/AndroidManifest.xml
+          grep -o 'android:label="[^"]*"' android/app/src/main/AndroidManifest.xml | head -1
+
+      # R8 保留 gomobile 桥接类：Seq.getRef 等方法只被 Go 运行时经 JNI
+      # 按名查找，Java 侧无静态引用，release 的 R8 会裁剪/改名，
+      # 真机启动即 'failed to find method Seq.getRef' 直接 SIGABRT
+      # （三星 S23+ 安卓 16 实测，调试包不开 R8 所以正常）。
+      # 与桌面同理，凡 JNI 按名调用的类必须整包原样保留。
+      - name: Keep gomobile bridge classes from R8
+        working-directory: flutter_ui/android
+        shell: bash
+        run: |
+          cat > app/proguard-rules.pro <<'EOF'
+          # gomobile 桥接：方法由 Go 运行时经 JNI 按名调用，必须原样保留
+          -keep class go.** { *; }
+          -keep class mobile.** { *; }
+          -keep class com.ahasshtools.sshtools_go.** { *; }
+          EOF
+          cat >> app/build.gradle.kts <<'EOF'
+
+          // 由 mobile.yml 注入：为 gomobile 桥接类挂 R8 保留规则（同签名的二次 android 块技巧）
+          android {
+              buildTypes {
+                  getByName("release") {
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )
+                  }
+              }
+          }
+          EOF
+          echo "proguard keep rules injected"
+
       # 固定发布签名：密钥只存在于 GitHub Secrets，解出后写 key.properties
       # 并给脚手架的 app/build.gradle.kts 追加签名配置（模板默认没有）。
       # 有了固定签名，后续版本才能覆盖安装、保留应用数据。
@@ -200,6 +240,21 @@ jobs:
           fi
           ls -lh build/app/outputs/flutter-apk/
 
+      # R8 回归断言：Seq.getRef 必须原样留在 dex 里，缺失直接红。
+      # 它只被 Go 经 JNI 按名调用，被裁后真机启动即 SIGABRT（见上）。
+      - name: Assert gomobile bridge survived R8
+        working-directory: flutter_ui/build/app/outputs/flutter-apk
+        shell: bash
+        run: |
+          for apk in *.apk; do
+            if unzip -p "$apk" 'classes*.dex' 2>/dev/null | grep -aq 'getRef'; then
+              echo "$apk: Seq.getRef present"
+            else
+              echo "$apk: Seq.getRef MISSING (R8 stripped gomobile bridge)"
+              exit 1
+            fi
+          done
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -258,6 +313,22 @@ jobs:
         run: |
           flutter pub get
           dart run flutter_launcher_icons
+
+      # 应用显示名与桌面端统一（AHaSSHTools），改 Info.plist 两个键
+      - name: Set app display name (iOS)
+        working-directory: flutter_ui
+        run: |
+          python3 - <<'PYEOF'
+          import plistlib
+          path = "ios/Runner/Info.plist"
+          with open(path, "rb") as fh:
+              plist = plistlib.load(fh)
+          plist["CFBundleName"] = "AHaSSHTools"
+          plist["CFBundleDisplayName"] = "AHaSSHTools"
+          with open(path, "wb") as fh:
+              plistlib.dump(plist, fh)
+          print("iOS display name set to AHaSSHTools")
+          PYEOF
 
       - name: Build iOS app (no codesign)
         working-directory: flutter_ui
