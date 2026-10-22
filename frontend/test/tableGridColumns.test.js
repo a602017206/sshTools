@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   buildGridTemplateColumns,
   clampColumnWidth,
+  formatStatusValue,
   getCellTitle,
   getInitialColumnWidth
 } from '../src/lib/tableGridColumns.js';
@@ -14,6 +15,15 @@ test('text 等长文本列不显示悬停预览，普通列和 NULL 保持提示
   assert.equal(getCellTitle(null, { type: 'text' }), 'NULL');
   assert.equal(getCellTitle('root', { type: 'varchar' }), 'root');
   assert.equal(getCellTitle(1, undefined), '1');
+});
+
+test('状态栏当前值压成单行并截断，长文本不会撑开布局', () => {
+  const value = formatStatusValue(`<p>\n${'x'.repeat(500)}</p>`);
+  assert.equal(value.length, 81);
+  assert.ok(value.endsWith('…'));
+  assert.ok(!value.includes('\n'));
+  assert.equal(formatStatusValue(null), 'NULL');
+  assert.equal(formatStatusValue('root'), 'root');
 });
 
 test('缺少列元数据时，超长或多行内容也不显示悬停预览', () => {

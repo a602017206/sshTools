@@ -31,6 +31,14 @@ export function getCellTitle(cell, column) {
   return text;
 }
 
+const MAX_STATUS_VALUE_LENGTH = 80;
+
+export function formatStatusValue(value) {
+  if (value === null || value === undefined) return 'NULL';
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  return text.length > MAX_STATUS_VALUE_LENGTH ? `${text.slice(0, MAX_STATUS_VALUE_LENGTH)}…` : text;
+}
+
 export function buildGridTemplateColumns(columns, columnWidths = {}, columnMetadata = {}) {
   const widths = columns.map(column => {
     const width = columnWidths[column] ?? getInitialColumnWidth(column, columnMetadata[column]);

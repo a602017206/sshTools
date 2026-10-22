@@ -11,7 +11,7 @@
   } from '../lib/tableQueryBuilder.js';
   import { formatColumnDescription, formatColumnLength, formatColumnType } from '../lib/tableStructureMetadata.js';
   import { CONNECTION_LOST_MESSAGE, isConnectionLostError } from '../lib/databaseConnectionError.js';
-  import { buildGridTemplateColumns, clampColumnWidth, getCellTitle, getInitialColumnWidth } from '../lib/tableGridColumns.js';
+  import { buildGridTemplateColumns, clampColumnWidth, formatStatusValue, getCellTitle, getInitialColumnWidth } from '../lib/tableGridColumns.js';
   import { buildDeleteSQL, buildDeleteStatements, buildInsertSQL, buildInsertStatements, buildUpdateSQL, buildBatchUpdateStatements } from '../lib/tableDataMutations.js';
   import { allRowsSelected, rowsFromIndexes, toggleAllRowSelection, toggleRowSelection } from '../lib/tableRowSelection.js';
   import { formatRowsAsTsv } from '../lib/tableGridSelection.js';
@@ -751,7 +751,7 @@
   <footer class="table-workspace__status">
     <span>{filteredRows.length} / {resultData?.rows?.length || 0} 行</span>
     <div class="table-workspace__pagination"><button type="button" title="上一页" disabled={currentPage <= 1 || isLoading} on:click={() => refreshTableData(currentPage - 1)}>‹</button><span>{currentPage}</span><button type="button" title="下一页" disabled={filteredRows.length < pageSize || isLoading} on:click={() => refreshTableData(currentPage + 1)}>›</button><select aria-label="每页显示条数" bind:value={pageSize} on:change={() => refreshTableData(1)}><option value={25}>25 / 页</option><option value={50}>50 / 页</option><option value={100}>100 / 页</option><option value={200}>200 / 页</option></select></div>
-    <span>{selectionCount > 0 ? `已选 ${selectionCount} 行 · ` : ''}{selectedValue === null || selectedValue === undefined ? '未选择单元格' : `当前值：${String(selectedValue)}`}</span>
+    <span class="table-workspace__status-value">{selectionCount > 0 ? `已选 ${selectionCount} 行 · ` : ''}{selectedCell.row < 0 ? '未选择单元格' : `当前值：${formatStatusValue(selectedValue)}`}</span>
   </footer>
 
   {#if contextMenu}
@@ -915,7 +915,9 @@
   .table-workspace__history { display: block; width: 100%; margin-bottom: 5px; padding: 7px; overflow: hidden; border: 1px solid transparent; background: transparent; color: var(--text-secondary); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
   .table-workspace__history:hover { border-color: var(--border-primary); background: var(--bg-primary); color: var(--text-primary); }
   .table-workspace__muted { color: var(--text-secondary); font-size: 12px; }
-  .table-workspace__status { min-height: 28px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--border-primary); color: var(--text-secondary); background: var(--bg-secondary); font-size: 11px; }
+  .table-workspace__status { min-height: 28px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; overflow: hidden; border-top: 1px solid var(--border-primary); color: var(--text-secondary); background: var(--bg-secondary); font-size: 11px; }
+  .table-workspace__status > * { flex-shrink: 0; }
+  .table-workspace__status > .table-workspace__status-value { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
   @media (max-width: 900px) { .table-workspace__content { grid-template-columns: 1fr; } .table-workspace__details { display: none; } .table-workspace__header { padding: 0 12px; gap: 8px; } .table-workspace__identity { min-width: 0; } .table-workspace__header-meta { display: none; } .table-workspace__filter-rule { grid-template-columns: 64px minmax(100px, 1fr) 110px minmax(130px, 2fr) 28px; } }
   @media (max-width: 640px) { .table-workspace__toolbar-title { display: none; } .table-workspace__filter { width: 190px; } .table-workspace__filter-rule { grid-template-columns: 1fr 1fr 28px; } .table-workspace__filter-rule > :first-child { grid-column: 1; } .table-workspace__filter-rule > :nth-child(2) { grid-column: 2; } .table-workspace__filter-rule > :nth-child(3) { grid-column: 1; } .table-workspace__filter-rule > :nth-child(4) { grid-column: 2; } .table-workspace__filter-rule > :last-child { grid-column: 3; grid-row: 1 / span 2; } .table-workspace__sort-rule { grid-template-columns: 1fr 1fr 28px; } }
 
