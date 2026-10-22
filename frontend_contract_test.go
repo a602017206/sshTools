@@ -83,9 +83,9 @@ func TestAddAssetDialogPersistsSelectedJDBCProfile(t *testing.T) {
 	}
 	source := string(data)
 	for _, required := range []string{
-		"driverProfileID: ''",
+		"driverProfileID: conn.metadata?.driver_profile_id || ''",
 		"selectedJDBCDriver?.profiles",
-		"driver_profile_id: formData.driverProfileID || undefined",
+		"driver_profile_id: assetType === 'database' ? (formData.driverProfileID || undefined) : undefined",
 		"metadata?.driver_profile_id",
 	} {
 		if !strings.Contains(source, required) {
@@ -103,7 +103,7 @@ func TestAppPassesSavedJDBCProfileToDatabaseConnection(t *testing.T) {
 	for _, required := range []string{
 		"ConnectDatabaseWithProfile",
 		"asset.metadata?.driver_profile_id || ''",
-		"ConnectDatabaseWithProfile(sessionId, host, port, user, password, dbType, database, driverProfileID)",
+		"ConnectDatabaseWithProfile(sessionId, host, port, user, password, dbType, jdbcOptions.database, driverProfileID)",
 	} {
 		if !strings.Contains(source, required) {
 			t.Errorf("database connection flow missing %q", required)
