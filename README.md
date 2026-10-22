@@ -5,7 +5,7 @@
 [![最新版下载量](https://img.shields.io/github/downloads/a602017206/sshTools/latest/total?label=最新版下载量)](https://github.com/a602017206/sshTools/releases/latest)
 ![访问次数](https://hits.sh/github.com/a602017206/sshTools.svg?label=%E8%AE%BF%E9%97%AE%E6%AC%A1%E6%95%B0&color=0e75b6&style=flat)
 
-跨平台运维桌面客户端：SSH 终端、SFTP、关系库 / 缓存 / 搜索 / 消息队列，以及 AI 助手与本地开发工具，基于 **Go + Wails + Svelte** 构建。
+跨平台运维客户端（桌面 + Android / iOS）：SSH 终端、SFTP、关系库 / 缓存 / 搜索 / 消息队列，以及 AI 助手与本地开发工具。桌面端基于 **Go + Wails + Svelte** 构建，移动端由同一 Go 后端驱动（Flutter 界面）。
 
 ## 下载
 
@@ -14,12 +14,20 @@
 | Windows | [`AHaSSHTools.exe`](https://github.com/a602017206/sshTools/releases/latest) | ![Windows](https://img.shields.io/github/downloads/a602017206/sshTools/latest/AHaSSHTools.exe?label=下载) |
 | macOS（Apple Silicon） | [`AHaSSHTools-macos-arm64.zip`](https://github.com/a602017206/sshTools/releases/latest) | ![macOS arm64](https://img.shields.io/github/downloads/a602017206/sshTools/latest/AHaSSHTools-macos-arm64.zip?label=下载) |
 | macOS（Intel） | [`AHaSSHTools-macos-amd64.zip`](https://github.com/a602017206/sshTools/releases/latest) | ![macOS amd64](https://img.shields.io/github/downloads/a602017206/sshTools/latest/AHaSSHTools-macos-amd64.zip?label=下载) |
+| Android（ARM64，主流真机） | [`AHaSSHTools-android-arm64-v8a.apk`](https://github.com/a602017206/sshTools/releases/latest) | ![Android arm64](https://img.shields.io/github/downloads/a602017206/sshTools/latest/AHaSSHTools-android-arm64-v8a.apk?label=下载) |
+| Android（ARMv7） | [`AHaSSHTools-android-armeabi-v7a.apk`](https://github.com/a602017206/sshTools/releases/latest) | ![Android armv7](https://img.shields.io/github/downloads/a602017206/sshTools/latest/AHaSSHTools-android-armeabi-v7a.apk?label=下载) |
+| Android（x86_64） | [`AHaSSHTools-android-x86_64.apk`](https://github.com/a602017206/sshTools/releases/latest) | ![Android x86_64](https://img.shields.io/github/downloads/a602017206/sshTools/latest/AHaSSHTools-android-x86_64.apk?label=下载) |
+| iOS（未签名，需自签侧载） | [`AHaSSHTools-ios-unsigned.ipa`](https://github.com/a602017206/sshTools/releases/latest) | ![iOS](https://img.shields.io/github/downloads/a602017206/sshTools/latest/AHaSSHTools-ios-unsigned.ipa?label=下载) |
 
 macOS 下载后若无法打开，在终端执行：
 
 ```bash
 xattr -cr AHaSSHTools.app && open AHaSSHTools.app
 ```
+
+Android 下载 APK 直接安装即可（系统提示时需允许「安装未知来源应用」）；发布包使用固定签名，后续版本可直接覆盖升级。绝大多数真机选 ARM64 包即可。
+
+iOS 提供的是未签名 IPA，需用 AltStore、Sideloadly 等工具配合 Apple ID 自签后侧载安装，签名有效期与续签方式以所用工具说明为准。
 
 徽章由 [shields.io](https://shields.io) 读取 GitHub Releases（仅统计安装包）；访问次数由 [hits.sh](https://hits.sh) 统计。更多版本见 [Releases](https://github.com/a602017206/sshTools/releases)。
 
