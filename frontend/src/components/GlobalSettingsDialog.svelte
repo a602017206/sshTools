@@ -500,20 +500,43 @@
               </span>
               <input type="checkbox" bind:checked={draft.asset_wall_metrics_enabled} class="w-4 h-4 shrink-0" style="accent-color: var(--accent-primary);" />
             </label>
-            <label class="space-y-2 block">
+            <div class="space-y-2">
               <div class="flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-slate-100">
                 <span>探活间隔（秒）</span>
-                <span style="color: var(--accent-primary);">{draft.asset_wall_probe_interval_seconds}</span>
+                <span class="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="5"
+                    max="300"
+                    bind:value={draft.asset_wall_probe_interval_seconds}
+                    on:change={() => { draft.asset_wall_probe_interval_seconds = clampWallInterval(draft.asset_wall_probe_interval_seconds); }}
+                    class="w-20 px-2 py-1 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm text-right"
+                    style="color: var(--accent-primary);"
+                  />
+                  <span class="text-xs text-slate-500 dark:text-slate-400">秒</span>
+                </span>
               </div>
               <input
-                type="number"
+                type="range"
                 min="5"
                 max="300"
+                step="5"
                 bind:value={draft.asset_wall_probe_interval_seconds}
-                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
+                class="w-full"
+                style="accent-color: var(--accent-primary);"
               />
-              <span class="block text-xs text-slate-500 dark:text-slate-400">范围 5–300 秒，资产越多建议间隔越大。</span>
-            </label>
+              <div class="flex flex-wrap gap-1.5">
+                {#each [5, 15, 30, 60, 120, 300] as preset}
+                  <button
+                    type="button"
+                    class="px-2.5 py-1 rounded-full border text-xs transition-colors {draft.asset_wall_probe_interval_seconds === preset ? 'text-white' : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300'}"
+                    style={draft.asset_wall_probe_interval_seconds === preset ? 'background: var(--accent-primary); border-color: var(--accent-primary);' : ''}
+                    on:click={() => { draft.asset_wall_probe_interval_seconds = preset; }}
+                  >{preset} 秒</button>
+                {/each}
+              </div>
+              <span class="block text-xs text-slate-500 dark:text-slate-400">拖动滑杆或点档位快速设置（5–300 秒），也可以在上方数字框直接输入；资产越多建议间隔越大。</span>
+            </div>
           </div>
 
           <div class="flex items-center justify-end pt-2">
