@@ -12,15 +12,19 @@ import (
 
 // SessionHandler handles SSH session-related HTTP requests
 type SessionHandler struct {
-	service *service.SessionService
-	wsHub   *websocket.Hub
+	service     *service.SessionService
+	wsHub       *websocket.Hub
+	connections *service.ConnectionService
 }
 
-// NewSessionHandler creates a new session handler
-func NewSessionHandler(s *service.SessionService, hub *websocket.Hub) *SessionHandler {
+// NewSessionHandler creates a new session handler.
+// connections 可为 nil；提供时用于按 connection_id 回退已保存的凭据，
+// 让移动端这类不持有明文密码的客户端也能直接开会话。
+func NewSessionHandler(s *service.SessionService, hub *websocket.Hub, connections *service.ConnectionService) *SessionHandler {
 	return &SessionHandler{
-		service: s,
-		wsHub:   hub,
+		service:     s,
+		wsHub:       hub,
+		connections: connections,
 	}
 }
 
@@ -31,10 +35,13 @@ type ConnectRequest struct {
 	Port       int    `json:"port" binding:"required"`
 	User       string `json:"user" binding:"required"`
 	AuthType   string `json:"auth_type" binding:"required"`
-	AuthValue  string `json:"auth_value" binding:"required"`
+	AuthValue  string `json:"auth_value"`
 	Passphrase string `json:"passphrase"`
-	Cols       int    `json:"cols" binding:"required"`
-	Rows       int    `json:"rows" binding:"required"`
+	// ConnectionID 可选：auth_value 为空时按它查已保存的密码/密钥路径，
+	// 口径与连接测试接口（handlers/connection.go）一致。
+	ConnectionID string `json:"connection_id"`
+	Cols         int    `json:"cols" binding:"required"`
+	Rows         int    `json:"rows" binding:"required"`
 }
 
 // Connect handles POST /api/v1/sessions/connect
@@ -45,6 +52,21 @@ func (h *SessionHandler) Connect(c *gin.Context) {
 		return
 	}
 
+	authValue := req.AuthValue
+	if authValue == "" && req.ConnectionID != "" && h.connections != nil {
+		if req.AuthType == "key" {
+			if conn, err := h.connections.GetConnection(req.ConnectionID); err == nil {
+				authValue = conn.KeyPath
+			}
+		} else if password, err := h.connections.GetPassword(req.ConnectionID); err == nil {
+			authValue = password
+		}
+	}
+	if authValue == "" {
+		c.JSON(http.StatusBadRequest, dto.NewErrorMessageResponse("missing credential: provide auth_value or save a password first"))
+		return
+	}
+
 	// Connect SSH with WebSocket output callback
 	err := h.service.ConnectSSH(
 		req.SessionID,
@@ -52,7 +74,7 @@ func (h *SessionHandler) Connect(c *gin.Context) {
 		req.Port,
 		req.User,
 		req.AuthType,
-		req.AuthValue,
+		authValue,
 		req.Passphrase,
 		req.Cols,
 		req.Rows,
@@ -72,6 +94,11 @@ func (h *SessionHandler) Connect(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err))
 		return
+	}
+
+	// 临时输入的新密码开会话成功后顺手保存，口径与测试连接接口一致
+	if req.AuthValue != "" && req.ConnectionID != "" && req.AuthType != "key" && h.connections != nil {
+		_ = h.connections.SavePassword(req.ConnectionID, req.AuthValue)
 	}
 
 	c.JSON(http.StatusOK, dto.NewSuccessResponse(map[string]string{

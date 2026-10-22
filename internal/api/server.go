@@ -29,8 +29,15 @@ type Services struct {
 	Settings   *service.SettingsService
 }
 
-// NewServer creates a new HTTP/WebSocket server
+// NewServer creates a new HTTP/WebSocket server listening on all interfaces
 func NewServer(services *Services, port int) *Server {
+	return NewServerWithHost(services, "", port)
+}
+
+// NewServerWithHost creates a new HTTP/WebSocket server bound to the given
+// host. Passing "127.0.0.1" restricts the server to loopback, which is what
+// the embedded mobile build uses so the API is never exposed to the LAN.
+func NewServerWithHost(services *Services, host string, port int) *Server {
 	// Set Gin to release mode
 	gin.SetMode(gin.ReleaseMode)
 
@@ -46,9 +53,14 @@ func NewServer(services *Services, port int) *Server {
 	// Setup routes
 	server.setupRoutes()
 
+	addr := fmt.Sprintf(":%d", port)
+	if host != "" {
+		addr = fmt.Sprintf("%s:%d", host, port)
+	}
+
 	// Create HTTP server
 	server.httpServer = &http.Server{
-		Addr:           fmt.Sprintf(":%d", port),
+		Addr:           addr,
 		Handler:        router,
 		ReadTimeout:    30 * time.Second,
 		WriteTimeout:   30 * time.Second,
@@ -90,12 +102,34 @@ func (s *Server) setupRoutes() {
 	// SSH session routes
 	sessions := api.Group("/sessions")
 	{
-		sessHandler := handlers.NewSessionHandler(s.services.Session, s.wsHub)
+		sessHandler := handlers.NewSessionHandler(s.services.Session, s.wsHub, s.services.Connection)
 		sessions.POST("/connect", sessHandler.Connect)
 		sessions.POST("/:id/send", sessHandler.SendData)
 		sessions.POST("/:id/resize", sessHandler.Resize)
 		sessions.DELETE("/:id", sessHandler.Disconnect)
 		sessions.GET("", sessHandler.ListSessions)
+
+		// 系统监控（挂在已建立的 SSH 会话上）
+		if s.services.Monitor != nil {
+			monitorHandler := handlers.NewMonitorHandler(s.services.Monitor)
+			sessions.GET("/:id/monitor", monitorHandler.GetMetrics)
+		}
+
+		// SFTP 文件操作（挂在已建立的 SSH 会话上）
+		if s.services.SFTP != nil {
+			sftpHandler := handlers.NewSFTPHandler(s.services.SFTP)
+			sftp := sessions.Group("/:id/sftp")
+			sftp.GET("/list", sftpHandler.List)
+			sftp.GET("/pwd", sftpHandler.Pwd)
+			sftp.GET("/stat", sftpHandler.Stat)
+			sftp.POST("/mkdir", sftpHandler.Mkdir)
+			sftp.POST("/rename", sftpHandler.Rename)
+			sftp.DELETE("", sftpHandler.Delete)
+			sftp.GET("/read", sftpHandler.ReadText)
+			sftp.PUT("/write", sftpHandler.WriteText)
+			sftp.POST("/upload", sftpHandler.Upload)
+			sftp.GET("/download", sftpHandler.Download)
+		}
 	}
 
 	// WebSocket endpoint
@@ -103,7 +137,7 @@ func (s *Server) setupRoutes() {
 		websocket.ServeWs(s.wsHub, c.Writer, c.Request)
 	})
 
-	// TODO: Add more routes for SFTP, Monitor, Settings
+	// TODO: Add more routes for Monitor, Settings
 }
 
 // Start starts the HTTP server and WebSocket hub

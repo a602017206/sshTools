@@ -15,6 +15,7 @@ ConnectionModel _$ConnectionModelFromJson(Map<String, dynamic> json) =>
       user: json['user'] as String,
       authType: json['auth_type'] as String,
       keyPath: json['key_path'] as String?,
+      hasPassword: json['has_password'] as bool? ?? false,
       tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
       metadata: (json['metadata'] as Map<String, dynamic>?)?.map(
         (k, e) => MapEntry(k, e as String),

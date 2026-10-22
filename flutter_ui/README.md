@@ -110,6 +110,7 @@ class ApiConstants {
 - [x] 基础 UI 框架
 - [x] 路由配置（go_router）
 - [x] **连接管理 UI（添加/编辑/删除/测试）**
+- [x] 移动端内嵌 Go：`plugins/sshtools_go` 桥接 gomobile 产物，App 启动时在进程内拉起 Go API 服务器（仅回环），Android/iOS 由 GitHub 流水线打包验证（`.github/workflows/mobile.yml`，设计见 `docs/designs/2026-10-20-flutter-gomobile-mobile.md`）
 
 ### 待实现 🚧
 - [ ] SSH 终端 UI（xterm 集成）

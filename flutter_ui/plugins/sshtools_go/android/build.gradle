@@ -1,0 +1,56 @@
+group 'com.ahasshtools.sshtools_go'
+version '1.0-SNAPSHOT'
+
+buildscript {
+    ext.kotlin_version = '1.8.22'
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.ahasshtools.sshtools_go'
+    compileSdkVersion 34
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        minSdkVersion 24
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    // gomobile 产物经 CI 解包后放入：classes.jar 进 libs/，各 ABI 的
+    // libgojni.so 进 src/main/jniLibs/（见 .github/workflows/mobile.yml）。
+    // 不能直接依赖 .aar 文件：Android 库工程打包 AAR 时不允许内嵌本地 AAR，
+    // AGP 会在 bundleDebugAar 阶段直接报错。
+    implementation files('libs/sshtools-classes.jar')
+}
