@@ -17,11 +17,25 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
   List<String> _sessions = const [];
   bool _loading = false;
   String? _error;
+  ProviderSubscription<int>? _shellSubscription;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // 本页在 AppShell 的 IndexedStack 里从启动就保活，initState 只跑一次；
+    // 之后每次切到本栏都要重新拉，否则终端都连上了列表还显示空的
+    _shellSubscription = ref.listenManual(appShellIndexProvider, (prev, next) {
+      if (next == AppShellTabs.sessions) {
+        _load();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _shellSubscription?.close();
+    super.dispose();
   }
 
   Future<void> _load() async {

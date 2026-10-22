@@ -222,6 +222,12 @@ func (mc *MonitorCollector) collectCPUMetrics(sessionID string, timeout time.Dur
 		metrics.Overall = roundTo2Decimals(metrics.Overall)
 	}
 
+	// 每核占用：/proc/stat 前后两次快照算差值（此前从未采集，
+	// 前端只能把核心数兜底成 1 并据此画负载环，与实际不符）
+	if perCore, err := mc.collectPerCoreUsage(sessionID, timeout); err == nil {
+		metrics.PerCore = perCore
+	}
+
 	// Load average
 	stdout, _, err = mc.sessionManager.ExecuteCommand(sessionID, `uptime | awk -F'load average:' '{print $2}'`, timeout)
 	if err == nil {
@@ -233,6 +239,95 @@ func (mc *MonitorCollector) collectCPUMetrics(sessionID string, timeout time.Dur
 	}
 
 	return metrics, nil
+}
+
+// collectPerCoreUsage 采样两次 /proc/stat，按每核 idle 差值算占用率。
+// 一次远端命令内完成两次采样（间隔 0.3s），避免给 MonitorCollector
+// 增加跨请求状态；单核采样失败不影响其余核，整体失败返回 error 由上层忽略。
+func (mc *MonitorCollector) collectPerCoreUsage(sessionID string, timeout time.Duration) ([]float64, error) {
+	stdout, _, err := mc.sessionManager.ExecuteCommand(sessionID,
+		`grep '^cpu[0-9]' /proc/stat; echo __SPLIT__; sleep 0.3; grep '^cpu[0-9]' /proc/stat`,
+		timeout)
+	if err != nil {
+		return nil, err
+	}
+	return parsePerCoreUsage(stdout), nil
+}
+
+// parsePerCoreUsage 解析两次 /proc/stat 快照（以 __SPLIT__ 分隔），
+// 返回每核 busy 百分比（0~100，保留两位小数）。快照缺失或核数对不上时尽力而为。
+func parsePerCoreUsage(output string) []float64 {
+	parts := strings.Split(output, "__SPLIT__")
+	if len(parts) != 2 {
+		return nil
+	}
+	before := parseProcStatCores(parts[0])
+	after := parseProcStatCores(parts[1])
+	if len(before) == 0 || len(after) == 0 {
+		return nil
+	}
+
+	n := len(before)
+	if len(after) < n {
+		n = len(after)
+	}
+	usage := make([]float64, 0, n)
+	for i := 0; i < n; i++ {
+		totalDelta := after[i].total - before[i].total
+		if totalDelta <= 0 {
+			usage = append(usage, 0)
+			continue
+		}
+		idleDelta := after[i].idle - before[i].idle
+		busy := (1 - float64(idleDelta)/float64(totalDelta)) * 100
+		if busy < 0 {
+			busy = 0
+		}
+		if busy > 100 {
+			busy = 100
+		}
+		usage = append(usage, roundTo2Decimals(busy))
+	}
+	return usage
+}
+
+type procStatCore struct {
+	idle  int64
+	total int64
+}
+
+// parseProcStatCores 解析 /proc/stat 中 cpu0..cpuN 行，
+// idle 取 idle+iowait，total 为全部计数之和。
+func parseProcStatCores(snapshot string) []procStatCore {
+	var cores []procStatCore
+	for _, line := range strings.Split(snapshot, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 5 || !strings.HasPrefix(fields[0], "cpu") {
+			continue
+		}
+		if _, err := strconv.Atoi(strings.TrimPrefix(fields[0], "cpu")); err != nil {
+			continue // 跳过汇总行 "cpu"
+		}
+		var total int64
+		values := make([]int64, 0, len(fields)-1)
+		for _, f := range fields[1:] {
+			v, err := strconv.ParseInt(f, 10, 64)
+			if err != nil {
+				v = 0
+			}
+			values = append(values, v)
+			total += v
+		}
+		var idle int64
+		if len(values) > 3 {
+			idle = values[3]
+		}
+		if len(values) > 4 {
+			idle += values[4]
+		}
+		cores = append(cores, procStatCore{idle: idle, total: total})
+	}
+	return cores
 }
 
 // collectMemoryMetrics gathers memory usage statistics

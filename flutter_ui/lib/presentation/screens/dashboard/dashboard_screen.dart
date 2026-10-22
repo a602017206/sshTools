@@ -233,7 +233,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   List<Widget> _dashboardCards(BuildContext context, MonitoringData data) {
-    final cores = data.cpu.perCore.isNotEmpty ? data.cpu.perCore.length : 1;
+    final scheme = Theme.of(context).colorScheme;
+    // 核心数只认每核采样：拿不到就显示 —，不再兜底成 1（与实际不符）
+    final cores = data.cpu.perCore.isNotEmpty ? data.cpu.perCore.length : 0;
     final load1 =
         data.cpu.loadAverage.isNotEmpty ? data.cpu.loadAverage[0] : 0.0;
     final loadText = data.cpu.loadAverage.length >= 3
@@ -255,7 +257,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   Text('总览', style: Theme.of(context).textTheme.titleMedium),
                   const Spacer(),
                   Text(
-                    '延迟 ${_latencyMs != null ? '$_latencyMs ms' : '—'}',
+                    // 取的是监控接口整轮往返（SSH 跑一串命令），并非网络 ping
+                    '响应 ${_latencyMs != null ? '$_latencyMs ms' : '—'}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context)
                               .colorScheme
@@ -270,13 +273,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 四环颜色取主题色板：切换主题色时看板跟着变，效果看得见
                   Expanded(
                     child: MetricGauge(
                       label: '负载 1/5/15m',
                       centerText: load1.toStringAsFixed(2),
                       subText: loadText,
                       fraction: cores == 0 ? 0 : load1 / cores,
-                      color: Colors.teal,
+                      color: scheme.primary,
                     ),
                   ),
                   Expanded(
@@ -286,7 +290,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       subText:
                           '${_fmtBytes(data.memory.used)} / ${_fmtBytes(data.memory.total)}',
                       fraction: data.memory.usedPercent / 100,
-                      color: Colors.green,
+                      color: scheme.tertiary,
                     ),
                   ),
                   Expanded(
@@ -296,7 +300,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       subText:
                           '用户 ${data.cpu.user.toStringAsFixed(1)}% · 系统 ${data.cpu.system.toStringAsFixed(1)}%',
                       fraction: data.cpu.overall / 100,
-                      color: Colors.blue,
+                      color: scheme.secondary,
                     ),
                   ),
                   Expanded(
@@ -308,15 +312,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           ? '无分区数据'
                           : '${_fmtBytes(disk.used)} / ${_fmtBytes(disk.total)}',
                       fraction: (disk?.usedPercent ?? 0) / 100,
-                      color: Colors.orange,
+                      color: Color.lerp(scheme.primary, scheme.tertiary, 0.55)!,
                     ),
                   ),
                 ],
               ),
               const Divider(height: 28),
               _infoRow(context, '系统版本', data.system.os),
-              _infoRow(context, '核心数', cores.toString()),
-              _infoRow(context, '运行时间', data.system.uptime),
+              _infoRow(context, '核心数', cores == 0 ? '—' : cores.toString()),
+              _infoRow(context, '运行时间', _fmtUptime(data.system.uptime)),
               _infoRow(context, '主机', _selected?.host ?? data.system.hostname),
               _infoRow(
                 context,
@@ -450,6 +454,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  /// 把后端给的英文 uptime 原文（如 "up 32 weeks, 6 days, 15 hours, 21 minutes"）
+  /// 压成紧凑中文："230天 15小时" / "15小时 21分" / "21分"。解析不了时原样返回。
+  String _fmtUptime(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return text;
+    int pick(String unit) {
+      final m = RegExp('(\\d+)\\s*$unit').firstMatch(text);
+      return m == null ? 0 : int.parse(m.group(1)!);
+    }
+
+    final days = pick('weeks?') * 7 + pick('days?');
+    final hours = pick('hours?');
+    final minutes = pick('minutes?');
+    if (days == 0 && hours == 0 && minutes == 0) {
+      return text;
+    }
+    if (days > 0) return '$days天 $hours小时';
+    if (hours > 0) return '$hours小时 $minutes分';
+    return '$minutes分';
   }
 
   String _fmtRate(double rate) {

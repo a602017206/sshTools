@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/theme_provider.dart';
 
-/// 账户页（本地模式）：主题切换、连接状态与应用信息。
-/// 本应用无云账号体系，这里对应 HexHub「账户」栏的位置，
+/// 设置页（本地模式，原「账户」）：主题切换、连接状态与应用信息。
+/// 本应用无云账号体系，这一栏实际承载的是设置，故按用户反馈改名。
 /// 承载外观设置与本地数据说明。
 class AccountScreen extends ConsumerWidget {
   const AccountScreen({super.key});
@@ -18,7 +18,7 @@ class AccountScreen extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('账户')),
+      appBar: AppBar(title: const Text('设置')),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
@@ -136,6 +136,37 @@ class AccountScreen extends ConsumerWidget {
                               .setAccent(item),
                         ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  // 主题色实时预览：染色面积小的时候用户感知不到切换效果，
+                  // 这里给一组跟随当前配色的示例控件，点色点立刻能对比
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        FilledButton(
+                          onPressed: () {},
+                          child: const Text('示例按钮'),
+                        ),
+                        const SizedBox(width: 10),
+                        ChoiceChip(
+                          label: const Text('已选中'),
+                          selected: true,
+                          onSelected: (_) {},
+                        ),
+                        const SizedBox(width: 10),
+                        Icon(Icons.favorite,
+                            color: Theme.of(context).colorScheme.primary),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Text('终端主题',

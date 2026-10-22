@@ -427,15 +427,19 @@ class _ConnectionCard extends StatelessWidget {
                   }).toList(),
                 ),
               ],
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              // 五个操作按钮横排在窄屏上会溢出卡片（删除曾被挤到块外），
+              // 改 Wrap 自动换行，右对齐保持不变
+              Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 4,
+                runSpacing: 4,
                 children: [
                   FilledButton.icon(
                     onPressed: onConnect,
                     icon: const Icon(Icons.terminal, size: 20),
                     label: const Text('连接'),
                   ),
-                  const SizedBox(width: 4),
                   TextButton.icon(
                     onPressed: onFiles,
                     icon: const Icon(Icons.folder, size: 20),

@@ -58,9 +58,9 @@ class AppShell extends ConsumerWidget {
             label: '会话列表',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: '账户',
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: '设置',
           ),
         ],
       ),

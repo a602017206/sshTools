@@ -62,6 +62,8 @@ class MetricGauge extends StatelessWidget {
                 fontSize: 11,
               ),
           textAlign: TextAlign.center,
+          // 每环列宽只有约 85px，一行放不下完整用量，允许两行避免被截断
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
       ],
