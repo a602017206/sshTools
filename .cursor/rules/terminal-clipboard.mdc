@@ -1,0 +1,33 @@
+---
+description: SSH 终端复制粘贴为受保护区域，修改终端时禁止改动
+globs: frontend/src/components/Terminal.svelte,frontend/src/components/TerminalPanel.svelte,frontend/src/lib/terminalSelection.js,frontend/src/lib/terminalShortcuts.js,frontend/src/lib/xtermOptions.js
+alwaysApply: false
+---
+
+# SSH 终端复制粘贴：受保护区域
+
+复制粘贴已多次因修改终端其他功能而回归（`{}` 日志复制成空白、`tail -f` 时复制为空、Cmd+V 失效、vim 画面被拆散）。
+
+## 硬性约束
+
+除非用户在当前对话中**明确要求修改复制粘贴**，否则：
+
+- 不得修改 `Terminal.svelte` 中 `剪贴板受保护区域` 注释包围的代码（共两段）。
+- 不得修改 `terminalSelection.js`、`terminalShortcuts.js` 的复制、粘贴、选区逻辑。
+- 不得把 `xtermOptions.js` 的 `convertEol` 改为 `true`。
+- 新增键盘处理（如命令提示、快捷键）时，不得拦截 Ctrl/Cmd+C、Ctrl/Cmd+V，也不得改变它们在 `attachCustomKeyEventHandler` 中的处理顺序与返回值。
+
+## 已确认的正确做法（不要"优化"掉）
+
+- 复制只通过 Wails `ClipboardSetText`，并在 `setTimeout(..., 0)` 中执行；不用 `document.execCommand('copy')`、`clipboardData.setData`、`navigator.clipboard.writeText`。
+- `copy` 事件在捕获阶段监听并 `preventDefault` + `stopPropagation`，抢在 xterm 之前，避免空选区覆盖剪贴板。
+- 选区靠 `selectionMemory` 快照兜底，应对 `tail -f` 持续输出清空实时选区。
+- 粘贴先读 Wails `ClipboardGetText`，失败再回退 `navigator.clipboard.readText`，并经 `prepareTerminalPaste` 处理换行与括号粘贴。
+
+## 修改终端任何代码后必须执行
+
+```bash
+cd frontend && node --test test/terminalClipboardContract.test.js test/terminalSelection.test.js test/terminalShortcuts.test.js
+```
+
+契约测试失败说明动到了受保护区域：应撤回改动，而不是修改测试。确需修改复制粘贴时，先向用户说明原因并取得同意，再同步更新契约测试和变更文档。
