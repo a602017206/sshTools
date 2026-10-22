@@ -1,7 +1,7 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
   import { assetsStore, connectionsStore } from '../stores.js';
-  import { buildAssetCards, groupCards, stateLabel, summarizeCards } from '../lib/assetWall.js';
+  import { WALL_METRIC_CATALOG, buildAssetCards, groupCards, stateLabel, summarizeCards } from '../lib/assetWall.js';
 
   export let onConnect = () => {};
   export let onCreateConnection = () => {};
@@ -13,6 +13,7 @@
   let probedOnce = false;
   let refreshTimer = null;
   let wall = { enabled: true, intervalSeconds: 15, metricsEnabled: true };
+  let editMode = false;
 
   function clampIntervalSeconds(value) {
     const seconds = Math.floor(Number(value));
@@ -38,8 +39,10 @@
   $: assets = $assetsStore || [];
   $: sessions = $connectionsStore ? Array.from($connectionsStore.values()) : [];
   $: cards = buildAssetCards(assets, sessions, probes, metrics);
-  $: groups = groupCards(cards);
-  $: summary = summarizeCards(cards);
+  $: boardCards = cards.filter((card) => card.onBoard);
+  $: offBoardCards = cards.filter((card) => !card.onBoard);
+  $: groups = groupCards(boardCards);
+  $: summary = summarizeCards(boardCards);
   $: lastSyncText = lastSyncAt
     ? new Date(lastSyncAt).toLocaleTimeString('zh-CN', { hour12: false })
     : '尚未同步';
@@ -65,15 +68,17 @@
       probedOnce = true;
 
       if (wall.metricsEnabled && typeof bindings.GetMonitoringData === 'function') {
-        const excludedIds = new Set(
-          assets.filter((asset) => asset.metadata?.status_wall_excluded === 'true').map((asset) => asset.id)
+        const boardIds = new Set(
+          assets
+            .filter((asset) => asset.metadata?.wall_on_board === 'true' && asset.metadata?.status_wall_excluded !== 'true')
+            .map((asset) => asset.id)
         );
         const liveSessions = sessions.filter(
           (session) =>
             session?.connected &&
             session?.type !== 'database' &&
             session?.sessionId &&
-            !excludedIds.has(session?.connection?.id)
+            boardIds.has(session?.connection?.id)
         );
         const nextMetrics = new Map(metrics);
         await Promise.all(
@@ -120,12 +125,38 @@
     }
   }
 
+  async function persistWallPrefs(card, onBoard, metricIds) {
+    const bindings = window.wailsBindings || {};
+    if (typeof bindings.SetAssetWallPrefs !== 'function') return;
+    try {
+      await bindings.SetAssetWallPrefs(card.id, onBoard, (metricIds || []).join(','));
+      assetsStore.update((items) =>
+        items.map((item) => {
+          if (item.id !== card.id) return item;
+          const metadata = { ...(item.metadata || {}) };
+          if (onBoard) metadata.wall_on_board = 'true';
+          else delete metadata.wall_on_board;
+          if (metricIds?.length) metadata.wall_metrics = metricIds.join(',');
+          return { ...item, metadata };
+        })
+      );
+    } catch (error) {
+      console.warn('SetAssetWallPrefs failed:', error);
+    }
+  }
+
+  function toggleMetric(card, metricId) {
+    const selected = card.wallMetrics.includes(metricId)
+      ? card.wallMetrics.filter((id) => id !== metricId)
+      : [...card.wallMetrics, metricId];
+    persistWallPrefs(card, true, selected);
+  }
+
   onMount(async () => {
     await loadWallSettings();
+    if (!wall.enabled) return;
     refresh();
-    if (wall.enabled) {
-      refreshTimer = setInterval(refresh, wall.intervalSeconds * 1000);
-    }
+    refreshTimer = setInterval(refresh, wall.intervalSeconds * 1000);
   });
 
   onDestroy(() => {
@@ -139,22 +170,25 @@
       <p class="eyebrow"><span></span> ASSET STATUS WALL</p>
       <h1 id="dashboard-title">多资产状态墙</h1>
       {#if wall.enabled}
-        <p>全部资产每 {wall.intervalSeconds} 秒探活一次；已连接的 SSH 会话叠加真实 CPU / 内存。点击卡片即可连接或切回会话，卡片右下角可按资产单独关闭探活。</p>
+        <p>看板内资产每 {wall.intervalSeconds} 秒探活一次；已连接的 SSH 会话按各卡自选参数显示。点「编辑看板」可添加 / 移出机器并逐卡勾选参数，点击卡片即可连接或切回会话。</p>
       {:else}
         <p>自动探活已在「全局设置 → 多资产状态墙」关闭，在线状态不会自动更新；可点「立即刷新」手动探活一次，或回设置开启。</p>
       {/if}
     </div>
     <div class="live-status" aria-label="同步状态">
       <span class="pulse-dot"></span>
-      <strong>{probing ? '正在探活…' : `${summary.available} / ${summary.total} 个资产可用`}</strong>
+      <strong>{probing ? '正在探活…' : `${summary.available} / ${summary.total} 个看板资产可用`}</strong>
       <small>最后同步：{lastSyncText}</small>
-      <button type="button" class="refresh-button" on:click={refresh} disabled={probing}>立即刷新</button>
+      <span class="live-actions">
+        <button type="button" class="refresh-button" on:click={refresh} disabled={probing}>立即刷新</button>
+        <button type="button" class="refresh-button" on:click={() => { editMode = !editMode; }}>{editMode ? '完成' : '编辑看板'}</button>
+      </span>
     </div>
   </section>
 
   <section class="overview-grid" aria-label="资产概览">
     <article class="metric-card emphasis">
-      <div class="metric-header"><span>已管理资源</span><span class="metric-mark">01</span></div>
+      <div class="metric-header"><span>看板资产</span><span class="metric-mark">01</span></div>
       <strong>{summary.total}</strong>
       <p>{summary.available} 个资产当前可用</p>
     </article>
@@ -178,8 +212,14 @@
   {#if !assets.length}
     <section class="empty-panel">
       <strong>从第一台服务器开始</strong>
-      <span>保存 SSH 或数据库连接后，它会显示在这面墙上。</span>
+      <span>保存 SSH 或数据库连接后，可以在编辑看板时把它加进来。</span>
       <button type="button" on:click={() => onCreateConnection()}>新建连接</button>
+    </section>
+  {:else if !boardCards.length && !editMode}
+    <section class="empty-panel">
+      <strong>看板还是空的</strong>
+      <span>进入编辑模式，把关心的机器加进看板，并为每台勾选要看的参数。</span>
+      <button type="button" on:click={() => { editMode = true; }}>编辑看板</button>
     </section>
   {:else}
     {#each groups as group}
@@ -208,17 +248,35 @@
                   <span class="asset-latency">探测中…</span>
                 {/if}
               </span>
-              {#if card.connected && (card.cpuPercent !== null || card.memPercent !== null)}
+              {#if card.connected && card.metricRows.length}
                 <span class="asset-metrics">
-                  {#if card.cpuPercent !== null}
-                    <span class="metric-line"><span>CPU</span><i><b style="width: {Math.min(100, card.cpuPercent)}%"></b></i><em>{card.cpuPercent}%</em></span>
-                  {/if}
-                  {#if card.memPercent !== null}
-                    <span class="metric-line"><span>内存</span><i><b class="violet" style="width: {Math.min(100, card.memPercent)}%"></b></i><em>{card.memPercent}%</em></span>
-                  {/if}
+                  {#each card.metricRows as row}
+                    <span class="metric-line">
+                      <span>{row.label}</span>
+                      {#if row.percent !== null && row.percent !== undefined}
+                        <i><b style="width: {Math.min(100, row.percent)}%"></b></i>
+                      {:else}
+                        <i class="no-bar"></i>
+                      {/if}
+                      <em title={row.hint || ''}>{row.text}</em>
+                    </span>
+                  {/each}
                 </span>
               {/if}
             </button>
+            {#if editMode}
+              <span class="metric-picker" aria-label={`为 ${card.name} 选择显示参数`}>
+                {#each WALL_METRIC_CATALOG as metric}
+                  <button
+                    type="button"
+                    class="metric-chip"
+                    class:selected={card.wallMetrics.includes(metric.id)}
+                    on:click={() => toggleMetric(card, metric.id)}
+                  >{metric.label}</button>
+                {/each}
+              </span>
+              <button type="button" class="asset-toggle danger" on:click={() => persistWallPrefs(card, false, card.wallMetrics)}>移出看板</button>
+            {/if}
             <button
               type="button"
               class="asset-toggle"
@@ -230,6 +288,27 @@
         </div>
       </section>
     {/each}
+    {#if editMode}
+      <section class="wall-group" aria-label="可添加的机器">
+        <header class="wall-group-header">
+          <h2>可添加的机器</h2>
+          <span>{offBoardCards.length} 个未上看板</span>
+        </header>
+        {#if offBoardCards.length}
+          <div class="add-list">
+            {#each offBoardCards as card}
+              <div class="add-row">
+                <span class="status-dot state-{card.state}"></span>
+                <div class="add-info"><strong>{card.name}</strong><small>{card.host || '未配置主机'}{card.port ? `:${card.port}` : ''} · {card.group}</small></div>
+                <button type="button" class="add-button" on:click={() => persistWallPrefs(card, true, card.wallMetrics)}>加入看板</button>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="panel-note">全部资产都已经在看板上了。</p>
+        {/if}
+      </section>
+    {/if}
   {/if}
 </main>
 
@@ -247,6 +326,23 @@
   .refresh-button { background: transparent; border: 1px solid var(--border-primary); border-radius: 8px; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 12px; grid-column: 2; justify-self: start; margin-top: 8px; min-height: 30px; padding: 0 11px; }
   .refresh-button:hover:not(:disabled) { border-color: var(--ops-signal); color: var(--ops-signal); }
   .refresh-button:disabled { cursor: default; opacity: .55; }
+  .live-actions { display: flex; gap: 8px; grid-column: 2; }
+  .live-actions .refresh-button { margin-top: 8px; }
+  .metric-picker { border-top: 1px solid var(--border-secondary); display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 4px 2px; }
+  .metric-chip { background: transparent; border: 1px solid var(--border-primary); border-radius: 999px; color: var(--text-tertiary); cursor: pointer; font: inherit; font-size: 10px; padding: 3px 9px; }
+  .metric-chip:hover { border-color: var(--ops-signal); color: var(--ops-signal); }
+  .metric-chip.selected { background: var(--ops-signal); border-color: var(--ops-signal); color: #fff; }
+  .asset-toggle.danger:hover { color: var(--ops-alert); }
+  .metric-line i.no-bar { background: transparent; }
+  .panel-note { color: var(--text-tertiary); font-size: 12px; margin: 10px 0 0; }
+  .add-list { display: grid; gap: 8px; margin-top: 12px; }
+  .add-row { align-items: center; background: var(--panel); border: 1px solid var(--border-primary); border-radius: 10px; display: flex; gap: 10px; padding: 10px 12px; }
+  .add-info { flex: 1; min-width: 0; }
+  .add-info strong, .add-info small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .add-info strong { font-size: 12px; }
+  .add-info small { color: var(--text-tertiary); font-size: 11px; margin-top: 1px; }
+  .add-button { background: transparent; border: 1px solid var(--border-primary); border-radius: 8px; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 11px; min-height: 30px; padding: 0 11px; }
+  .add-button:hover { border-color: var(--ops-signal); color: var(--ops-signal); }
   .pulse-dot, .status-dot { background: var(--ops-success); border-radius: 999px; height: 8px; width: 8px; flex-shrink: 0; }
   .pulse-dot { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ops-success) 66%, transparent); margin: 6px 9px 0 0; animation: signal-pulse 2.2s infinite; }
   .status-dot.state-offline { background: var(--ops-alert); }
@@ -282,7 +378,7 @@
   .metric-line i { background: color-mix(in srgb, var(--border-primary) 58%, transparent); border-radius: 999px; display: block; height: 4px; overflow: hidden; }
   .metric-line b { background: var(--ops-signal); display: block; height: 100%; }
   .metric-line b.violet { background: var(--ops-violet); }
-  .metric-line em { color: var(--text-secondary); font-family: var(--terminal-font-family); font-size: 10px; font-style: normal; text-align: right; }
+  .metric-line em { color: var(--text-secondary); font-family: var(--terminal-font-family); font-size: 10px; font-style: normal; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
   .empty-panel { align-items: center; background: var(--panel); border: 1px solid var(--border-primary); border-radius: 14px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 9px; justify-content: center; margin-top: 22px; min-height: 220px; text-align: center; }
   .empty-panel span { color: var(--text-tertiary); font-size: 12px; }
   .empty-panel button { background: transparent; border: 1px solid var(--border-primary); border-radius: 8px; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 12px; min-height: 36px; padding: 0 11px; }
