@@ -6,6 +6,15 @@
   import TableStructurePanel from './TableStructurePanel.svelte';
   import NativeDatabasePanel from './NativeDatabasePanel.svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
+  import BatchExecuteDialog from './BatchExecuteDialog.svelte';
+  import {
+    buildBatchPayload,
+    decorateSessionTabs,
+    listBatchTargets,
+    sessionAccentColor,
+    sessionTabSubtitle,
+    sessionTabTitle
+  } from '../lib/sessionTabs.js';
   import InputDialog from './ui/InputDialog.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
   import { EventsOn } from '../../wailsjs/runtime/runtime.js';
@@ -48,6 +57,26 @@
 
   // Close confirmation dialog state
   let showCloseConfirm = false;
+  let batchOpen = false;
+
+  async function executeBatch({ command, sessionIds, appendEnter }) {
+    const payload = buildBatchPayload(command, appendEnter);
+    if (!payload) return { sent: 0, failed: sessionIds.length };
+    const { SendSSHData } = window.wailsBindings || {};
+    if (typeof SendSSHData !== 'function') return { sent: 0, failed: sessionIds.length };
+    let sent = 0;
+    let failed = 0;
+    for (const sessionId of sessionIds) {
+      try {
+        await SendSSHData(sessionId, payload);
+        sent += 1;
+      } catch (error) {
+        console.warn('Batch send failed:', sessionId, error);
+        failed += 1;
+      }
+    }
+    return { sent, failed };
+  }
   let pendingCloseIds = [];
   let showTabContextMenu = false;
   let tabContextSessionId = '';
@@ -67,6 +96,13 @@
   $: mode = resolveMode(activeMode);
   $: sessionsList = $connectionsStore ? Array.from($connectionsStore.values()) : [];
   $: visibleSessions = sessionsList.filter((session) => sessionMatchesMode(session, mode));
+  $: tabOrdinalMap = decorateSessionTabs(visibleSessions);
+  $: tabSizeMap = visibleSessions.reduce((map, session) => {
+    const key = session.connection?.id || session.sessionId;
+    map.set(key, (map.get(key) || 0) + 1);
+    return map;
+  }, new Map());
+  $: batchTargets = listBatchTargets(visibleSessions);
   $: activeVisibleSession = visibleSessions.find((session) => session.sessionId === $activeSessionIdStore) || null;
   $: viewportIsConsole = !activeVisibleSession || activeVisibleSession.type !== 'database';
   $: visibleSessionIds = visibleSessions.map((session) => session.sessionId);
@@ -1344,7 +1380,7 @@
               ? 'session-tab--active text-gray-900 dark:text-white'
               : 'text-gray-600 dark:text-gray-300'
           }"
-          style="border-color: var(--glass-border);"
+          style="border-color: var(--glass-border); --tab-accent: {sessionAccentColor(session.sessionId)};"
           role="button"
           tabindex="0"
           on:click={() => handleTabChange(session.sessionId)}
@@ -1373,16 +1409,8 @@
             />
           {:else}
             <div class="flex-1 min-w-0 flex flex-col leading-tight">
-              <span class="text-xs font-medium truncate">{session.tabName || session.connection.name}</span>
-              <span class="text-[10px] ops-muted truncate">
-                {#if session.type === 'database'}
-                  数据库
-                {:else if session.connected}
-                  已连接
-                {:else}
-                  断开
-                {/if}
-              </span>
+              <span class="text-xs font-medium truncate">{sessionTabTitle(session, tabOrdinalMap.get(session.sessionId) || 1, tabSizeMap.get(session.connection?.id || session.sessionId) || 1)}</span>
+              <span class="text-[10px] ops-muted truncate">{sessionTabSubtitle(session)}</span>
             </div>
           {/if}
 
@@ -1408,13 +1436,24 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
       </svg>
     </button>
+    <button
+      on:click={() => { batchOpen = true; }}
+      disabled={!batchTargets.length}
+      class="ops-icon-button flex items-center gap-1.5 px-3 py-2 transition-colors text-xs font-medium whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+      title={batchTargets.length ? '把一条命令同时发送到多个已连接页签' : '没有已连接的 SSH 页签'}
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h10M4 18h13M17 15l3 3-3 3" transform="translate(0 -3)" />
+      </svg>
+      批量执行{batchTargets.length ? `（${batchTargets.length}）` : ''}
+    </button>
     {/if}
   </div>
 
   <!-- 终端内容：保留全部会话挂载，仅按当前活动标签显示 -->
   {#if sessionsList.length > 0}
     <div class="terminal-stage flex-1 min-h-0">
-    <div class="terminal-content-area relative flex-1 flex flex-col ops-terminal-viewport" class:ops-terminal-viewport--console={viewportIsConsole} class:ops-terminal-viewport--panel={!viewportIsConsole}>
+    <div class="terminal-content-area relative flex-1 flex flex-col ops-terminal-viewport" class:ops-terminal-viewport--console={viewportIsConsole} class:ops-terminal-viewport--panel={!viewportIsConsole} style="--session-accent: {activeVisibleSession ? sessionAccentColor(activeVisibleSession.sessionId) : 'transparent'};">
       {#each sessionsList as session (session.sessionId)}
         <div
           class="terminal-wrapper {
@@ -1544,6 +1583,13 @@
   onCancel={handleCancelClose}
 />
 
+<BatchExecuteDialog
+  bind:isOpen={batchOpen}
+  targets={batchTargets}
+  onClose={() => { batchOpen = false; }}
+  onExecute={executeBatch}
+/>
+
 <ConfirmDialog
   bind:isOpen={showSavePasswordConfirm}
   title={confirmTitle}
@@ -1590,9 +1636,14 @@
     background: color-mix(in srgb, var(--glass-highlight) 55%, transparent);
   }
 
+  .session-tab {
+    box-shadow: inset 3px 0 0 var(--tab-accent, transparent);
+  }
+
   .session-tab--active {
     background: color-mix(in srgb, var(--glass-bg-strong) 88%, var(--accent-subtle));
-    border-bottom-color: var(--ops-signal);
+    border-bottom-color: var(--tab-accent, var(--ops-signal));
+    box-shadow: inset 3px 0 0 var(--tab-accent, var(--ops-signal)), inset 0 -2px 0 var(--tab-accent, var(--ops-signal));
   }
 
   .terminal-stage {
@@ -1609,6 +1660,16 @@
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
+  }
+
+  /* 与活动页签同色的顶部锚点带：在哪个页签下操作一眼可辨 */
+  .terminal-content-area::before {
+    content: '';
+    display: block;
+    height: 3px;
+    flex-shrink: 0;
+    background: var(--session-accent, transparent);
+    transition: background-color 180ms ease;
   }
 
   .terminal-wrapper {
