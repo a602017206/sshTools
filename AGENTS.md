@@ -129,6 +129,13 @@
 4. 在 `frontend/src/tools/index.js` 注册工具，包含 id、name、icon、component、order。
 5. 前端在 `wails dev` 时会自动重新生成 bindings。
 
+### SSH 终端复制粘贴（受保护区域）
+复制粘贴已多次因修改终端其他功能而回归。除非用户明确要求修改复制粘贴，否则：
+- 不得修改 `frontend/src/components/Terminal.svelte` 中 `剪贴板受保护区域` 注释包围的两段代码，以及 `terminalSelection.js`、`terminalShortcuts.js` 的复制粘贴逻辑。
+- 新增按键处理不得拦截 Ctrl/Cmd+C、Ctrl/Cmd+V；`xtermOptions.js` 的 `convertEol` 必须保持 `false`。
+- 改动终端任何代码后必须运行 `cd frontend && node --test test/terminalClipboardContract.test.js test/terminalSelection.test.js test/terminalShortcuts.test.js`。契约测试失败应撤回改动，不得改测试迁就代码。
+- 详见 `.cursor/rules/terminal-clipboard.mdc`。
+
 ### 代码风格
 - Go：导出符号使用 `CamelCase`，未导出符号使用 `camelCase`，遵循 `gofmt`。
 - Svelte：组件文件使用 `PascalCase` 文件名（如 `ConnectionManager.svelte`），store 模块使用 `camelCase`。

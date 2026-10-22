@@ -77,8 +77,9 @@ type AppSettings struct {
 	SessionLogRedactEnabled bool `json:"session_log_redact_enabled"`
 
 	// Command suggest settings
-	CommandSuggestEnabled bool `json:"command_suggest_enabled"`
-	CommandSuggestLimit   int  `json:"command_suggest_limit"`
+	CommandSuggestEnabled   bool `json:"command_suggest_enabled"`
+	CommandSuggestLimit     int  `json:"command_suggest_limit"`
+	CommandSuggestTabAccept bool `json:"command_suggest_tab_accept"`
 }
 
 // FileManagerSettings stores file manager configuration per connection
@@ -440,6 +441,9 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 	if commandSuggestLimit, ok := updates["command_suggest_limit"].(float64); ok {
 		cm.config.Settings.CommandSuggestLimit = int(commandSuggestLimit)
+	}
+	if commandSuggestTabAccept, ok := updates["command_suggest_tab_accept"].(bool); ok {
+		cm.config.Settings.CommandSuggestTabAccept = commandSuggestTabAccept
 	}
 
 	// File manager per-connection settings

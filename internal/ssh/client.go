@@ -5,13 +5,16 @@ import (
 	"os"
 	"time"
 
-	"golang.org/x/crypto/ssh"
+	cryptossh "golang.org/x/crypto/ssh"
 )
+
+// sshDial is used by Connect; tests may stub slow dials.
+var sshDial = cryptossh.Dial
 
 // Client represents an SSH client
 type Client struct {
-	config  *ssh.ClientConfig
-	client  *ssh.Client
+	config  *cryptossh.ClientConfig
+	client  *cryptossh.Client
 	address string
 }
 
@@ -35,7 +38,7 @@ func NewClient(cfg *Config) (*Client, error) {
 	address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
 	// Build auth methods
-	var authMethods []ssh.AuthMethod
+	var authMethods []cryptossh.AuthMethod
 
 	// Try key-based authentication first (if key path is provided)
 	if cfg.KeyPath != "" {
@@ -48,10 +51,10 @@ func NewClient(cfg *Config) (*Client, error) {
 
 	// Add password authentication
 	if cfg.Password != "" {
-		authMethods = append(authMethods, ssh.Password(cfg.Password))
+		authMethods = append(authMethods, cryptossh.Password(cfg.Password))
 
 		// Add keyboard-interactive authentication (some servers require this instead of password)
-		authMethods = append(authMethods, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+		authMethods = append(authMethods, cryptossh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
 			answers := make([]string, len(questions))
 			for i := range questions {
 				answers[i] = cfg.Password
@@ -64,10 +67,10 @@ func NewClient(cfg *Config) (*Client, error) {
 		return nil, fmt.Errorf("no authentication method provided (need password or key path)")
 	}
 
-	config := &ssh.ClientConfig{
+	config := &cryptossh.ClientConfig{
 		User:            cfg.User,
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Implement proper host key verification
+		HostKeyCallback: cryptossh.InsecureIgnoreHostKey(), // TODO: Implement proper host key verification
 		Timeout:         cfg.Timeout,
 	}
 
@@ -79,7 +82,7 @@ func NewClient(cfg *Config) (*Client, error) {
 
 // Connect establishes SSH connection
 func (c *Client) Connect() error {
-	client, err := ssh.Dial("tcp", c.address, c.config)
+	client, err := sshDial("tcp", c.address, c.config)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
@@ -101,24 +104,24 @@ func (c *Client) IsConnected() bool {
 }
 
 // getKeyAuth loads a private key file and returns an SSH auth method
-func getKeyAuth(keyPath, passphrase string) (ssh.AuthMethod, error) {
+func getKeyAuth(keyPath, passphrase string) (cryptossh.AuthMethod, error) {
 	// Read the private key file
 	keyBytes, err := os.ReadFile(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file: %w", err)
 	}
 
-	var signer ssh.Signer
+	var signer cryptossh.Signer
 
 	// Try to parse the key with passphrase if provided
 	if passphrase != "" {
-		signer, err = ssh.ParsePrivateKeyWithPassphrase(keyBytes, []byte(passphrase))
+		signer, err = cryptossh.ParsePrivateKeyWithPassphrase(keyBytes, []byte(passphrase))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse encrypted key (check passphrase): %w", err)
 		}
 	} else {
 		// Try to parse without passphrase
-		signer, err = ssh.ParsePrivateKey(keyBytes)
+		signer, err = cryptossh.ParsePrivateKey(keyBytes)
 		if err != nil {
 			// If it fails, it might be an encrypted key without passphrase provided
 			if err.Error() == "ssh: cannot decode encrypted private keys" ||
@@ -129,5 +132,5 @@ func getKeyAuth(keyPath, passphrase string) (ssh.AuthMethod, error) {
 		}
 	}
 
-	return ssh.PublicKeys(signer), nil
+	return cryptossh.PublicKeys(signer), nil
 }

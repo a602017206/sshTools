@@ -334,6 +334,7 @@ export function getDefaultAppSettings() {
     session_log_retention_days: 30,
     session_log_redact_enabled: true,
     command_suggest_enabled: true,
-    command_suggest_limit: 8
+    command_suggest_limit: 8,
+    command_suggest_tab_accept: false
   };
 }

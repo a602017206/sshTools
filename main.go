@@ -15,6 +15,7 @@ import (
 var assets embed.FS
 
 func main() {
+	ensureUTF8Locale()
 	app := NewApp()
 
 	var appContext context.Context

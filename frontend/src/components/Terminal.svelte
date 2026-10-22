@@ -30,7 +30,9 @@
   export let connectionId = null;
   export let commandSuggestEnabled = false;
   export let commandSuggestLimit = 8;
+  export let commandSuggestTabAccept = false;
 
+  let shellElement;
   let terminalElement;
   let terminal;
   let fitAddon;
@@ -59,6 +61,7 @@
   let suggestVisible = false;
   let suggestDebounceTimer = null;
   let suggestRequestSeq = 0;
+  let suggestOverlayStyle = '';
   let xtermSyncTimer = null;
   $: currentEncoding = normalizeTerminalCharset(encoding);
   $: suggestOpen = suggestVisible && suggestItems.length > 0;
@@ -128,12 +131,42 @@
       suggestItems = items;
       suggestSelectedIndex = 0;
       suggestVisible = items.length > 0 && shouldOfferSuggest(commandLineBuffer.getLine(), commandSuggestEnabled);
+      if (suggestVisible) {
+        suggestOverlayStyle = computeSuggestOverlayStyle(items.length);
+      }
     } catch (error) {
       console.warn('SuggestCommands failed:', error);
       if (seq === suggestRequestSeq) {
         clearSuggestOverlay();
       }
     }
+  }
+
+  /** 浮层贴着当前命令行：左侧对齐命令起点，下方空间不足时翻到光标行上方。 */
+  function computeSuggestOverlayStyle(itemCount) {
+    const screen = terminalElement?.querySelector('.xterm-screen');
+    if (!terminal || !screen || !shellElement || !terminal.cols || !terminal.rows) {
+      return '';
+    }
+    const screenRect = screen.getBoundingClientRect();
+    const shellRect = shellElement.getBoundingClientRect();
+    const cellWidth = screenRect.width / terminal.cols;
+    const cellHeight = screenRect.height / terminal.rows;
+    const buffer = terminal.buffer.active;
+    const startCol = Math.max(0, buffer.cursorX - commandLineBuffer.getLine().length);
+    const offsetLeft = screenRect.left - shellRect.left;
+    const offsetTop = screenRect.top - shellRect.top;
+
+    const maxLeft = Math.max(8, shellRect.width - 208);
+    const left = Math.min(Math.max(8, offsetLeft + startCol * cellWidth), maxLeft);
+    const lineTop = offsetTop + buffer.cursorY * cellHeight;
+    const lineBottom = lineTop + cellHeight;
+    const estimatedHeight = Math.min(220, itemCount * 26 + 10);
+
+    if (shellRect.height - lineBottom - 4 >= estimatedHeight || lineTop < shellRect.height - lineBottom) {
+      return `left: ${left}px; top: ${lineBottom + 2}px; bottom: auto;`;
+    }
+    return `left: ${left}px; bottom: ${shellRect.height - lineTop + 2}px; top: auto;`;
   }
 
   /** Tab/点击填入：退格清空远端当前行后发送建议文本，不发送 \\r。
@@ -203,6 +236,14 @@
 
   function handleSuggestKeyEvent(event) {
     if (!suggestOpen) {
+      return true;
+    }
+    if (!commandSuggestTabAccept) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        clearSuggestOverlay();
+        return false;
+      }
       return true;
     }
     if (event.key === 'Tab') {
@@ -276,6 +317,9 @@
     fitAddon?.fit();
   }
 
+  // ==== 剪贴板受保护区域 开始（1/2）====
+  // 复制粘贴多次因改动终端其他功能而回归。未经用户明确要求不得修改本区域，
+  // 改动终端后须通过 test/terminalClipboardContract.test.js，见 .cursor/rules/terminal-clipboard.mdc。
   function applySelectionEvent(type) {
     selectionMemory = reduceSelectionMemory(selectionMemory, {
       type,
@@ -342,6 +386,7 @@
       console.error('Failed to paste from clipboard:', error);
     }
   }
+  // ==== 剪贴板受保护区域 结束（1/2）====
 
   function writeDecoded(octets) {
     if (!terminal) return;
@@ -405,6 +450,8 @@
 
     fitAddon.fit();
 
+    // ==== 剪贴板受保护区域 开始（2/2）====
+    // 新增按键处理不得拦截 Ctrl/Cmd+C、Ctrl/Cmd+V，也不得改变下面复制粘贴分支的顺序与返回值。
     // 无选区的 Ctrl+C 仍发送中断。有选区时 Ctrl/Cmd+C 复制，Ctrl/Cmd+V 粘贴。
     // 复制要 preventDefault，避免随后的 copy 事件用空的 DOM 选区把剪贴板清掉。
     terminal.attachCustomKeyEventHandler((event) => {
@@ -477,6 +524,7 @@
       }, 0);
     };
     window.addEventListener('mouseup', handleSelectionMouseUp);
+    // ==== 剪贴板受保护区域 结束（2/2）====
     terminalElement.addEventListener('contextmenu', openContextMenu);
 
     // 动态导入 zmodem.js
@@ -988,7 +1036,7 @@
 
 <svelte:window on:click={closeContextMenu} />
 
-<div class="terminal-shell">
+<div class="terminal-shell" bind:this={shellElement}>
   <div
     class="terminal-container ops-terminal-canvas"
     bind:this={terminalElement}
@@ -997,13 +1045,13 @@
     <!-- xterm 终端将在这里渲染 -->
   </div>
   {#if suggestOpen}
-    <ul class="command-suggest-overlay" role="listbox" aria-label="常用命令建议">
+    <ul class="command-suggest-overlay" role="listbox" aria-label="常用命令建议" style={suggestOverlayStyle}>
       {#each suggestItems as item, i (suggestionText(item) + ':' + i)}
         <li
           class="command-suggest-item"
-          class:selected={i === suggestSelectedIndex}
+          class:selected={commandSuggestTabAccept && i === suggestSelectedIndex}
           role="option"
-          aria-selected={i === suggestSelectedIndex}
+          aria-selected={commandSuggestTabAccept && i === suggestSelectedIndex}
           on:mousedown|preventDefault={() => applySuggestionFill(suggestionText(item))}
         >
           <span class="command-suggest-cmd">{suggestionText(item)}</span>

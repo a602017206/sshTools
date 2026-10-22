@@ -153,7 +153,8 @@
       session_log_retention_days: Number(settings.session_log_retention_days) || 30,
       session_log_redact_enabled: settings.session_log_redact_enabled !== false,
       command_suggest_enabled: settings.command_suggest_enabled !== false,
-      command_suggest_limit: Number(settings.command_suggest_limit) || 8
+      command_suggest_limit: Number(settings.command_suggest_limit) || 8,
+      command_suggest_tab_accept: settings.command_suggest_tab_accept === true
     };
     if (Object.prototype.hasOwnProperty.call(extra, 'copilot_providers')) {
       updates.copilot_providers = extra.copilot_providers || [];
