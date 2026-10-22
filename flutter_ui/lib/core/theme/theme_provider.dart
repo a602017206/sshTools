@@ -190,6 +190,36 @@ final terminalThemeModeProvider =
   (ref) => TerminalThemeModeNotifier(),
 );
 
+/// 终端字号（10~20 磅），持久化保存，桌面版默认 14、移动端此前写死 13。
+class TerminalFontSizeNotifier extends StateNotifier<double> {
+  static const _prefsKey = 'app_terminal_font_size';
+  static const minSize = 10.0;
+  static const maxSize = 20.0;
+
+  TerminalFontSizeNotifier() : super(13) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getDouble(_prefsKey);
+    if (value != null) {
+      state = value.clamp(minSize, maxSize);
+    }
+  }
+
+  Future<void> setSize(double size) async {
+    state = size.clamp(minSize, maxSize);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_prefsKey, state);
+  }
+}
+
+final terminalFontSizeProvider =
+    StateNotifierProvider<TerminalFontSizeNotifier, double>(
+  (ref) => TerminalFontSizeNotifier(),
+);
+
 /// 按终端主题设置与当前界面亮度解析出 xterm 配色。
 /// 两套 16 色与桌面端 terminalTheme.js 的 DARK/LIGHT_XTERM_THEME 一一对应。
 TerminalTheme resolveXtermTheme(TerminalThemeMode mode, Brightness brightness) {

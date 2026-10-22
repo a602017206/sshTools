@@ -12,11 +12,26 @@ import 'widgets/connection_form_page.dart';
 /// 针对真机反馈重做了交互：每张卡片直接给出「连接 / 测试 / 编辑 / 删除」
 /// 按钮，不再把操作全埋进右上角菜单；点卡片或「连接」进入 SSH 终端，
 /// 「测试」只验证连通性；两者都优先用已保存密码，不再每次弹窗索要。
-class ConnectionListScreen extends ConsumerWidget {
+class ConnectionListScreen extends ConsumerStatefulWidget {
   const ConnectionListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ConnectionListScreen> createState() =>
+      _ConnectionListScreenState();
+}
+
+class _ConnectionListScreenState extends ConsumerState<ConnectionListScreen> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final connectionState = ref.watch(conn_provider.connectionProvider);
 
     return Scaffold(
@@ -32,7 +47,37 @@ class ConnectionListScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: _buildBody(context, ref, connectionState),
+      body: Column(
+        children: [
+          if (connectionState.connections.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: '搜索名称 / 主机 / 用户 / 分组',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          tooltip: '清空搜索',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                        ),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+                textCapitalization: TextCapitalization.none,
+                autocorrect: false,
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+          Expanded(child: _buildBody(context, ref, connectionState)),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showConnectionForm(context, ref),
         icon: const Icon(Icons.add),
@@ -104,21 +149,78 @@ class ConnectionListScreen extends ConsumerWidget {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
-      itemCount: state.connections.length,
-      itemBuilder: (context, index) {
-        final connection = state.connections[index];
-        return _ConnectionCard(
-          connection: connection,
-          onTap: () => _openTerminal(context, ref, connection),
-          onConnect: () => _openTerminal(context, ref, connection),
-          onFiles: () => _openSftp(context, ref, connection),
-          onEdit: () => _showConnectionForm(context, ref, connection),
-          onDelete: () => _deleteConnection(context, ref, connection),
-          onTest: () => _testConnection(context, ref, connection),
-        );
-      },
+    // 搜索过滤（名称/主机/用户/任意标签，含分组）
+    final query = _query.trim().toLowerCase();
+    bool matches(ConnectionModel c) =>
+        query.isEmpty ||
+        c.name.toLowerCase().contains(query) ||
+        c.host.toLowerCase().contains(query) ||
+        c.user.toLowerCase().contains(query) ||
+        (c.tags ?? []).any((t) => t.toLowerCase().contains(query));
+    final filtered = state.connections.where(matches).toList();
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Text('没有匹配「${_query.trim()}」的连接'),
+      );
+    }
+
+    // 按分组分段：分组 = tags 首个（桌面端约定），无标签归「默认分组」并垫底
+    final groups = <String, List<ConnectionModel>>{};
+    for (final c in filtered) {
+      final g = (c.tags != null && c.tags!.isNotEmpty) ? c.tags!.first : '默认分组';
+      groups.putIfAbsent(g, () => []).add(c);
+    }
+    final groupNames = groups.keys.toList()
+      ..sort((a, b) {
+        if (a == '默认分组') return 1;
+        if (b == '默认分组') return -1;
+        return a.compareTo(b);
+      });
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
+      children: [
+        for (final g in groupNames) ...[
+          _groupHeader(context, g, groups[g]!.length),
+          for (final connection in groups[g]!)
+            _ConnectionCard(
+              connection: connection,
+              onTap: () => _openTerminal(context, ref, connection),
+              onConnect: () => _openTerminal(context, ref, connection),
+              onFiles: () => _openSftp(context, ref, connection),
+              onEdit: () => _showConnectionForm(context, ref, connection),
+              onClone: () =>
+                  _showConnectionForm(context, ref, connection, true),
+              onDelete: () => _deleteConnection(context, ref, connection),
+              onTest: () => _testConnection(context, ref, connection),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _groupHeader(BuildContext context, String name, int count) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
+      child: Row(
+        children: [
+          Icon(Icons.folder_open,
+              size: 18, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(name, style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(width: 6),
+          Text(
+            '$count 台',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.55),
+                ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -126,27 +228,38 @@ class ConnectionListScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, [
     ConnectionModel? connection,
+    bool clone = false,
   ]) async {
+    final existingGroups = <String>{
+      for (final c in ref.read(conn_provider.connectionProvider).connections)
+        if (c.tags != null && c.tags!.isNotEmpty) c.tags!.first,
+    }.toList()
+      ..sort();
     final result = await Navigator.push<ConnectionModel>(
       context,
       MaterialPageRoute(
-        builder: (context) => ConnectionFormPage(connection: connection),
+        builder: (context) => ConnectionFormPage(
+          connection: connection,
+          clone: clone,
+          existingGroups: existingGroups,
+        ),
       ),
     );
 
     if (result != null) {
       final notifier = ref.read(conn_provider.connectionProvider.notifier);
-      final success = connection == null
+      // 新增与克隆都走新增接口（克隆的 ID 已在表单里清空）
+      final isCreate = connection == null || clone;
+      final success = isCreate
           ? await notifier.addConnection(result)
           : await notifier.updateConnection(result);
+      final verb = connection == null ? '添加' : (clone ? '克隆' : '更新');
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              success
-                  ? '${connection == null ? '已添加' : '已更新'} ${result.name}'
-                  : '${connection == null ? '添加' : '更新'}失败，请查看错误提示',
+              success ? '已$verb ${result.name}' : '$verb失败，请查看错误提示',
             ),
             backgroundColor: success ? Colors.green : Colors.red,
           ),
@@ -325,6 +438,7 @@ class _ConnectionCard extends StatelessWidget {
   final VoidCallback onConnect;
   final VoidCallback onFiles;
   final VoidCallback onEdit;
+  final VoidCallback onClone;
   final VoidCallback onDelete;
   final VoidCallback onTest;
 
@@ -334,6 +448,7 @@ class _ConnectionCard extends StatelessWidget {
     required this.onConnect,
     required this.onFiles,
     required this.onEdit,
+    required this.onClone,
     required this.onDelete,
     required this.onTest,
   });
@@ -454,6 +569,11 @@ class _ConnectionCard extends StatelessWidget {
                     onPressed: onEdit,
                     icon: const Icon(Icons.edit, size: 20),
                     label: const Text('编辑'),
+                  ),
+                  TextButton.icon(
+                    onPressed: onClone,
+                    icon: const Icon(Icons.copy, size: 20),
+                    label: const Text('克隆'),
                   ),
                   TextButton.icon(
                     onPressed: onDelete,

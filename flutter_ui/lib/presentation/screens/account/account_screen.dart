@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/theme_provider.dart';
+import '../../providers/command_history_provider.dart';
 
 /// 设置页（本地模式，原「账户」）：主题切换、连接状态与应用信息。
 /// 本应用无云账号体系，这一栏实际承载的是设置，故按用户反馈改名。
@@ -15,6 +16,8 @@ class AccountScreen extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
     final accent = ref.watch(accentProvider);
     final terminalThemeMode = ref.watch(terminalThemeModeProvider);
+    final terminalFontSize = ref.watch(terminalFontSizeProvider);
+    final historyCount = ref.watch(commandHistoryProvider).length;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -193,6 +196,79 @@ class AccountScreen extends ConsumerWidget {
                           .read(terminalThemeModeProvider.notifier)
                           .setMode(selection.first);
                     },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text('终端字号',
+                          style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${terminalFontSize.round()} 磅',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: terminalFontSize,
+                    min: TerminalFontSizeNotifier.minSize,
+                    max: TerminalFontSizeNotifier.maxSize,
+                    divisions: 10,
+                    label: '${terminalFontSize.round()}',
+                    onChanged: (v) =>
+                        ref.read(terminalFontSizeProvider.notifier).setSize(v),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.history, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('命令历史',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text(
+                          historyCount == 0
+                              ? '暂无记录。在终端里执行过的命令会出现在这里，并用于输入建议'
+                              : '已记录 $historyCount 条，用于终端输入时的命令建议',
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.6),
+                                  ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: historyCount == 0
+                        ? null
+                        : () async {
+                            await ref
+                                .read(commandHistoryProvider.notifier)
+                                .clear();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('命令历史已清除')),
+                              );
+                            }
+                          },
+                    child: const Text('清除'),
                   ),
                 ],
               ),

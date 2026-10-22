@@ -11,9 +11,18 @@ import '../../../../data/models/connection_model.dart';
 class ConnectionFormPage extends StatefulWidget {
   final ConnectionModel? connection;
 
+  /// 克隆模式：以 [connection] 预填，但保存走新增（ID 清空、名称加「副本」，
+  /// 密码不复制——服务端从不下发密码，必须重新输入）。
+  final bool clone;
+
+  /// 已有分组名（来自现有连接），供分组输入框下方快选
+  final List<String> existingGroups;
+
   const ConnectionFormPage({
     super.key,
     this.connection,
+    this.clone = false,
+    this.existingGroups = const [],
   });
 
   @override
@@ -28,26 +37,34 @@ class _ConnectionFormPageState extends State<ConnectionFormPage> {
   late final TextEditingController _userController;
   late final TextEditingController _passwordController;
   late final TextEditingController _keyPathController;
+  late final TextEditingController _groupController;
   late final TextEditingController _tagsController;
 
   String _authType = 'password';
   bool _obscurePassword = true;
 
-  bool get _isEdit => widget.connection != null;
-  bool get _hasSavedPassword => widget.connection?.hasPassword ?? false;
+  bool get _isEdit => widget.connection != null && !widget.clone;
+  bool get _hasSavedPassword => !_isEdit ? false : (widget.connection?.hasPassword ?? false);
 
   @override
   void initState() {
     super.initState();
     final conn = widget.connection;
-    _nameController = TextEditingController(text: conn?.name ?? '');
+    _nameController = TextEditingController(
+      text: widget.clone && conn != null ? '${conn.name} 副本' : (conn?.name ?? ''),
+    );
     _hostController = TextEditingController(text: conn?.host ?? '');
     _portController = TextEditingController(text: conn?.port.toString() ?? '22');
     _userController = TextEditingController(text: conn?.user ?? '');
     _passwordController = TextEditingController();
     _keyPathController = TextEditingController(text: conn?.keyPath ?? '');
+    // 分组与桌面端同一约定：tags 的第一个就是分组，其余才是普通标签
+    final tags = conn?.tags ?? const <String>[];
+    _groupController = TextEditingController(
+      text: tags.isNotEmpty ? tags.first : '',
+    );
     _tagsController = TextEditingController(
-      text: conn?.tags?.join(', ') ?? '',
+      text: tags.length > 1 ? tags.sublist(1).join(', ') : '',
     );
     _authType = conn?.authType ?? 'password';
   }
@@ -60,6 +77,7 @@ class _ConnectionFormPageState extends State<ConnectionFormPage> {
     _userController.dispose();
     _passwordController.dispose();
     _keyPathController.dispose();
+    _groupController.dispose();
     _tagsController.dispose();
     super.dispose();
   }
@@ -68,7 +86,7 @@ class _ConnectionFormPageState extends State<ConnectionFormPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEdit ? '编辑连接' : '新增连接'),
+        title: Text(widget.clone ? '克隆连接' : (_isEdit ? '编辑连接' : '新增连接')),
         actions: [
           TextButton(
             onPressed: _saveConnection,
@@ -219,10 +237,10 @@ class _ConnectionFormPageState extends State<ConnectionFormPage> {
                 autocorrect: false,
                 enableSuggestions: false,
                 validator: (value) {
-                  // 新增时必须填密码（旧版没有密码框，存下的连接永远登不上）；
+                  // 新增/克隆时必须填密码（克隆不复制原密码：服务端从不下发）；
                   // 编辑时留空表示沿用已保存密码
                   if (!_isEdit && (value == null || value.isEmpty)) {
-                    return '请输入密码';
+                    return widget.clone ? '克隆不会复制原密码，请重新输入' : '请输入密码';
                   }
                   if (_isEdit && !_hasSavedPassword && (value == null || value.isEmpty)) {
                     return '该连接尚未保存密码，请输入';
@@ -262,10 +280,35 @@ class _ConnectionFormPageState extends State<ConnectionFormPage> {
             ],
             const SizedBox(height: 16),
             TextFormField(
+              controller: _groupController,
+              decoration: const InputDecoration(
+                labelText: '分组（可选）',
+                hintText: '例如：生产环境',
+                prefixIcon: Icon(Icons.folder_open),
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.none,
+              autocorrect: false,
+            ),
+            if (widget.existingGroups.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final g in widget.existingGroups)
+                    ActionChip(
+                      label: Text(g),
+                      onPressed: () => _groupController.text = g,
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            TextFormField(
               controller: _tagsController,
               decoration: const InputDecoration(
-                labelText: '标签（逗号分隔，可选）',
-                hintText: '生产, Web',
+                labelText: '其它标签（逗号分隔，可选）',
+                hintText: 'Web, 跳板机',
                 prefixIcon: Icon(Icons.local_offer),
                 border: OutlineInputBorder(),
               ),
@@ -274,7 +317,7 @@ class _ConnectionFormPageState extends State<ConnectionFormPage> {
             FilledButton.icon(
               onPressed: _saveConnection,
               icon: const Icon(Icons.save),
-              label: Text(_isEdit ? '保存修改' : '添加连接'),
+              label: Text(widget.clone ? '克隆为新连接' : (_isEdit ? '保存修改' : '添加连接')),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
               ),
@@ -290,15 +333,18 @@ class _ConnectionFormPageState extends State<ConnectionFormPage> {
       return;
     }
 
-    final tags = _tagsController.text
+    // 分组占 tags 首位（桌面端约定），其余标签跟随其后并剔掉与分组同名的
+    final group = _groupController.text.trim();
+    final otherTags = _tagsController.text
         .split(',')
         .map((t) => t.trim())
-        .where((t) => t.isNotEmpty)
+        .where((t) => t.isNotEmpty && t != group)
         .toList();
+    final tags = [if (group.isNotEmpty) group, ...otherTags];
 
     final password = _passwordController.text;
     final connection = ConnectionModel(
-      id: widget.connection?.id ?? '',
+      id: _isEdit ? (widget.connection?.id ?? '') : '',
       name: _nameController.text.trim(),
       host: _hostController.text.trim(),
       port: int.parse(_portController.text),

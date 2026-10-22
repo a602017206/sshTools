@@ -7,6 +7,7 @@ import 'package:xterm/xterm.dart';
 
 import '../../../core/theme/theme_provider.dart';
 import '../../providers/api_providers.dart';
+import '../../providers/command_history_provider.dart';
 import '../../providers/terminal_tabs_provider.dart';
 
 /// 单个终端标签页：xterm 渲染 + WebSocket 收输出 + HTTP 发输入/尺寸。
@@ -45,6 +46,10 @@ class _TerminalTabViewState extends ConsumerState<TerminalTabView> {
   bool _ctrlActive = false;
   bool _disposed = false;
 
+  /// 当前行已输入内容（逐字跟踪用户键入，用于命令历史记录与建议匹配；
+  /// 不含回显——纯本地跟踪，shell 的行编辑（^C/^U/退格）同步处理）
+  String _currentLine = '';
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +64,7 @@ class _TerminalTabViewState extends ConsumerState<TerminalTabView> {
         }
         setState(() => _ctrlActive = false);
       }
+      _trackLine(out);
       unawaited(_send(out));
     };
     _terminal.onResize = (width, height, pixelWidth, pixelHeight) {
@@ -191,6 +197,86 @@ class _TerminalTabViewState extends ConsumerState<TerminalTabView> {
     _focusNode.requestFocus();
   }
 
+  /// 逐字跟踪当前行：回车时把整行记入命令历史；退格删尾；
+  /// ^C/^U 清行；ESC 序列（方向键等）不入行。只影响本地建议，不碰发往远端的数据。
+  void _trackLine(String data) {
+    if (data.isEmpty) {
+      return;
+    }
+    var line = _currentLine;
+    for (final rune in data.runes) {
+      switch (rune) {
+        case 0x1b: // ESC 序列整段忽略
+          break;
+        case 0x0d: // 回车：提交整行
+        case 0x0a:
+          if (line.trim().length >= 2) {
+            unawaited(
+              ref.read(commandHistoryProvider.notifier).record(line),
+            );
+          }
+          line = '';
+        case 0x7f: // 退格
+        case 0x08:
+          if (line.isNotEmpty) {
+            final runes = line.runes.toList()..removeLast();
+            line = String.fromCharCodes(runes);
+          }
+        case 0x03: // ^C
+        case 0x15: // ^U
+          line = '';
+        default:
+          if (rune >= 0x20) {
+            line += String.fromCharCode(rune);
+          }
+      }
+      if (rune == 0x1b) {
+        break;
+      }
+    }
+    if (line != _currentLine && mounted) {
+      setState(() => _currentLine = line);
+    }
+  }
+
+  /// 点建议：^U 清掉当前行后填入候选（不回车，用户可改完再执行）
+  void _applySuggestion(String command) {
+    unawaited(_send('\x15$command'));
+    setState(() => _currentLine = command);
+    _focusNode.requestFocus();
+  }
+
+  Widget _buildSuggestionBar(List<String> suggestions) {
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      child: SizedBox(
+        height: 40,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+          children: [
+            for (final cmd in suggestions)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ActionChip(
+                  avatar: const Icon(Icons.history, size: 14),
+                  label: Text(
+                    cmd,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _applySuggestion(cmd),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _disposed = true;
@@ -218,6 +304,16 @@ class _TerminalTabViewState extends ConsumerState<TerminalTabView> {
       ref.watch(terminalThemeModeProvider),
       Theme.of(context).brightness,
     );
+    final terminalFontSize = ref.watch(terminalFontSizeProvider);
+    // 命令建议：历史中前缀或包含当前行、且不与当前行完全相同的候选
+    final query = _currentLine.trim();
+    final suggestions = query.isEmpty
+        ? const <String>[]
+        : ref
+            .watch(commandHistoryProvider)
+            .where((c) => c != query && (c.startsWith(query) || c.contains(query)))
+            .take(6)
+            .toList();
     return Column(
       children: [
         if (_status == TerminalTabStatus.connecting)
@@ -271,10 +367,11 @@ class _TerminalTabViewState extends ConsumerState<TerminalTabView> {
             // visiblePassword 让 Android 键盘关闭联想/自动纠正，
             // 避免命令被改写（xterm 未单独暴露 enableSuggestions）
             keyboardType: TextInputType.visiblePassword,
-            textStyle: const TerminalStyle(fontSize: 13),
+            textStyle: TerminalStyle(fontSize: terminalFontSize),
             padding: const EdgeInsets.all(4),
           ),
         ),
+        if (suggestions.isNotEmpty) _buildSuggestionBar(suggestions),
         _buildKeyBar(),
       ],
     );
