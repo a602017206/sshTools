@@ -7,10 +7,48 @@ import {
   ASSET_STATE_ONLINE,
   ASSET_STATE_UNKNOWN,
   buildAssetCards,
+  buildMetricRows,
+  formatRate,
   groupCards,
+  parseWallMetrics,
   stateLabel,
   summarizeCards
 } from '../src/lib/assetWall.js';
+
+test('看板参数解析：过滤未知、去重、空时用默认', () => {
+  assert.deepEqual(parseWallMetrics('cpu,disk,cpu,bogus'), ['cpu', 'disk']);
+  assert.deepEqual(parseWallMetrics(''), ['cpu', 'memory']);
+  assert.deepEqual(parseWallMetrics(undefined), ['cpu', 'memory']);
+});
+
+test('指标行按所选参数生成，磁盘取最忙分区，网络格式化速率', () => {
+  const data = {
+    cpu: { overall: 10.04, load_average: [0.42, 0.3, 0.2] },
+    memory: { used_percent: 55.56 },
+    disk: { partitions: [{ mount_point: '/', used_percent: 40 }, { mount_point: '/data', used_percent: 82.24 }] },
+    network: { rx_rate: 2048, tx_rate: 512 },
+    system: { uptime: '3 days', processes: 123 }
+  };
+  const rows = buildMetricRows(['disk', 'network', 'load', 'uptime', 'processes'], data);
+  assert.deepEqual(rows.map((r) => r.id), ['disk', 'network', 'load', 'uptime', 'processes']);
+  assert.equal(rows[0].percent, 82.2);
+  assert.equal(rows[0].hint, '/data');
+  assert.equal(rows[1].text, '↓2.0 KB/s ↑512 B/s');
+  assert.equal(rows[2].text, '0.42');
+  assert.equal(formatRate(0), '0 B/s');
+});
+
+test('卡片带出看板标记与所选参数', () => {
+  const boardAssets = [
+    { id: 'b1', name: '看板机', host: 'h', port: 22, type: 'ssh', metadata: { wall_on_board: 'true', wall_metrics: 'disk,network' } },
+    { id: 'b2', name: '墙外机', host: 'h2', port: 22, type: 'ssh', metadata: {} }
+  ];
+  const cards = buildAssetCards(boardAssets, [], new Map(), new Map());
+  assert.equal(cards[0].onBoard, true);
+  assert.deepEqual(cards[0].wallMetrics, ['disk', 'network']);
+  assert.equal(cards[1].onBoard, false);
+  assert.deepEqual(cards[1].wallMetrics, ['cpu', 'memory']);
+});
 
 const assets = [
   { id: 'ssh-1', name: '生产服务器', host: '10.0.0.1', port: 22, username: 'root', group: '生产', type: 'ssh', metadata: {} },

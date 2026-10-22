@@ -5,6 +5,70 @@
  * 指标 Map（sessionId -> MonitoringData）。输出：可直接渲染的卡片数组。
  */
 
+/** 看板可显示的会话参数目录（与后端白名单保持一致）。 */
+export const WALL_METRIC_CATALOG = [
+  { id: 'cpu', label: 'CPU' },
+  { id: 'memory', label: '内存' },
+  { id: 'disk', label: '磁盘' },
+  { id: 'network', label: '网络' },
+  { id: 'load', label: '负载' },
+  { id: 'uptime', label: '运行时间' },
+  { id: 'processes', label: '进程数' }
+];
+
+export const DEFAULT_WALL_METRICS = ['cpu', 'memory'];
+
+export function parseWallMetrics(csv) {
+  const valid = new Set(WALL_METRIC_CATALOG.map((item) => item.id));
+  const picked = String(csv || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter((id) => valid.has(id));
+  const unique = [...new Set(picked)];
+  return unique.length ? unique : [...DEFAULT_WALL_METRICS];
+}
+
+export function formatRate(bytesPerSec) {
+  const value = Number(bytesPerSec) || 0;
+  if (value < 1024) return `${Math.round(value)} B/s`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB/s`;
+  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB/s`;
+  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB/s`;
+}
+
+/** 把一台已连接会话的 MonitoringData 按所选参数拼成展示行。 */
+export function buildMetricRows(metricIds, data) {
+  if (!data) return [];
+  const rows = [];
+  for (const id of metricIds || []) {
+    if (id === 'cpu') {
+      const percent = roundPercent(data.cpu?.overall);
+      if (percent !== null) rows.push({ id, label: 'CPU', percent, text: `${percent}%` });
+    } else if (id === 'memory') {
+      const percent = roundPercent(data.memory?.used_percent);
+      if (percent !== null) rows.push({ id, label: '内存', percent, text: `${percent}%` });
+    } else if (id === 'disk') {
+      const partitions = data.disk?.partitions || [];
+      if (partitions.length) {
+        const busiest = partitions.reduce((a, b) => ((b.used_percent || 0) > (a.used_percent || 0) ? b : a));
+        const percent = roundPercent(busiest.used_percent);
+        rows.push({ id, label: '磁盘', percent, text: `${percent}%`, hint: busiest.mount_point || '' });
+      }
+    } else if (id === 'network') {
+      rows.push({ id, label: '网络', percent: null, text: `↓${formatRate(data.network?.rx_rate)} ↑${formatRate(data.network?.tx_rate)}` });
+    } else if (id === 'load') {
+      const load = data.cpu?.load_average?.[0];
+      if (Number.isFinite(load)) rows.push({ id, label: '负载', percent: null, text: load.toFixed(2) });
+    } else if (id === 'uptime') {
+      if (data.system?.uptime) rows.push({ id, label: '运行时间', percent: null, text: String(data.system.uptime) });
+    } else if (id === 'processes') {
+      const count = data.system?.processes;
+      if (Number.isFinite(count)) rows.push({ id, label: '进程数', percent: null, text: String(count) });
+    }
+  }
+  return rows;
+}
+
 export const ASSET_STATE_CONNECTED = 'connected';
 export const ASSET_STATE_ONLINE = 'online';
 export const ASSET_STATE_OFFLINE = 'offline';
@@ -62,6 +126,9 @@ export function buildAssetCards(assets, sessions, probes, metrics) {
       asset,
       state,
       probeExcluded,
+      onBoard: asset.metadata?.wall_on_board === 'true',
+      wallMetrics: parseWallMetrics(asset.metadata?.wall_metrics),
+      metricRows: buildMetricRows(parseWallMetrics(asset.metadata?.wall_metrics), metric),
       connected: Boolean(session),
       sessionId: session?.sessionId || null,
       latencyMs: probe?.reachable ? probe.latency_ms : null,

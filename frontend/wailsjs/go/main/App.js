@@ -522,6 +522,10 @@ export function SetAssetProbeExcluded(arg1, arg2) {
   return window['go']['main']['App']['SetAssetProbeExcluded'](arg1, arg2);
 }
 
+export function SetAssetWallPrefs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetAssetWallPrefs'](arg1, arg2, arg3);
+}
+
 export function SetCopilotAPIKey(arg1) {
   return window['go']['main']['App']['SetCopilotAPIKey'](arg1);
 }

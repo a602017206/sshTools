@@ -9,14 +9,28 @@ import (
 )
 
 func TestAssetProbeTargetsFromConnectionsSkipsExcluded(t *testing.T) {
+	onBoard := map[string]string{AssetWallOnBoardMetaKey: "true"}
 	conns := []config.ConnectionConfig{
-		{ID: "keep", Host: "10.0.0.1", Port: 22},
-		{ID: "skip", Host: "10.0.0.2", Port: 22, Metadata: map[string]string{AssetWallExcludedMetaKey: "true"}},
-		{ID: "keep2", Host: "10.0.0.3", Port: 3306, Metadata: map[string]string{AssetWallExcludedMetaKey: "false"}},
+		{ID: "keep", Host: "10.0.0.1", Port: 22, Metadata: onBoard},
+		{ID: "skip", Host: "10.0.0.2", Port: 22, Metadata: map[string]string{AssetWallOnBoardMetaKey: "true", AssetWallExcludedMetaKey: "true"}},
+		{ID: "keep2", Host: "10.0.0.3", Port: 3306, Metadata: map[string]string{AssetWallOnBoardMetaKey: "true", AssetWallExcludedMetaKey: "false"}},
+		{ID: "offboard", Host: "10.0.0.4", Port: 22},
 	}
 	targets := assetProbeTargetsFromConnections(conns)
 	if len(targets) != 2 || targets[0].id != "keep" || targets[1].id != "keep2" {
-		t.Fatalf("excluded asset not skipped: %+v", targets)
+		t.Fatalf("excluded/off-board asset not skipped: %+v", targets)
+	}
+}
+
+func TestSanitizeWallMetrics(t *testing.T) {
+	if got := sanitizeWallMetrics("cpu, memory ,cpu,unknown,disk"); got != "cpu,memory,disk" {
+		t.Fatalf("unexpected sanitize result: %q", got)
+	}
+	if got := sanitizeWallMetrics(""); got != "" {
+		t.Fatalf("expected empty, got %q", got)
+	}
+	if got := sanitizeWallMetrics("bogus"); got != "" {
+		t.Fatalf("expected empty for unknown ids, got %q", got)
 	}
 }
 
