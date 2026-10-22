@@ -59,7 +59,8 @@
       session_log_retention_days: Number.isFinite(retention) && retention > 0 ? Math.floor(retention) : 30,
       session_log_redact_enabled: rest.session_log_redact_enabled !== false,
       command_suggest_enabled: rest.command_suggest_enabled !== false,
-      command_suggest_limit: Number.isFinite(suggestLimit) && suggestLimit > 0 ? Math.floor(suggestLimit) : 8
+      command_suggest_limit: Number.isFinite(suggestLimit) && suggestLimit > 0 ? Math.floor(suggestLimit) : 8,
+      command_suggest_tab_accept: rest.command_suggest_tab_accept === true
     };
   }
 
@@ -453,6 +454,13 @@
             <label class="flex items-center justify-between text-sm text-slate-700 dark:text-slate-300">
               <span>启用命令提示</span>
               <input type="checkbox" bind:checked={draft.command_suggest_enabled} class="w-4 h-4" style="accent-color: var(--accent-primary);" />
+            </label>
+            <label class="flex items-center justify-between gap-4 text-sm text-slate-700 dark:text-slate-300">
+              <span>
+                <span class="block">Tab 键采纳提示</span>
+                <span class="block text-xs text-slate-500 dark:text-slate-400">默认关闭：仅鼠标点击填入，Tab 保持 Shell 原生补全；开启后 Tab 填入高亮项，↑/↓ 切换。</span>
+              </span>
+              <input type="checkbox" bind:checked={draft.command_suggest_tab_accept} class="w-4 h-4 shrink-0" style="accent-color: var(--accent-primary);" />
             </label>
             <label class="space-y-2 block">
               <div class="flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-slate-100">

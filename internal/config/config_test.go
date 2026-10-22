@@ -246,6 +246,9 @@ func TestDefaultSettingsIncludeSessionLogAndCommandSuggest(t *testing.T) {
 	if settings.CommandSuggestLimit != 8 {
 		t.Fatalf("expected CommandSuggestLimit 8, got %d", settings.CommandSuggestLimit)
 	}
+	if settings.CommandSuggestTabAccept {
+		t.Fatal("expected CommandSuggestTabAccept default false")
+	}
 }
 
 func TestDefaultFileManagerDirectoryTrackingEnabled(t *testing.T) {
@@ -293,6 +296,7 @@ func TestUpdateSettingsPersistsSessionLogFields(t *testing.T) {
 		"session_log_redact_enabled": false,
 		"command_suggest_enabled":    false,
 		"command_suggest_limit":      float64(12),
+		"command_suggest_tab_accept": true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -316,6 +320,9 @@ func TestUpdateSettingsPersistsSessionLogFields(t *testing.T) {
 	}
 	if s.CommandSuggestLimit != 12 {
 		t.Fatalf("expected CommandSuggestLimit 12, got %d", s.CommandSuggestLimit)
+	}
+	if !s.CommandSuggestTabAccept {
+		t.Fatal("expected CommandSuggestTabAccept true")
 	}
 }
 

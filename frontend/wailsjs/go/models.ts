@@ -114,6 +114,7 @@ export namespace config {
 	    session_log_redact_enabled: boolean;
 	    command_suggest_enabled: boolean;
 	    command_suggest_limit: number;
+	    command_suggest_tab_accept: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -160,6 +161,7 @@ export namespace config {
 	        this.session_log_redact_enabled = source["session_log_redact_enabled"];
 	        this.command_suggest_enabled = source["command_suggest_enabled"];
 	        this.command_suggest_limit = source["command_suggest_limit"];
+	        this.command_suggest_tab_accept = source["command_suggest_tab_accept"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

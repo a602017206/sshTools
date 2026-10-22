@@ -10,4 +10,5 @@ test('getDefaultAppSettings includes session log and command suggest defaults', 
   assert.equal(settings.session_log_redact_enabled, true);
   assert.equal(settings.command_suggest_enabled, true);
   assert.equal(settings.command_suggest_limit, 8);
+  assert.equal(settings.command_suggest_tab_accept, false);
 });

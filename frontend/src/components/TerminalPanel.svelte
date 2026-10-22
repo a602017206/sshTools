@@ -44,6 +44,7 @@
   const terminalOutputDecoder = new TextDecoder();
   let commandSuggestEnabled = true;
   let commandSuggestLimit = 8;
+  let commandSuggestTabAccept = false;
 
   // Close confirmation dialog state
   let showCloseConfirm = false;
@@ -1253,6 +1254,9 @@
     if (Number.isFinite(limit) && limit > 0) {
       commandSuggestLimit = limit;
     }
+    if (typeof settings.command_suggest_tab_accept === 'boolean') {
+      commandSuggestTabAccept = settings.command_suggest_tab_accept;
+    }
   }
 
   async function loadCommandSuggestSettings() {
@@ -1462,6 +1466,7 @@
                 connectionId={session.connection?.id || null}
                 commandSuggestEnabled={commandSuggestEnabled}
                 commandSuggestLimit={commandSuggestLimit}
+                commandSuggestTabAccept={commandSuggestTabAccept}
                 encoding={normalizeTerminalCharset(session.connection?.metadata?.encoding || session.connection?.encoding)}
                 encodingEnabled={session.type !== 'local' && session.type !== 'database'}
                 onEncodingChange={(charset) => handleLiveCharsetChange(session.sessionId, charset)}
