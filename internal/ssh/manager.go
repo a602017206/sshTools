@@ -28,19 +28,20 @@ const (
 
 // ManagedSession represents a managed SSH session
 type ManagedSession struct {
-	ID       string
-	Client   *Client
-	Session  *Session
-	Local    *LocalSession
-	Type     SessionType
-	Running  bool
-	stopChan chan struct{}
-	stopOnce sync.Once
-	cwdMu    sync.Mutex
-	cwd      string
-	prevCwd  string
-	homeCwd  string
-	inputBuf string
+	ID                string
+	Client            *Client
+	Session           *Session
+	Local             *LocalSession
+	Type              SessionType
+	Running           bool
+	stopChan          chan struct{}
+	stopOnce          sync.Once
+	cwdMu             sync.Mutex
+	cwd               string
+	prevCwd           string
+	homeCwd           string
+	inputBuf          string
+	resourceCloseHook func() // tests: assert sm.mu is not held during close I/O
 }
 
 func initialLocalWorkingDirectory() string {
@@ -70,28 +71,45 @@ func newManagedSSHSession(sessionID string, client *Client, session *Session) *M
 	}
 }
 
-// CreateSession creates a new SSH session
-func (sm *SessionManager) CreateSession(sessionID string, cfg *Config) (*ManagedSession, error) {
+func (sm *SessionManager) ensureSessionAvailable(sessionID string) error {
+	sm.mu.Lock()
+	_, exists := sm.sessions[sessionID]
+	sm.mu.Unlock()
+	if exists {
+		return fmt.Errorf("session already exists: %s", sessionID)
+	}
+	return nil
+}
+
+func (sm *SessionManager) addSession(sessionID string, managed *ManagedSession, onConflict func()) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-
-	// Check if session already exists
 	if _, exists := sm.sessions[sessionID]; exists {
-		return nil, fmt.Errorf("session already exists: %s", sessionID)
+		if onConflict != nil {
+			onConflict()
+		}
+		return fmt.Errorf("session already exists: %s", sessionID)
+	}
+	sm.sessions[sessionID] = managed
+	return nil
+}
+
+// CreateSession creates a new SSH session
+func (sm *SessionManager) CreateSession(sessionID string, cfg *Config) (*ManagedSession, error) {
+	if err := sm.ensureSessionAvailable(sessionID); err != nil {
+		return nil, err
 	}
 
-	// Create SSH client
+	// Network I/O must stay outside sm.mu (see manager_connect_lock_test.go).
 	client, err := NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	// Connect to SSH server
 	if err := client.Connect(); err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 
-	// Create SSH session
 	session, err := client.NewSession()
 	if err != nil {
 		client.Close()
@@ -99,7 +117,12 @@ func (sm *SessionManager) CreateSession(sessionID string, cfg *Config) (*Managed
 	}
 
 	managed := newManagedSSHSession(sessionID, client, session)
-	sm.sessions[sessionID] = managed
+	if err := sm.addSession(sessionID, managed, func() {
+		session.Close()
+		client.Close()
+	}); err != nil {
+		return nil, err
+	}
 	return managed, nil
 }
 
@@ -209,10 +232,9 @@ func (sm *SessionManager) CloseAllSessions() error {
 
 func (sm *SessionManager) closeSession(sessionID string, requestedByClient bool) (bool, error) {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
 	managed, exists := sm.sessions[sessionID]
 	if !exists {
+		sm.mu.Unlock()
 		return false, nil
 	}
 
@@ -222,26 +244,34 @@ func (sm *SessionManager) closeSession(sessionID string, requestedByClient bool)
 		close(managed.stopChan)
 	})
 
-	if sftpClient, exists := sm.sftpClients[sessionID]; exists {
-		sftpClient.Close()
-		delete(sm.sftpClients, sessionID)
-	}
+	sftpClient := sm.sftpClients[sessionID]
+	delete(sm.sftpClients, sessionID)
+	delete(sm.sessions, sessionID)
+	sm.mu.Unlock()
 
+	closeManagedResources(managed, sftpClient)
+	return shouldNotify, nil
+}
+
+func closeManagedResources(managed *ManagedSession, sftpClient *SFTPClient) {
+	if sftpClient != nil {
+		_ = sftpClient.Close()
+	}
 	if managed.Type == SessionTypeLocal {
 		if managed.Local != nil {
-			managed.Local.Close()
+			_ = managed.Local.Close()
 		}
 	} else {
 		if managed.Session != nil {
-			managed.Session.Close()
+			_ = managed.Session.Close()
 		}
 		if managed.Client != nil {
-			managed.Client.Close()
+			_ = managed.Client.Close()
 		}
 	}
-
-	delete(sm.sessions, sessionID)
-	return shouldNotify, nil
+	if managed.resourceCloseHook != nil {
+		managed.resourceCloseHook()
+	}
 }
 
 // GetSession returns a session by ID
@@ -684,54 +714,53 @@ func normalizeCwdPath(value string) string {
 // GetOrCreateSFTPClient gets or creates an SFTP client for a session
 func (sm *SessionManager) GetOrCreateSFTPClient(sessionID string) (*SFTPClient, error) {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	// Check if SFTP client already exists
 	if sftpClient, exists := sm.sftpClients[sessionID]; exists {
+		sm.mu.Unlock()
 		return sftpClient, nil
 	}
-
-	// Get session
 	managed, exists := sm.sessions[sessionID]
+	sm.mu.Unlock()
 	if !exists {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	// Create SFTP client
 	sftpClient, err := NewSFTPClient(managed.Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SFTP client: %w", err)
 	}
 
-	// Store SFTP client
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if existing, exists := sm.sftpClients[sessionID]; exists {
+		_ = sftpClient.Close()
+		return existing, nil
+	}
+	if _, exists := sm.sessions[sessionID]; !exists {
+		_ = sftpClient.Close()
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
 	sm.sftpClients[sessionID] = sftpClient
-
 	return sftpClient, nil
 }
 
 // CloseSFTPClient closes an SFTP client for a session
 func (sm *SessionManager) CloseSFTPClient(sessionID string) error {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
 	sftpClient, exists := sm.sftpClients[sessionID]
 	if !exists {
+		sm.mu.Unlock()
 		return nil // Already closed or never created
 	}
-
-	err := sftpClient.Close()
 	delete(sm.sftpClients, sessionID)
+	sm.mu.Unlock()
 
-	return err
+	return sftpClient.Close()
 }
 
 // CreateLocalSession creates a new local shell session
 func (sm *SessionManager) CreateLocalSession(sessionID string, shellType string) (*ManagedSession, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	if _, exists := sm.sessions[sessionID]; exists {
-		return nil, fmt.Errorf("session already exists: %s", sessionID)
+	if err := sm.ensureSessionAvailable(sessionID); err != nil {
+		return nil, err
 	}
 
 	localSession, err := NewLocalSession(shellType)
@@ -750,7 +779,9 @@ func (sm *SessionManager) CreateLocalSession(sessionID string, shellType string)
 		stopChan: make(chan struct{}),
 	}
 
-	sm.sessions[sessionID] = managed
+	if err := sm.addSession(sessionID, managed, func() { _ = localSession.Close() }); err != nil {
+		return nil, err
+	}
 	return managed, nil
 }
 
