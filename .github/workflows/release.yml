@@ -93,9 +93,303 @@ jobs:
             build/bin/*.zip
           retention-days: 7
 
+  # Android 发布包：与 mobile.yml 同一套构建（内嵌 Go + 签名 + 分 ABI），
+  # 产物统一改 AHaSSHTools- 前缀后挂到 Release。签名缺失时回退 debug 包，
+  # 仅供验证，不要对外宣称正式版。
+  android:
+    name: Android release APKs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install gomobile (version locked by mobile/go.mod)
+        shell: bash
+        run: |
+          GOMOBILE_VERSION="$(cd mobile && go list -m -f '{{.Version}}' golang.org/x/mobile)"
+          go install "golang.org/x/mobile/cmd/gomobile@${GOMOBILE_VERSION}"
+          go install "golang.org/x/mobile/cmd/gobind@${GOMOBILE_VERSION}"
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Test embedded Go module
+        working-directory: mobile
+        run: go test ./...
+
+      - name: Build Android library from Go core
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          PLUGIN_ANDROID=flutter_ui/plugins/sshtools_go/android
+          mkdir -p "$PLUGIN_ANDROID/libs" "$PLUGIN_ANDROID/src/main/jniLibs"
+          cd mobile
+          # 16KB 页对齐：安卓 16 设备拒绝加载 4KB 对齐的 .so（见 mobile.yml 注释）
+          gomobile bind -target=android -androidapi 24 \
+            -ldflags "-s -w -extldflags=-Wl,-z,max-page-size=16384" \
+            -o "$RUNNER_TEMP/sshtools.aar" .
+          cd "$RUNNER_TEMP"
+          unzip -o -q sshtools.aar -d sshtools_aar
+          cp sshtools_aar/classes.jar "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/libs/sshtools-classes.jar"
+          cp -r sshtools_aar/jni/* "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/src/main/jniLibs/"
+          # 16KB 对齐断言：任一 ABI 的 libgojni.so 小于 16KB 对齐直接红
+          python3 - "$GITHUB_WORKSPACE/$PLUGIN_ANDROID/src/main/jniLibs" <<'PYEOF'
+          import glob, struct, sys
+          bad = []
+          for path in sorted(glob.glob(sys.argv[1] + "/**/*.so", recursive=True)):
+              with open(path, "rb") as fh:
+                  data = fh.read(65536)
+              is64 = data[4] == 2
+              if is64:
+                  phoff = struct.unpack("<Q", data[32:40])[0]
+                  phentsize = struct.unpack("<H", data[54:56])[0]
+                  phnum = struct.unpack("<H", data[56:58])[0]
+                  aoff, awid = 48, 8
+              else:
+                  phoff = struct.unpack("<I", data[28:32])[0]
+                  phentsize = struct.unpack("<H", data[42:44])[0]
+                  phnum = struct.unpack("<H", data[44:46])[0]
+                  aoff, awid = 28, 4
+              with open(path, "rb") as fh:
+                  fh.seek(phoff)
+                  ph = fh.read(phentsize * phnum)
+              aligns = []
+              for i in range(phnum):
+                  o = i * phentsize
+                  if struct.unpack("<I", ph[o:o + 4])[0] == 1:
+                      aligns.append(struct.unpack("<Q" if is64 else "<I", ph[o + aoff:o + aoff + awid])[0])
+              if not aligns or min(aligns) < 0x4000:
+                  bad.append(path)
+          if bad:
+              print("FAIL: not 16KB aligned:", bad)
+              sys.exit(1)
+          print("all .so are 16KB aligned")
+          PYEOF
+
+      - name: Generate scaffolding and app identity
+        working-directory: flutter_ui
+        shell: bash
+        run: |
+          flutter create --platforms=android,ios --org com.ahasshtools --project-name ahasshtools_flutter .
+          flutter pub get
+          dart run flutter_launcher_icons
+          # 清单三件事：显示名 AHaSSHTools、INTERNET 权限、回环明文放行
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's|android:label="[^"]*"|android:label="AHaSSHTools"\n        android:networkSecurityConfig="@xml/network_security_config"|' "$MANIFEST"
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
+          mkdir -p android/app/src/main/res/xml
+          cat > android/app/src/main/res/xml/network_security_config.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <!-- API 只走本机回环（内嵌 Go 服务），仅对回环地址放行明文 HTTP -->
+          <network-security-config>
+              <domain-config cleartextTrafficPermitted="true">
+                  <domain includeSubdomains="false">127.0.0.1</domain>
+                  <domain includeSubdomains="false">localhost</domain>
+              </domain-config>
+          </network-security-config>
+          EOF
+
+      - name: Keep gomobile bridge classes from R8
+        working-directory: flutter_ui/android
+        shell: bash
+        run: |
+          cat > app/proguard-rules.pro <<'EOF'
+          # gomobile 桥接：方法由 Go 运行时经 JNI 按名调用，必须原样保留
+          -keep class go.** { *; }
+          -keep class mobile.** { *; }
+          -keep class com.ahasshtools.sshtools_go.** { *; }
+          EOF
+          cat >> app/build.gradle.kts <<'EOF'
+
+          android {
+              buildTypes {
+                  getByName("release") {
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )
+                  }
+              }
+          }
+          EOF
+
+      - name: Inject release signing
+        working-directory: flutter_ui/android
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "signing secrets missing, will fall back to debug build"
+            exit 0
+          fi
+          KS_PATH="$RUNNER_TEMP/release.jks"
+          echo "$KS_B64" | base64 -d > "$KS_PATH"
+          cat > key.properties <<EOF
+          storeFile=$KS_PATH
+          storePassword=$KS_PW
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PW
+          EOF
+          sed -i '1i import java.util.Properties\nimport java.io.FileInputStream' app/build.gradle.kts
+          cat >> app/build.gradle.kts <<'EOF'
+
+          val keystorePropsFile = rootProject.file("key.properties")
+          val keystoreProps = Properties()
+          if (keystorePropsFile.exists()) {
+              keystoreProps.load(FileInputStream(keystorePropsFile))
+          }
+          android {
+              signingConfigs {
+                  create("release") {
+                      if (keystorePropsFile.exists()) {
+                          storeFile = file(keystoreProps.getProperty("storeFile"))
+                          storePassword = keystoreProps.getProperty("storePassword")
+                          keyAlias = keystoreProps.getProperty("keyAlias")
+                          keyPassword = keystoreProps.getProperty("keyPassword")
+                      }
+                  }
+              }
+              buildTypes {
+                  getByName("release") {
+                      signingConfig = signingConfigs.getByName("release")
+                  }
+              }
+          }
+          EOF
+          echo "release signing injected"
+
+      - name: Build APKs and assert invariants
+        working-directory: flutter_ui
+        shell: bash
+        run: |
+          flutter pub get
+          if [ -f android/key.properties ]; then
+            flutter build apk --release --split-per-abi
+          else
+            flutter build apk --debug
+          fi
+          cd build/app/outputs/flutter-apk
+          # 发布断言：桥接方法没被 R8 裁、清单有 INTERNET，缺一直接红
+          for apk in *.apk; do
+            unzip -p "$apk" 'classes*.dex' 2>/dev/null | grep -aq 'getRef' || { echo "$apk: Seq.getRef MISSING"; exit 1; }
+            unzip -p "$apk" AndroidManifest.xml | tr -d '\000' | grep -aq 'android.permission.INTERNET' || { echo "$apk: INTERNET MISSING"; exit 1; }
+            echo "$apk OK"
+          done
+          mkdir -p "$RUNNER_TEMP/android-out"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            src=$(ls app-${abi}-*.apk)
+            cp "$src" "$RUNNER_TEMP/android-out/AHaSSHTools-android-${abi}.apk"
+          done
+          ls -lh "$RUNNER_TEMP/android-out"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AHaSSHTools-android
+          path: ${{ runner.temp }}/android-out/*.apk
+          retention-days: 7
+
+  # iOS 发布包：无 Apple 开发者签名时只能出未签名 IPA（自签后安装），
+  # 包体结构与正式 IPA 一致（Payload/Runner.app），Release 里会显著标注。
+  ios:
+    name: iOS unsigned IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install gomobile (version locked by mobile/go.mod)
+        shell: bash
+        run: |
+          GOMOBILE_VERSION="$(cd mobile && go list -m -f '{{.Version}}' golang.org/x/mobile)"
+          go install "golang.org/x/mobile/cmd/gomobile@${GOMOBILE_VERSION}"
+          go install "golang.org/x/mobile/cmd/gobind@${GOMOBILE_VERSION}"
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Build iOS XCFramework from Go core
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          mkdir -p flutter_ui/plugins/sshtools_go/ios/Frameworks
+          cd mobile
+          gomobile bind -target=ios -ldflags "-s -w" \
+            -o ../flutter_ui/plugins/sshtools_go/ios/Frameworks/Mobile.xcframework \
+            .
+
+      - name: Generate scaffolding and app identity
+        working-directory: flutter_ui
+        shell: bash
+        run: |
+          flutter create --platforms=android,ios --org com.ahasshtools --project-name ahasshtools_flutter .
+          flutter pub get
+          dart run flutter_launcher_icons
+          python3 - <<'PYEOF'
+          import plistlib
+          path = "ios/Runner/Info.plist"
+          with open(path, "rb") as fh:
+              plist = plistlib.load(fh)
+          plist["CFBundleName"] = "AHaSSHTools"
+          plist["CFBundleDisplayName"] = "AHaSSHTools"
+          plist["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
+          with open(path, "wb") as fh:
+              plistlib.dump(plist, fh)
+          print("iOS identity set")
+          PYEOF
+
+      - name: Build unsigned IPA
+        working-directory: flutter_ui
+        shell: bash
+        run: |
+          flutter pub get
+          flutter build ios --no-codesign --release
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R build/ios/iphoneos/Runner.app "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP"
+          zip -qry AHaSSHTools-ios-unsigned.ipa Payload
+          ls -lh AHaSSHTools-ios-unsigned.ipa
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AHaSSHTools-ios
+          path: ${{ runner.temp }}/AHaSSHTools-ios-unsigned.ipa
+          retention-days: 7
+
   release:
     name: Create Release
-    needs: build
+    needs: [build, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -121,6 +415,8 @@ jobs:
             artifacts/AHaSSHTools-windows-amd64/*.exe
             artifacts/AHaSSHTools-darwin-arm64/*.zip
             artifacts/AHaSSHTools-darwin-amd64/*.zip
+            artifacts/AHaSSHTools-android/*.apk
+            artifacts/AHaSSHTools-ios/*.ipa
           body: |
             
             # 更新说明：
@@ -128,6 +424,7 @@ jobs:
             - 更新时间：${{ github.event.release.published_at }}
             - 更新内容：
               - 新增功能：
+                - 移动端正式发布：Android 与 iOS 客户端（Flutter + 内嵌 Go），含连接管理、多标签终端、SFTP、监控仪表盘、资产分组与命令建议；iOS 为未签名包，需自签后安装（见下载说明）
 
               - 修复问题：
 
@@ -157,6 +454,14 @@ jobs:
               xattr -cr AHaSSHTools.app
               open AHaSSHTools.app
               ```
+
+            **Android**:
+            - 下载 `AHaSSHTools-android-arm64-v8a.apk`（绝大多数手机），直接安装即可
+            - 老款 32 位手机选 `armeabi-v7a`，电脑模拟器选 `x86_64`
+
+            **iOS（未签名）**:
+            - 下载 `AHaSSHTools-ios-unsigned.ipa`；该包没有 Apple 签名，无法直接安装，
+              需用 AltStore / Sideloadly 等工具在设备上自签后使用
             
             更多信息请访问 [项目主页](https://github.com/${{ github.repository }})
         env:
