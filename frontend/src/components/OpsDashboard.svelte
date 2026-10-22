@@ -6,14 +6,34 @@
   export let onConnect = () => {};
   export let onCreateConnection = () => {};
 
-  const REFRESH_INTERVAL_MS = 15000;
-
   let probes = new Map();
   let metrics = new Map();
   let lastSyncAt = 0;
   let probing = false;
   let probedOnce = false;
   let refreshTimer = null;
+  let wall = { enabled: true, intervalSeconds: 15, metricsEnabled: true };
+
+  function clampIntervalSeconds(value) {
+    const seconds = Math.floor(Number(value));
+    if (!Number.isFinite(seconds) || seconds <= 0) return 15;
+    return Math.min(300, Math.max(5, seconds));
+  }
+
+  async function loadWallSettings() {
+    try {
+      const settings = await window.wailsBindings?.GetSettings?.();
+      if (settings) {
+        wall = {
+          enabled: settings.asset_wall_enabled !== false,
+          intervalSeconds: clampIntervalSeconds(settings.asset_wall_probe_interval_seconds),
+          metricsEnabled: settings.asset_wall_metrics_enabled !== false
+        };
+      }
+    } catch (error) {
+      console.warn('GetSettings for status wall failed:', error);
+    }
+  }
 
   $: assets = $assetsStore || [];
   $: sessions = $connectionsStore ? Array.from($connectionsStore.values()) : [];
@@ -44,9 +64,16 @@
       }
       probedOnce = true;
 
-      if (typeof bindings.GetMonitoringData === 'function') {
+      if (wall.metricsEnabled && typeof bindings.GetMonitoringData === 'function') {
+        const excludedIds = new Set(
+          assets.filter((asset) => asset.metadata?.status_wall_excluded === 'true').map((asset) => asset.id)
+        );
         const liveSessions = sessions.filter(
-          (session) => session?.connected && session?.type !== 'database' && session?.sessionId
+          (session) =>
+            session?.connected &&
+            session?.type !== 'database' &&
+            session?.sessionId &&
+            !excludedIds.has(session?.connection?.id)
         );
         const nextMetrics = new Map(metrics);
         await Promise.all(
@@ -68,9 +95,37 @@
     }
   }
 
-  onMount(() => {
+  async function toggleProbe(card) {
+    const bindings = window.wailsBindings || {};
+    if (typeof bindings.SetAssetProbeExcluded !== 'function') return;
+    const excluded = !card.probeExcluded;
+    try {
+      await bindings.SetAssetProbeExcluded(card.id, excluded);
+      assetsStore.update((items) =>
+        items.map((item) => {
+          if (item.id !== card.id) return item;
+          const metadata = { ...(item.metadata || {}) };
+          if (excluded) metadata.status_wall_excluded = 'true';
+          else delete metadata.status_wall_excluded;
+          return { ...item, metadata };
+        })
+      );
+      if (excluded && probes.has(card.id)) {
+        const next = new Map(probes);
+        next.delete(card.id);
+        probes = next;
+      }
+    } catch (error) {
+      console.warn('SetAssetProbeExcluded failed:', error);
+    }
+  }
+
+  onMount(async () => {
+    await loadWallSettings();
     refresh();
-    refreshTimer = setInterval(refresh, REFRESH_INTERVAL_MS);
+    if (wall.enabled) {
+      refreshTimer = setInterval(refresh, wall.intervalSeconds * 1000);
+    }
   });
 
   onDestroy(() => {
@@ -83,7 +138,11 @@
     <div>
       <p class="eyebrow"><span></span> ASSET STATUS WALL</p>
       <h1 id="dashboard-title">多资产状态墙</h1>
-      <p>全部资产每 15 秒探活一次；已连接的 SSH 会话叠加真实 CPU / 内存。点击卡片即可连接或切回会话。</p>
+      {#if wall.enabled}
+        <p>全部资产每 {wall.intervalSeconds} 秒探活一次；已连接的 SSH 会话叠加真实 CPU / 内存。点击卡片即可连接或切回会话，卡片右下角可按资产单独关闭探活。</p>
+      {:else}
+        <p>自动探活已在「全局设置 → 多资产状态墙」关闭，在线状态不会自动更新；可点「立即刷新」手动探活一次，或回设置开启。</p>
+      {/if}
     </div>
     <div class="live-status" aria-label="同步状态">
       <span class="pulse-dot"></span>
@@ -131,7 +190,8 @@
         </header>
         <div class="wall-grid">
           {#each group.cards as card}
-            <button type="button" class="asset-card" on:click={() => onConnect(card.asset)} title={`连接 ${card.name}`}>
+            <article class="asset-card">
+            <button type="button" class="asset-main" on:click={() => onConnect(card.asset)} title={`连接 ${card.name}`}>
               <span class="asset-card-top">
                 <span class="status-dot state-{card.state}"></span>
                 <strong class="asset-name">{card.name}</strong>
@@ -159,6 +219,13 @@
                 </span>
               {/if}
             </button>
+            <button
+              type="button"
+              class="asset-toggle"
+              on:click={() => toggleProbe(card)}
+              title={card.probeExcluded ? '该资产已关闭探活，点击恢复' : '不再对该资产探活（连接本身不受影响）'}
+            >{card.probeExcluded ? '开启探活' : '关闭探活'}</button>
+            </article>
           {/each}
         </div>
       </section>
@@ -183,7 +250,7 @@
   .pulse-dot, .status-dot { background: var(--ops-success); border-radius: 999px; height: 8px; width: 8px; flex-shrink: 0; }
   .pulse-dot { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ops-success) 66%, transparent); margin: 6px 9px 0 0; animation: signal-pulse 2.2s infinite; }
   .status-dot.state-offline { background: var(--ops-alert); }
-  .status-dot.state-unknown { background: var(--text-tertiary); }
+  .status-dot.state-unknown, .status-dot.state-excluded { background: var(--text-tertiary); }
   .overview-grid { display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 22px 0 6px; }
   .metric-card { background: var(--panel); border: 1px solid var(--border-primary); border-radius: 14px; box-shadow: var(--shadow-sm); min-height: 128px; padding: 17px; }
   .metric-card.emphasis { border-color: color-mix(in srgb, var(--ops-signal) 36%, var(--border-primary)); }
@@ -194,8 +261,11 @@
   .wall-group { margin-top: 22px; }
   .wall-group-header span { color: var(--text-tertiary); font-size: 11px; }
   .wall-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin-top: 12px; }
-  .asset-card { background: var(--panel); border: 1px solid var(--border-primary); border-radius: 12px; color: var(--text-primary); cursor: pointer; display: grid; gap: 7px; font: inherit; padding: 14px 15px; text-align: left; transition: border-color 180ms ease, background-color 180ms ease; }
+  .asset-card { background: var(--panel); border: 1px solid var(--border-primary); border-radius: 12px; color: var(--text-primary); display: grid; gap: 4px; padding: 10px 11px 8px; transition: border-color 180ms ease, background-color 180ms ease; }
   .asset-card:hover { background: var(--accent-subtle); border-color: color-mix(in srgb, var(--ops-signal) 45%, var(--border-primary)); }
+  .asset-main { background: transparent; border: 0; color: inherit; cursor: pointer; display: grid; font: inherit; gap: 7px; padding: 4px; text-align: left; width: 100%; }
+  .asset-toggle { background: transparent; border: 0; border-top: 1px solid var(--border-secondary); color: var(--text-tertiary); cursor: pointer; font: inherit; font-size: 10px; justify-self: stretch; padding: 6px 4px 2px; text-align: right; }
+  .asset-toggle:hover { color: var(--ops-signal); }
   .asset-card-top { align-items: center; display: flex; gap: 8px; }
   .asset-name { flex: 1; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .state-label { font-size: 11px; color: var(--text-secondary); }

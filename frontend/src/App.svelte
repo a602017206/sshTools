@@ -155,7 +155,10 @@
       session_log_redact_enabled: settings.session_log_redact_enabled !== false,
       command_suggest_enabled: settings.command_suggest_enabled !== false,
       command_suggest_limit: Number(settings.command_suggest_limit) || 8,
-      command_suggest_tab_accept: settings.command_suggest_tab_accept === true
+      command_suggest_tab_accept: settings.command_suggest_tab_accept === true,
+      asset_wall_enabled: settings.asset_wall_enabled !== false,
+      asset_wall_probe_interval_seconds: Number(settings.asset_wall_probe_interval_seconds) || 15,
+      asset_wall_metrics_enabled: settings.asset_wall_metrics_enabled !== false
     };
     if (Object.prototype.hasOwnProperty.call(extra, 'copilot_providers')) {
       updates.copilot_providers = extra.copilot_providers || [];

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   ASSET_STATE_CONNECTED,
+  ASSET_STATE_EXCLUDED,
   ASSET_STATE_OFFLINE,
   ASSET_STATE_ONLINE,
   ASSET_STATE_UNKNOWN,
@@ -69,6 +70,7 @@ test('汇总口径：可用 = 已连接 + 在线', () => {
     online: 2,
     offline: 1,
     unknown: 1,
+    excluded: 0,
     available: 3
   });
 });
@@ -79,6 +81,21 @@ test('分组保持首次出现顺序，组内保持资产顺序', () => {
   assert.deepEqual(groups.map((g) => g.name), ['生产', '测试']);
   assert.deepEqual(groups[0].cards.map((c) => c.id), ['ssh-1', 'db-1']);
   assert.deepEqual(groups[1].cards.map((c) => c.id), ['ssh-2', 'ssh-3']);
+});
+
+test('关闭探活的资产单列状态，但已连接时仍显示已连接', () => {
+  const excluded = [
+    { id: 'x1', name: '敏感机', host: '10.0.9.1', port: 22, type: 'ssh', metadata: { status_wall_excluded: 'true' } }
+  ];
+  const probes = new Map([['x1', { reachable: true, latency_ms: 1 }]]);
+  const cards = buildAssetCards(excluded, [], probes, new Map());
+  assert.equal(cards[0].state, ASSET_STATE_EXCLUDED);
+  assert.equal(cards[0].probeExcluded, true);
+  assert.equal(stateLabel(cards[0].state), '已关闭探活');
+
+  const sessions = [{ sessionId: 's-x1', type: 'ssh', connected: true, connection: { id: 'x1' } }];
+  const connected = buildAssetCards(excluded, sessions, probes, new Map());
+  assert.equal(connected[0].state, ASSET_STATE_CONNECTED);
 });
 
 test('状态文案齐全', () => {

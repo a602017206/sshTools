@@ -335,6 +335,9 @@ export function getDefaultAppSettings() {
     session_log_redact_enabled: true,
     command_suggest_enabled: true,
     command_suggest_limit: 8,
-    command_suggest_tab_accept: false
+    command_suggest_tab_accept: false,
+    asset_wall_enabled: true,
+    asset_wall_probe_interval_seconds: 15,
+    asset_wall_metrics_enabled: true
   };
 }

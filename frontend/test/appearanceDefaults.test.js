@@ -11,4 +11,7 @@ test('getDefaultAppSettings includes session log and command suggest defaults', 
   assert.equal(settings.command_suggest_enabled, true);
   assert.equal(settings.command_suggest_limit, 8);
   assert.equal(settings.command_suggest_tab_accept, false);
+  assert.equal(settings.asset_wall_enabled, true);
+  assert.equal(settings.asset_wall_probe_interval_seconds, 15);
+  assert.equal(settings.asset_wall_metrics_enabled, true);
 });

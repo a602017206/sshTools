@@ -115,6 +115,9 @@ export namespace config {
 	    command_suggest_enabled: boolean;
 	    command_suggest_limit: number;
 	    command_suggest_tab_accept: boolean;
+	    asset_wall_enabled: boolean;
+	    asset_wall_probe_interval_seconds: number;
+	    asset_wall_metrics_enabled: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -162,6 +165,9 @@ export namespace config {
 	        this.command_suggest_enabled = source["command_suggest_enabled"];
 	        this.command_suggest_limit = source["command_suggest_limit"];
 	        this.command_suggest_tab_accept = source["command_suggest_tab_accept"];
+	        this.asset_wall_enabled = source["asset_wall_enabled"];
+	        this.asset_wall_probe_interval_seconds = source["asset_wall_probe_interval_seconds"];
+	        this.asset_wall_metrics_enabled = source["asset_wall_metrics_enabled"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

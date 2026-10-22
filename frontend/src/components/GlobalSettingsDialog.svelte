@@ -34,6 +34,12 @@
     providerKeyError = {};
   }
 
+  function clampWallInterval(value) {
+    const seconds = Math.floor(Number(value));
+    if (!Number.isFinite(seconds) || seconds <= 0) return 15;
+    return Math.min(300, Math.max(5, seconds));
+  }
+
   function normalizeDraft(settings) {
     const rest = { ...(settings || {}) };
     delete rest.copilot_api_key;
@@ -60,7 +66,10 @@
       session_log_redact_enabled: rest.session_log_redact_enabled !== false,
       command_suggest_enabled: rest.command_suggest_enabled !== false,
       command_suggest_limit: Number.isFinite(suggestLimit) && suggestLimit > 0 ? Math.floor(suggestLimit) : 8,
-      command_suggest_tab_accept: rest.command_suggest_tab_accept === true
+      command_suggest_tab_accept: rest.command_suggest_tab_accept === true,
+      asset_wall_enabled: rest.asset_wall_enabled !== false,
+      asset_wall_probe_interval_seconds: clampWallInterval(rest.asset_wall_probe_interval_seconds),
+      asset_wall_metrics_enabled: rest.asset_wall_metrics_enabled !== false
     };
   }
 
@@ -474,6 +483,36 @@
                 bind:value={draft.command_suggest_limit}
                 class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
               />
+            </label>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/70 dark:bg-slate-900/50 space-y-4">
+            <div class="text-sm font-semibold text-slate-900 dark:text-slate-100">多资产状态墙</div>
+            <p class="text-xs text-slate-500 dark:text-slate-400">状态墙对服务器只有 TCP 握手级探活（不登录），已连接会话的指标采样走现有连接；对服务器的性能影响可以忽略，主要是会在 sshd / 数据库日志里留下连接记录。敏感环境可调大间隔或按资产单独关闭（在状态墙卡片上操作）。</p>
+            <label class="flex items-center justify-between text-sm text-slate-700 dark:text-slate-300">
+              <span>启用自动探活</span>
+              <input type="checkbox" bind:checked={draft.asset_wall_enabled} class="w-4 h-4" style="accent-color: var(--accent-primary);" />
+            </label>
+            <label class="flex items-center justify-between gap-4 text-sm text-slate-700 dark:text-slate-300">
+              <span>
+                <span class="block">采集已连接会话的 CPU / 内存</span>
+                <span class="block text-xs text-slate-500 dark:text-slate-400">关闭后状态墙只显示在线状态与延迟，不再周期采样指标。</span>
+              </span>
+              <input type="checkbox" bind:checked={draft.asset_wall_metrics_enabled} class="w-4 h-4 shrink-0" style="accent-color: var(--accent-primary);" />
+            </label>
+            <label class="space-y-2 block">
+              <div class="flex items-center justify-between text-sm font-semibold text-slate-900 dark:text-slate-100">
+                <span>探活间隔（秒）</span>
+                <span style="color: var(--accent-primary);">{draft.asset_wall_probe_interval_seconds}</span>
+              </div>
+              <input
+                type="number"
+                min="5"
+                max="300"
+                bind:value={draft.asset_wall_probe_interval_seconds}
+                class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-sm"
+              />
+              <span class="block text-xs text-slate-500 dark:text-slate-400">范围 5–300 秒，资产越多建议间隔越大。</span>
             </label>
           </div>
 

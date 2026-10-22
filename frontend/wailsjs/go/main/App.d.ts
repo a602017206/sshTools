@@ -264,6 +264,8 @@ export function SendSSHData(arg1:string,arg2:string):Promise<void>;
 
 export function SendSSHDataBinary(arg1:string,arg2:string):Promise<void>;
 
+export function SetAssetProbeExcluded(arg1:string,arg2:boolean):Promise<void>;
+
 export function SetCopilotAPIKey(arg1:string):Promise<void>;
 
 export function SetCopilotProviderAPIKey(arg1:string,arg2:string):Promise<void>;

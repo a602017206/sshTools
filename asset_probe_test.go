@@ -4,7 +4,21 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"AHaSSHTools/internal/config"
 )
+
+func TestAssetProbeTargetsFromConnectionsSkipsExcluded(t *testing.T) {
+	conns := []config.ConnectionConfig{
+		{ID: "keep", Host: "10.0.0.1", Port: 22},
+		{ID: "skip", Host: "10.0.0.2", Port: 22, Metadata: map[string]string{AssetWallExcludedMetaKey: "true"}},
+		{ID: "keep2", Host: "10.0.0.3", Port: 3306, Metadata: map[string]string{AssetWallExcludedMetaKey: "false"}},
+	}
+	targets := assetProbeTargetsFromConnections(conns)
+	if len(targets) != 2 || targets[0].id != "keep" || targets[1].id != "keep2" {
+		t.Fatalf("excluded asset not skipped: %+v", targets)
+	}
+}
 
 func TestProbeAssetTargetReachable(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

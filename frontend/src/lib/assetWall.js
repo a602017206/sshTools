@@ -9,6 +9,7 @@ export const ASSET_STATE_CONNECTED = 'connected';
 export const ASSET_STATE_ONLINE = 'online';
 export const ASSET_STATE_OFFLINE = 'offline';
 export const ASSET_STATE_UNKNOWN = 'unknown';
+export const ASSET_STATE_EXCLUDED = 'excluded';
 
 function findConnectedSession(asset, sessions) {
   if (!asset) return null;
@@ -42,9 +43,11 @@ export function buildAssetCards(assets, sessions, probes, metrics) {
     const session = findConnectedSession(asset, sessionList);
     const probe = probes?.get?.(asset.id) || null;
     const metric = session ? metrics?.get?.(session.sessionId) || null : null;
+    const probeExcluded = asset.metadata?.status_wall_excluded === 'true';
 
     let state = ASSET_STATE_UNKNOWN;
     if (session) state = ASSET_STATE_CONNECTED;
+    else if (probeExcluded) state = ASSET_STATE_EXCLUDED;
     else if (probe) state = probe.reachable ? ASSET_STATE_ONLINE : ASSET_STATE_OFFLINE;
 
     return {
@@ -58,6 +61,7 @@ export function buildAssetCards(assets, sessions, probes, metrics) {
       dbType: asset.metadata?.db_type || asset.dbType || '',
       asset,
       state,
+      probeExcluded,
       connected: Boolean(session),
       sessionId: session?.sessionId || null,
       latencyMs: probe?.reachable ? probe.latency_ms : null,
@@ -75,12 +79,13 @@ function roundPercent(value) {
 }
 
 export function summarizeCards(cards) {
-  const summary = { total: 0, connected: 0, online: 0, offline: 0, unknown: 0 };
+  const summary = { total: 0, connected: 0, online: 0, offline: 0, unknown: 0, excluded: 0 };
   for (const card of cards || []) {
     summary.total += 1;
     if (card.state === ASSET_STATE_CONNECTED) summary.connected += 1;
     else if (card.state === ASSET_STATE_ONLINE) summary.online += 1;
     else if (card.state === ASSET_STATE_OFFLINE) summary.offline += 1;
+    else if (card.state === ASSET_STATE_EXCLUDED) summary.excluded += 1;
     else summary.unknown += 1;
   }
   // 「可用」口径：已连接 + 探活在线
@@ -111,6 +116,8 @@ export function stateLabel(state) {
       return '在线';
     case ASSET_STATE_OFFLINE:
       return '离线';
+    case ASSET_STATE_EXCLUDED:
+      return '已关闭探活';
     default:
       return '未探测';
   }

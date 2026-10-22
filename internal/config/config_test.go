@@ -291,12 +291,15 @@ func TestUpdateSettingsPersistsSessionLogFields(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	cm := newDiskTestConfigManager(configPath)
 	if err := cm.UpdateSettings(map[string]interface{}{
-		"session_log_enabled":        false,
-		"session_log_retention_days": float64(7),
-		"session_log_redact_enabled": false,
-		"command_suggest_enabled":    false,
-		"command_suggest_limit":      float64(12),
-		"command_suggest_tab_accept": true,
+		"session_log_enabled":               false,
+		"session_log_retention_days":        float64(7),
+		"session_log_redact_enabled":        false,
+		"command_suggest_enabled":           false,
+		"command_suggest_limit":             float64(12),
+		"command_suggest_tab_accept":        true,
+		"asset_wall_enabled":                false,
+		"asset_wall_probe_interval_seconds": float64(1000),
+		"asset_wall_metrics_enabled":        false,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -323,6 +326,15 @@ func TestUpdateSettingsPersistsSessionLogFields(t *testing.T) {
 	}
 	if !s.CommandSuggestTabAccept {
 		t.Fatal("expected CommandSuggestTabAccept true")
+	}
+	if s.AssetWallEnabled {
+		t.Fatal("expected AssetWallEnabled false")
+	}
+	if s.AssetWallProbeIntervalSeconds != 300 {
+		t.Fatalf("expected AssetWallProbeIntervalSeconds clamped to 300, got %d", s.AssetWallProbeIntervalSeconds)
+	}
+	if s.AssetWallMetricsEnabled {
+		t.Fatal("expected AssetWallMetricsEnabled false")
 	}
 }
 

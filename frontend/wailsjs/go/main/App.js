@@ -518,6 +518,10 @@ export function SendSSHDataBinary(arg1, arg2) {
   return window['go']['main']['App']['SendSSHDataBinary'](arg1, arg2);
 }
 
+export function SetAssetProbeExcluded(arg1, arg2) {
+  return window['go']['main']['App']['SetAssetProbeExcluded'](arg1, arg2);
+}
+
 export function SetCopilotAPIKey(arg1) {
   return window['go']['main']['App']['SetCopilotAPIKey'](arg1);
 }

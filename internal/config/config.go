@@ -80,6 +80,11 @@ type AppSettings struct {
 	CommandSuggestEnabled   bool `json:"command_suggest_enabled"`
 	CommandSuggestLimit     int  `json:"command_suggest_limit"`
 	CommandSuggestTabAccept bool `json:"command_suggest_tab_accept"`
+
+	// Asset status wall settings（PC 状态墙探活与指标采样）
+	AssetWallEnabled              bool `json:"asset_wall_enabled"`
+	AssetWallProbeIntervalSeconds int  `json:"asset_wall_probe_interval_seconds"`
+	AssetWallMetricsEnabled       bool `json:"asset_wall_metrics_enabled"`
 }
 
 // FileManagerSettings stores file manager configuration per connection
@@ -120,11 +125,14 @@ func DefaultSettings() AppSettings {
 		FileManagerSortOrder:   "asc",
 		CopilotProvider:        "openai_compatible",
 		CopilotMaxToolRounds:   4, CopilotMaxToolResultChars: 8000,
-		SessionLogEnabled:       true,
-		SessionLogRetentionDays: 30,
-		SessionLogRedactEnabled: true,
-		CommandSuggestEnabled:   true,
-		CommandSuggestLimit:     8,
+		SessionLogEnabled:             true,
+		SessionLogRetentionDays:       30,
+		SessionLogRedactEnabled:       true,
+		CommandSuggestEnabled:         true,
+		CommandSuggestLimit:           8,
+		AssetWallEnabled:              true,
+		AssetWallProbeIntervalSeconds: 15,
+		AssetWallMetricsEnabled:       true,
 	}
 }
 
@@ -444,6 +452,22 @@ func (cm *ConfigManager) UpdateSettings(updates map[string]interface{}) error {
 	}
 	if commandSuggestTabAccept, ok := updates["command_suggest_tab_accept"].(bool); ok {
 		cm.config.Settings.CommandSuggestTabAccept = commandSuggestTabAccept
+	}
+	if assetWallEnabled, ok := updates["asset_wall_enabled"].(bool); ok {
+		cm.config.Settings.AssetWallEnabled = assetWallEnabled
+	}
+	if assetWallInterval, ok := updates["asset_wall_probe_interval_seconds"].(float64); ok {
+		seconds := int(assetWallInterval)
+		if seconds < 5 {
+			seconds = 5
+		}
+		if seconds > 300 {
+			seconds = 300
+		}
+		cm.config.Settings.AssetWallProbeIntervalSeconds = seconds
+	}
+	if assetWallMetricsEnabled, ok := updates["asset_wall_metrics_enabled"].(bool); ok {
+		cm.config.Settings.AssetWallMetricsEnabled = assetWallMetricsEnabled
 	}
 
 	// File manager per-connection settings
