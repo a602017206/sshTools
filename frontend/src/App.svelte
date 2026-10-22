@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import AssetList from './components/AssetList.svelte';
   import TerminalPanel from './components/TerminalPanel.svelte';
+  import OpsDashboard from './components/OpsDashboard.svelte';
   import DevToolsPanel from './components/DevToolsPanel.svelte';
   import UploadTaskDialog from './components/UploadTaskDialog.svelte';
   import SQLFileProgressDialog from './components/SQLFileProgressDialog.svelte';
@@ -1095,7 +1096,12 @@
     {/if}
 
     <div class="flex-1 min-w-0 min-h-0 flex flex-col ops-main-stage relative" style="padding: 10px 8px;">
-      <TerminalPanel bind:this={terminalPanelRef} {activeMode} />
+      <TerminalPanel bind:this={terminalPanelRef} activeMode={activeMode === 'database' ? 'database' : 'ssh'} />
+      {#if activeMode === 'overview'}
+        <div class="absolute inset-0 z-20 ops-wall-overlay">
+          <OpsDashboard onConnect={handleConnect} onCreateConnection={openAddConnection} />
+        </div>
+      {/if}
       {#if activeMode === 'database' && !hasDatabaseSession}
         <div class="absolute inset-0 z-10 db-empty-overlay">
           <DatabaseWorkspaceEmpty
@@ -1463,6 +1469,13 @@
     background: color-mix(in srgb, var(--bg-primary) 18%, transparent);
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
+  }
+
+  .ops-wall-overlay {
+    /* 状态墙覆盖主舞台，TerminalPanel 在其下常驻，会话不中断 */
+    background: var(--bg-primary);
+    border-radius: 12px;
+    overflow: hidden;
   }
 
   .resize-handle-horizontal {

@@ -1208,3 +1208,28 @@ export namespace ssh {
 
 }
 
+
+export namespace main {
+
+	export class AssetProbeResult {
+	    id: string;
+	    reachable: boolean;
+	    latency_ms: number;
+	    error?: string;
+	    checked_at: number;
+
+	    static createFrom(source: any = {}) {
+	        return new AssetProbeResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.reachable = source["reachable"];
+	        this.latency_ms = source["latency_ms"];
+	        this.error = source["error"];
+	        this.checked_at = source["checked_at"];
+	    }
+	}
+
+}

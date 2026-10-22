@@ -1,6 +1,7 @@
 export const APP_MODES = [
   { id: 'ssh', label: 'SSH 会话' },
-  { id: 'database', label: '数据' }
+  { id: 'database', label: '数据' },
+  { id: 'overview', label: '状态墙' }
 ];
 
 export const SSH_TOOL_TABS = [

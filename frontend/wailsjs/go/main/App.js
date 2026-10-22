@@ -402,6 +402,10 @@ export function ParseURL(arg1) {
   return window['go']['main']['App']['ParseURL'](arg1);
 }
 
+export function ProbeAllAssets() {
+  return window['go']['main']['App']['ProbeAllAssets']();
+}
+
 export function PurgeExpiredSessionLogs() {
   return window['go']['main']['App']['PurgeExpiredSessionLogs']();
 }
