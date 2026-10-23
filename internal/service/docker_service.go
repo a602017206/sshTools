@@ -18,6 +18,8 @@ const (
 	dockerModeAPI = "API"
 	dockerModeCLI = "CLI"
 
+	dockerViaCLI = "cli"
+
 	defaultDockerRemoteSocket = "/var/run/docker.sock"
 	dockerOpTimeout           = 15 * time.Second
 )
@@ -185,6 +187,21 @@ func (s *DockerService) ConnectDocker(sessionID string, conn config.ConnectionCo
 		_ = old.close()
 	}
 	return nil
+}
+
+// CloseAll closes every registered Docker session (used on app shutdown).
+func (s *DockerService) CloseAll() error {
+	s.mu.Lock()
+	sessions := s.sessions
+	s.sessions = make(map[string]*dockerSession)
+	s.mu.Unlock()
+	var first error
+	for _, sess := range sessions {
+		if err := sess.close(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
 }
 
 // CloseDocker closes the session. Unknown sessions are a no-op.
@@ -360,7 +377,7 @@ func listContainersCLI(sess dockerSSHSession, all bool) ([]docker.ContainerSumma
 	if all {
 		cmd = "docker ps -a --format '{{json .}}'"
 	}
-	out, err := sess.CombinedOutput(cmd)
+	out, err := combinedOutputWithTimeout(sess, cmd, dockerOpTimeout)
 	text := string(out)
 	if err != nil {
 		msg := strings.TrimSpace(text)
@@ -376,5 +393,34 @@ func listContainersCLI(sess dockerSSHSession, all bool) ([]docker.ContainerSumma
 			jsonLines = append(jsonLines, t)
 		}
 	}
-	return docker.ParseDockerPSJSONLines(strings.Join(jsonLines, "\n"))
+	list, err := docker.ParseDockerPSJSONLines(strings.Join(jsonLines, "\n"))
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		list[i].Via = dockerViaCLI
+	}
+	return list, nil
+}
+
+// combinedOutputWithTimeout 为远程命令设置超时，避免 SSH 通道无响应时永久阻塞。
+// 超时后命令 goroutine 会在会话关闭（Close）时随连接断开而退出。
+func combinedOutputWithTimeout(sess dockerSSHSession, cmd string, timeout time.Duration) ([]byte, error) {
+	type result struct {
+		out []byte
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		out, err := sess.CombinedOutput(cmd)
+		ch <- result{out, err}
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case r := <-ch:
+		return r.out, r.err
+	case <-timer.C:
+		return nil, fmt.Errorf("docker: 远程命令执行超时 (%s)", timeout)
+	}
 }

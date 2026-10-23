@@ -108,7 +108,7 @@
   $: viewportIsConsole = !activeVisibleSession || (activeVisibleSession.type !== 'database' && activeVisibleSession.type !== 'docker');
   $: visibleSessionIds = visibleSessions.map((session) => session.sessionId);
   $: tabCloseMenuFlags = sessionTabCloseMenuFlags(visibleSessionIds, tabContextSessionId);
-  $: closeConfirmCopy = batchCloseConfirmCopy(pendingCloseIds);
+  $: closeConfirmCopy = batchCloseConfirmCopy(pendingCloseIds, visibleSessions);
   $: {
     const activeId = $activeSessionIdStore;
     const activeSession = activeId

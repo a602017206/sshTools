@@ -299,6 +299,11 @@ func (a *App) shutdown(context.Context) {
 			fmt.Printf("Failed to close shell sessions: %v\n", err)
 		}
 	}
+	if a.dockerService != nil {
+		if err := a.dockerService.CloseAll(); err != nil {
+			fmt.Printf("Failed to close docker sessions: %v\n", err)
+		}
+	}
 	if a.jdbcAgentSupervisor != nil {
 		if err := a.jdbcAgentSupervisor.Close(); err != nil {
 			fmt.Printf("Failed to close JDBC agent: %v\n", err)

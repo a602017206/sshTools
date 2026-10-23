@@ -35,12 +35,20 @@ export function batchCloseNeedsConfirm(sessions, idsToClose) {
   );
 }
 
-export function batchCloseConfirmCopy(idsToClose) {
-  const count = Array.isArray(idsToClose) ? idsToClose.length : 0;
+export function batchCloseConfirmCopy(idsToClose, sessions) {
+  const ids = Array.isArray(idsToClose) ? idsToClose : [];
+  const count = ids.length;
   if (count > 1) {
     return {
       title: '批量关闭会话',
       message: `确定要关闭这 ${count} 个会话吗？`,
+    };
+  }
+  const target = (sessions || []).find((session) => session?.sessionId === ids[0]);
+  if (target?.type === 'docker') {
+    return {
+      title: '关闭 Docker 连接',
+      message: '确定要关闭此 Docker 连接吗？',
     };
   }
   return {

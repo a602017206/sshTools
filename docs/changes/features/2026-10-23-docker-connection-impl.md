@@ -18,6 +18,8 @@
 
 - `frontend/src/components/AssetList.svelte`（本机探测提示、SSH 右键「添加 Docker」）
 - `frontend/src/App.svelte`（`openAddConnection` defaults 透传）
+- `internal/docker/types.go`（`ContainerSummary.Via`）、`internal/service/docker_service.go`（`CloseAll`、CLI 超时、`via: cli`）、`app.go`（shutdown 关闭 Docker 会话）
+- `frontend/src/lib/sessionTabClose.js`、`TerminalPanel.svelte`（Docker 关闭确认文案）
 - `docs/changes/features/2026-10-23-docker-connection-impl.md`（本文件）
 - 此前任务已提交的后端与前端实现见 `git log` 中 `feat(docker)` 系列提交（`internal/docker`、`internal/service/docker_service.go`、`app.go`、`AddAssetDialog.svelte`、`DockerWorkspace.svelte`、`lib/dockerTransport.js` 等）。
 
@@ -34,4 +36,9 @@
 - 本机探测仅在首次进入 Docker 域时执行一次，Docker 启动晚于应用时需重启或切换后手动添加。
 - 本机提示依赖 `metadata.transport === 'local'` 判断，历史手工创建且缺少该字段的 Docker 资产不会被识别。
 - 隧道失败时依赖 CLI 回退，本机无 `docker` CLI 时错误提示可能不够细化。
+- Windows 命名管道（`\\.\pipe\docker_engine`）目前仅作为默认路径解析，尚未实际 dial，Windows 本机 Docker 连接暂不可用。
+- Docker 的 SSH 路径仅支持密码与无口令私钥；带 passphrase 的密钥不受支持（passphrase 不落盘，此路径无交互输入）。
+- 本机探测为「一次性检测」（detect-once）：仅首次进入 Docker 域时执行，之后不会自动重试。
+- 远程 CLI 回退的 `docker ps` 受 `dockerOpTimeout`（15 秒）限制，超时后返回错误；容器行带 `via: "cli"` 供界面提示。
+- 已补充 `DockerService.CloseAll()`，应用退出时关闭全部 Docker 会话。
 - 未在真实 Docker / 远程 SSH 环境做端到端手工验证。

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/ssh"
@@ -107,6 +108,9 @@ func TestDockerSSHDialFailFallsBackToCLI(t *testing.T) {
 	}
 	if len(list) != 1 || list[0].ID != "abcdef123456" || list[0].Name != "web" {
 		t.Fatalf("list: %+v", list)
+	}
+	if list[0].Via != "cli" {
+		t.Fatalf("CLI 模式应标记 via=cli: %+v", list[0])
 	}
 	last := sess.commands[len(sess.commands)-1]
 	if !strings.Contains(last, "docker ps -a") || !strings.Contains(last, "{{json .}}") {
@@ -366,5 +370,42 @@ func TestDockerTCPConnect(t *testing.T) {
 	conn.Port = 1
 	if err := svc.TestDockerConnection(conn); err == nil {
 		t.Fatal("expected tcp failure")
+	}
+}
+
+func TestDockerCloseAllClosesEverySession(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newTestDockerService(sess, nil)
+	if err := svc.ConnectDocker("a", dockerSSHConn(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ConnectDocker("b", dockerSSHConn(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.CloseAll(); err != nil {
+		t.Fatal(err)
+	}
+	if sess.closed != 2 {
+		t.Fatalf("ssh closed=%d, want 2", sess.closed)
+	}
+	if _, err := svc.ListDockerContainers("a", true); err == nil {
+		t.Fatal("CloseAll 后会话应不存在")
+	}
+}
+
+type blockingDockerSSH struct{ fakeDockerSSH }
+
+func (b *blockingDockerSSH) CombinedOutput(string) ([]byte, error) {
+	select {}
+}
+
+func TestCombinedOutputWithTimeout(t *testing.T) {
+	start := time.Now()
+	_, err := combinedOutputWithTimeout(&blockingDockerSSH{}, "docker ps", 50*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "超时") {
+		t.Fatalf("expected timeout error, got %v", err)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatal("timeout took too long")
 	}
 }

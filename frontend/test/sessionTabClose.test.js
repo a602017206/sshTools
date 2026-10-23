@@ -61,6 +61,21 @@ test('批量关闭含已连接 SSH 时需要一次确认，数据库标签不确
   });
 });
 
+test('Docker 单个会话关闭确认使用 Docker 文案', () => {
+  const sessions = [
+    { sessionId: 'd1', type: 'docker', connected: true },
+    { sessionId: 's1', type: 'ssh', connected: true },
+  ];
+  assert.deepEqual(batchCloseConfirmCopy(['d1'], sessions), {
+    title: '关闭 Docker 连接',
+    message: '确定要关闭此 Docker 连接吗？',
+  });
+  assert.deepEqual(batchCloseConfirmCopy(['s1'], sessions), {
+    title: '关闭 SSH 会话',
+    message: '确定要关闭此 SSH 会话吗？',
+  });
+});
+
 test('标签栏提供右键批量关闭菜单', async () => {
   const panel = await readFile(new URL('../src/components/TerminalPanel.svelte', import.meta.url), 'utf8');
   assert.match(panel, /on:contextmenu=\{\(event\) => openTabContextMenu/);
