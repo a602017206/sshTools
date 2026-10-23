@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -101,6 +102,14 @@ func (c *Client) Close() error {
 // IsConnected checks if client is connected
 func (c *Client) IsConnected() bool {
 	return c.client != nil
+}
+
+// Dial opens a connection to addr on the remote host over the SSH connection.
+func (c *Client) Dial(network, addr string) (net.Conn, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("ssh client not connected")
+	}
+	return c.client.Dial(network, addr)
 }
 
 // getKeyAuth loads a private key file and returns an SSH auth method
