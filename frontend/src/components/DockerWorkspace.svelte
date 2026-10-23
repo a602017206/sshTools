@@ -1,5 +1,13 @@
 <script>
   import { onMount } from 'svelte';
+  import ConfirmDialog from './ui/ConfirmDialog.svelte';
+  import { portalToBody, resolveContextMenuPoint } from '../lib/contextMenu.js';
+  import {
+    actionSuccessLabel,
+    containerActionMenu,
+    isStillRunningError,
+    removeConfirmCopy
+  } from '../lib/dockerContainerActions.js';
   import {
     containerField,
     dockerTransportLabel,
@@ -13,6 +21,8 @@
   export let connection = null;
   /** (connected: boolean, error: string) => void，供 TerminalPanel 同步页签状态 */
   export let onStatus = () => {};
+  /** 打开详情时回调 (containerId, detail|null)，供 Task 7 详情侧栏接入 */
+  export let onSelect = () => {};
 
   let status = 'idle'; // idle | connecting | connected | error
   let errorMessage = '';
@@ -20,6 +30,18 @@
   let onlyRunning = false;
   let containers = [];
   let destroyed = false;
+
+  // 行操作：菜单 / 忙碌 / 删除确认 / 选中容器（Task 7 侧栏使用）
+  let menu = null; // { x, y, container }
+  let busyId = '';
+  let actionNotice = '';
+  let noticeTimer = null;
+  let removeTarget = null;
+  let removeForce = false;
+  let showRemoveConfirm = false;
+  export let selectedContainerId = '';
+  export let selectedDetail = null;
+  let detailError = '';
 
   $: transportLabel = dockerTransportLabel(connection);
   $: rows = visibleContainers(containers, onlyRunning);
@@ -77,13 +99,157 @@
     }
   }
 
+  function containerKey(container) {
+    return String(containerField(container, 'ID') || containerField(container, 'Name'));
+  }
+
+  function containerLabel(container) {
+    return containerField(container, 'Name') || String(containerField(container, 'ID')).slice(0, 12) || '';
+  }
+
+  function flashNotice(text) {
+    actionNotice = text;
+    if (noticeTimer) clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => {
+      actionNotice = '';
+    }, 2500);
+  }
+
+  function openMenu(event, container) {
+    const point = resolveContextMenuPoint(event, { menuWidth: 140, menuHeight: 190 });
+    menu = { x: point.x, y: point.y, container };
+  }
+
+  function openMenuFromButton(event, container) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    openMenu(
+      {
+        clientX: rect.right - 140,
+        clientY: rect.bottom + 2,
+        preventDefault: () => event.preventDefault(),
+        stopPropagation: () => event.stopPropagation()
+      },
+      container
+    );
+  }
+
+  function closeMenu() {
+    menu = null;
+  }
+
+  async function openDetail(container) {
+    const id = containerKey(container);
+    if (!id) return;
+    selectedContainerId = id;
+    selectedDetail = null;
+    detailError = '';
+    onSelect(id, null);
+    const { InspectDockerContainer } = bindings();
+    if (typeof InspectDockerContainer !== 'function') return;
+    try {
+      const detail = await InspectDockerContainer(sessionId, id);
+      if (destroyed || selectedContainerId !== id) return;
+      selectedDetail = detail || null;
+      onSelect(id, selectedDetail);
+    } catch (error) {
+      if (destroyed || selectedContainerId !== id) return;
+      detailError = errText(error);
+    }
+  }
+
+  export function closeDetail() {
+    selectedContainerId = '';
+    selectedDetail = null;
+    detailError = '';
+    onSelect('', null);
+  }
+
+  async function runAction(actionId, container, extra) {
+    const id = containerKey(container);
+    const methodName = {
+      start: 'StartDockerContainer',
+      stop: 'StopDockerContainer',
+      restart: 'RestartDockerContainer',
+      remove: 'RemoveDockerContainer'
+    }[actionId];
+    const method = bindings()[methodName];
+    if (!id || typeof method !== 'function') {
+      errorMessage = 'Docker 操作功能不可用';
+      return false;
+    }
+    busyId = id;
+    errorMessage = '';
+    try {
+      if (actionId === 'remove') await method(sessionId, id, Boolean(extra));
+      else await method(sessionId, id);
+      if (destroyed) return true;
+      if (actionId === 'remove' && selectedContainerId === id) closeDetail();
+      flashNotice(`${containerLabel(container)} ${actionSuccessLabel(actionId)}`);
+      await refresh();
+      return true;
+    } catch (error) {
+      if (destroyed) return false;
+      errorMessage = errText(error);
+      if (actionId === 'remove' && !extra && isStillRunningError(error)) {
+        // 删除失败且容器仍在运行：二次确认强制删除
+        removeTarget = container;
+        removeForce = true;
+        showRemoveConfirm = true;
+      }
+      return false;
+    } finally {
+      busyId = '';
+    }
+  }
+
+  function handleMenuAction(actionId) {
+    const container = menu?.container;
+    closeMenu();
+    if (!container) return;
+    if (actionId === 'detail') {
+      openDetail(container);
+    } else if (actionId === 'remove') {
+      removeTarget = container;
+      removeForce = false;
+      showRemoveConfirm = true;
+    } else {
+      runAction(actionId, container);
+    }
+  }
+
+  function cancelRemove() {
+    showRemoveConfirm = false;
+    removeTarget = null;
+    removeForce = false;
+  }
+
+  async function confirmRemove() {
+    const target = removeTarget;
+    const force = removeForce;
+    showRemoveConfirm = false;
+    removeTarget = null;
+    removeForce = false;
+    if (target) await runAction('remove', target, force);
+  }
+
+  $: menuItems = menu ? containerActionMenu(menu.container) : [];
+  $: removeCopy = removeConfirmCopy(removeTarget ? containerLabel(removeTarget) : '', removeForce);
+
   onMount(() => {
     connect();
     return () => {
       destroyed = true;
+      if (noticeTimer) clearTimeout(noticeTimer);
     };
   });
 </script>
+
+<svelte:window
+  on:click={closeMenu}
+  on:keydown={(event) => {
+    if (event.key === 'Escape') closeMenu();
+  }}
+/>
 
 <div class="docker-workspace">
   <div class="docker-toolbar">
@@ -133,6 +299,8 @@
       </div>
     {:else}
       {#if errorMessage}<div class="docker-banner docker-error">{errorMessage}</div>{/if}
+      {#if actionNotice}<div class="docker-banner docker-notice" role="status">{actionNotice}</div>{/if}
+      {#if detailError}<div class="docker-banner docker-error">详情加载失败：{detailError}</div>{/if}
       <div class="docker-table-wrap">
         <table class="docker-table">
           <thead>
@@ -143,11 +311,17 @@
               <th>端口</th>
               <th>ID</th>
               <th>创建时间</th>
+              <th class="docker-col-actions">操作</th>
             </tr>
           </thead>
           <tbody>
             {#each rows as container (containerField(container, 'ID') || containerField(container, 'Name'))}
-              <tr>
+              <tr
+                class:docker-row--selected={selectedContainerId !== '' && selectedContainerId === containerKey(container)}
+                class:docker-row--busy={busyId !== '' && busyId === containerKey(container)}
+                on:click={() => openDetail(container)}
+                on:contextmenu={(event) => openMenu(event, container)}
+              >
                 <td class="docker-cell-name">
                   <span class="ops-status-dot docker-dot" class:docker-dot--up={isContainerRunning(container)}></span>
                   {containerField(container, 'Name') || '-'}
@@ -157,6 +331,17 @@
                 <td class="docker-mono">{containerField(container, 'Ports') || '-'}</td>
                 <td class="docker-mono">{String(containerField(container, 'ID')).slice(0, 12) || '-'}</td>
                 <td>{formatContainerCreated(containerField(container, 'Created'))}</td>
+                <td class="docker-col-actions">
+                  <button
+                    type="button"
+                    class="docker-more"
+                    title="容器操作"
+                    aria-label="容器操作"
+                    aria-haspopup="menu"
+                    disabled={busyId !== '' && busyId === containerKey(container)}
+                    on:click|stopPropagation={(event) => openMenuFromButton(event, container)}
+                  >⋯</button>
+                </td>
               </tr>
             {/each}
           </tbody>
@@ -165,6 +350,41 @@
     {/if}
   </div>
 </div>
+
+{#if menu}
+  <div
+    class="docker-menu ops-flyout fixed z-[80] rounded-xl text-xs py-1"
+    style={`left: ${menu.x}px; top: ${menu.y}px; width: 140px;`}
+    use:portalToBody
+    on:mousedown|stopPropagation
+  >
+    {#each menuItems as item (item.id)}
+      <button
+        type="button"
+        class="docker-menu-item"
+        class:is-danger={item.danger}
+        disabled={item.disabled}
+        on:click|stopPropagation={() => handleMenuAction(item.id)}
+      >{item.label}</button>
+    {/each}
+  </div>
+{/if}
+
+<ConfirmDialog
+  bind:isOpen={showRemoveConfirm}
+  title={removeCopy.title}
+  message={removeCopy.message}
+  type="danger"
+  confirmText={removeCopy.confirmText}
+  cancelText="取消"
+  onConfirm={confirmRemove}
+  onCancel={cancelRemove}
+>
+  <label class="docker-force">
+    <input type="checkbox" bind:checked={removeForce} />
+    强制删除（容器运行中也会被终止）
+  </label>
+</ConfirmDialog>
 
 <style>
   .docker-workspace {
@@ -373,5 +593,91 @@
 
   .docker-mono {
     font-family: var(--terminal-font-family);
+  }
+
+  .docker-table tbody tr {
+    cursor: pointer;
+  }
+
+  .docker-row--selected {
+    background: color-mix(in srgb, var(--ops-signal) 12%, transparent);
+  }
+
+  .docker-row--busy {
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  .docker-notice {
+    color: var(--ops-signal);
+  }
+
+  .docker-col-actions {
+    width: 48px;
+    text-align: center !important;
+  }
+
+  .docker-more {
+    appearance: none;
+    cursor: pointer;
+    font: inherit;
+    font-size: 16px;
+    line-height: 1;
+    width: 28px;
+    height: 24px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+  }
+
+  .docker-more:hover:not(:disabled) {
+    border-color: var(--glass-border);
+    color: var(--text-primary);
+    background: var(--glass-bg);
+  }
+
+  .docker-more:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+
+  .docker-menu {
+    pointer-events: auto;
+    color: var(--text-primary);
+  }
+
+  .docker-menu-item {
+    display: block;
+    width: 100%;
+    min-height: 30px;
+    text-align: left;
+    padding: 5px 12px;
+    color: var(--text-primary);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .docker-menu-item:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ops-signal) 16%, transparent);
+  }
+
+  .docker-menu-item:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .docker-menu-item.is-danger {
+    color: var(--ops-alert);
+  }
+
+  .docker-force {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
   }
 </style>

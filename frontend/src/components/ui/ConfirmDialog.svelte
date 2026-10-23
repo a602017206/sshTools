@@ -22,6 +22,8 @@
       {message}
     </p>
 
+    <slot />
+
     <div class="flex gap-2 pt-2">
       <button
         type="button"

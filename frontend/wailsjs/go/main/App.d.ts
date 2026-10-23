@@ -4,6 +4,7 @@ import {config} from '../models';
 import {copilot} from '../models';
 import {service} from '../models';
 import {ssh} from '../models';
+import {docker} from '../models';
 import {main} from '../models';
 
 export function AddConnection(arg1:config.ConnectionConfig):Promise<void>;
@@ -28,6 +29,8 @@ export function ClearCopilotProviderAPIKey(arg1:string):Promise<void>;
 
 export function CloseDatabase(arg1:string):Promise<void>;
 
+export function CloseDocker(arg1:string):Promise<void>;
+
 export function CloseNativeDatabase(arg1:string):Promise<void>;
 
 export function CloseSSH(arg1:string):Promise<void>;
@@ -37,6 +40,8 @@ export function ConnectDatabase(arg1:string,arg2:string,arg3:number,arg4:string,
 export function ConnectDatabaseWithOptions(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:Record<string, string>):Promise<void>;
 
 export function ConnectDatabaseWithProfile(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<void>;
+
+export function ConnectDocker(arg1:string,arg2:config.ConnectionConfig):Promise<void>;
 
 export function ConnectLocalShell(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
 
@@ -75,6 +80,8 @@ export function DeleteSessionLog(arg1:string):Promise<void>;
 export function DescribeNativeDatabaseResource(arg1:string,arg2:string,arg3:string):Promise<service.NativeResourceDetails>;
 
 export function DescribeNativeDatabaseSession(arg1:string):Promise<service.NativeResourceDetails>;
+
+export function DetectLocalDocker():Promise<Record<string, any>>;
 
 export function DownloadFile(arg1:string,arg2:string,arg3:string):Promise<string>;
 
@@ -117,6 +124,8 @@ export function GetCurrentPath(arg1:string):Promise<string>;
 export function GetCurrentTimestamp():Promise<number>;
 
 export function GetCurrentTimestampMs():Promise<number>;
+
+export function GetDockerContainerLogs(arg1:string,arg2:string,arg3:number):Promise<string>;
 
 export function GetFileInfo(arg1:string,arg2:string):Promise<ssh.FileInfo>;
 
@@ -166,6 +175,8 @@ export function ImportJDBCDriverPackage(arg1:string):Promise<void>;
 
 export function ImportJDBCRuntimeArchive(arg1:string):Promise<service.JDBCRuntimeActivationResult>;
 
+export function InspectDockerContainer(arg1:string,arg2:string):Promise<docker.ContainerDetail>;
+
 export function InstallJDBCDriver(arg1:string,arg2:string):Promise<void>;
 
 export function InstallJDBCManagedRuntime():Promise<service.JDBCRuntimeActivationResult>;
@@ -185,6 +196,8 @@ export function ListDatabaseTablesInDatabase(arg1:string,arg2:string):Promise<Ar
 export function ListDatabaseTablesInSchema(arg1:string,arg2:string,arg3:string):Promise<Array<string>>;
 
 export function ListDatabases(arg1:string):Promise<Array<string>>;
+
+export function ListDockerContainers(arg1:string,arg2:boolean):Promise<Array<docker.ContainerSummary>>;
 
 export function ListFiles(arg1:string,arg2:string):Promise<Array<ssh.FileInfo>>;
 
@@ -216,6 +229,8 @@ export function RecordCommand(arg1:string,arg2:string):Promise<void>;
 
 export function RemoveConnection(arg1:string):Promise<void>;
 
+export function RemoveDockerContainer(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function RemoveJDBCDriver(arg1:string,arg2:string):Promise<void>;
 
 export function RenameFile(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -223,6 +238,8 @@ export function RenameFile(arg1:string,arg2:string,arg3:string):Promise<void>;
 export function ResizeLocalShell(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function RestartDockerContainer(arg1:string,arg2:string):Promise<void>;
 
 export function RestartJDBCAgent():Promise<void>;
 
@@ -284,25 +301,25 @@ export function ShowMessageDialog(arg1:string,arg2:string):Promise<void>;
 
 export function ShowQuestionDialog(arg1:string,arg2:string):Promise<boolean>;
 
+export function StartDockerContainer(arg1:string,arg2:string):Promise<void>;
+
+export function StartDockerContainerLogs(arg1:string,arg2:string,arg3:number):Promise<void>;
+
 export function StartSQLFile(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function StopDockerContainer(arg1:string,arg2:string):Promise<void>;
+
+export function StopDockerContainerLogs(arg1:string,arg2:string):Promise<void>;
 
 export function SuggestCommands(arg1:string,arg2:string,arg3:number):Promise<Array<service.CommandHistoryEntry>>;
 
 export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
-export function TestDockerConnection(arg1:config.ConnectionConfig):Promise<void>;
-
-export function ConnectDocker(arg1:string,arg2:config.ConnectionConfig):Promise<void>;
-
-export function CloseDocker(arg1:string):Promise<void>;
-
-export function ListDockerContainers(arg1:string,arg2:boolean):Promise<Array<Record<string, any>>>;
-
-export function DetectLocalDocker():Promise<Record<string, any>>;
-
 export function TestDatabaseConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function TestDatabaseConnectionWithOptions(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Record<string, string>):Promise<void>;
+
+export function TestDockerConnection(arg1:config.ConnectionConfig):Promise<void>;
 
 export function TestNativeDatabaseConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 

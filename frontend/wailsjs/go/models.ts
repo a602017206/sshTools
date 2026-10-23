@@ -568,6 +568,94 @@ export namespace copilot {
 
 }
 
+export namespace docker {
+	
+	export class ContainerDetail {
+	    ID: string;
+	    Name: string;
+	    Image: string;
+	    State: string;
+	    Status: string;
+	    Ports: string;
+	    NetworkMode: string;
+	    Created: number;
+	    Mounts: string[];
+	    Env: string[];
+	    Cmd: string[];
+	    Entrypoint: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ContainerDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.Name = source["Name"];
+	        this.Image = source["Image"];
+	        this.State = source["State"];
+	        this.Status = source["Status"];
+	        this.Ports = source["Ports"];
+	        this.NetworkMode = source["NetworkMode"];
+	        this.Created = source["Created"];
+	        this.Mounts = source["Mounts"];
+	        this.Env = source["Env"];
+	        this.Cmd = source["Cmd"];
+	        this.Entrypoint = source["Entrypoint"];
+	    }
+	}
+	export class ContainerSummary {
+	    ID: string;
+	    Name: string;
+	    Image: string;
+	    Status: string;
+	    Ports: string;
+	    Created: number;
+	    via?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ContainerSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.Name = source["Name"];
+	        this.Image = source["Image"];
+	        this.Status = source["Status"];
+	        this.Ports = source["Ports"];
+	        this.Created = source["Created"];
+	        this.via = source["via"];
+	    }
+	}
+
+}
+
+export namespace main {
+	
+	export class AssetProbeResult {
+	    id: string;
+	    reachable: boolean;
+	    latency_ms: number;
+	    error?: string;
+	    checked_at: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AssetProbeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.reachable = source["reachable"];
+	        this.latency_ms = source["latency_ms"];
+	        this.error = source["error"];
+	        this.checked_at = source["checked_at"];
+	    }
+	}
+
+}
+
 export namespace service {
 	
 	export class BackgroundImageResult {
@@ -1214,28 +1302,3 @@ export namespace ssh {
 
 }
 
-
-export namespace main {
-
-	export class AssetProbeResult {
-	    id: string;
-	    reachable: boolean;
-	    latency_ms: number;
-	    error?: string;
-	    checked_at: number;
-
-	    static createFrom(source: any = {}) {
-	        return new AssetProbeResult(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.reachable = source["reachable"];
-	        this.latency_ms = source["latency_ms"];
-	        this.error = source["error"];
-	        this.checked_at = source["checked_at"];
-	    }
-	}
-
-}

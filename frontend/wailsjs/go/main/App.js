@@ -46,6 +46,10 @@ export function CloseDatabase(arg1) {
   return window['go']['main']['App']['CloseDatabase'](arg1);
 }
 
+export function CloseDocker(arg1) {
+  return window['go']['main']['App']['CloseDocker'](arg1);
+}
+
 export function CloseNativeDatabase(arg1) {
   return window['go']['main']['App']['CloseNativeDatabase'](arg1);
 }
@@ -64,6 +68,10 @@ export function ConnectDatabaseWithOptions(arg1, arg2, arg3, arg4, arg5, arg6, a
 
 export function ConnectDatabaseWithProfile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['main']['App']['ConnectDatabaseWithProfile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
+export function ConnectDocker(arg1, arg2) {
+  return window['go']['main']['App']['ConnectDocker'](arg1, arg2);
 }
 
 export function ConnectLocalShell(arg1, arg2, arg3, arg4) {
@@ -140,6 +148,10 @@ export function DescribeNativeDatabaseResource(arg1, arg2, arg3) {
 
 export function DescribeNativeDatabaseSession(arg1) {
   return window['go']['main']['App']['DescribeNativeDatabaseSession'](arg1);
+}
+
+export function DetectLocalDocker() {
+  return window['go']['main']['App']['DetectLocalDocker']();
 }
 
 export function DownloadFile(arg1, arg2, arg3) {
@@ -224,6 +236,10 @@ export function GetCurrentTimestamp() {
 
 export function GetCurrentTimestampMs() {
   return window['go']['main']['App']['GetCurrentTimestampMs']();
+}
+
+export function GetDockerContainerLogs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetDockerContainerLogs'](arg1, arg2, arg3);
 }
 
 export function GetFileInfo(arg1, arg2) {
@@ -322,6 +338,10 @@ export function ImportJDBCRuntimeArchive(arg1) {
   return window['go']['main']['App']['ImportJDBCRuntimeArchive'](arg1);
 }
 
+export function InspectDockerContainer(arg1, arg2) {
+  return window['go']['main']['App']['InspectDockerContainer'](arg1, arg2);
+}
+
 export function InstallJDBCDriver(arg1, arg2) {
   return window['go']['main']['App']['InstallJDBCDriver'](arg1, arg2);
 }
@@ -360,6 +380,10 @@ export function ListDatabaseTablesInSchema(arg1, arg2, arg3) {
 
 export function ListDatabases(arg1) {
   return window['go']['main']['App']['ListDatabases'](arg1);
+}
+
+export function ListDockerContainers(arg1, arg2) {
+  return window['go']['main']['App']['ListDockerContainers'](arg1, arg2);
 }
 
 export function ListFiles(arg1, arg2) {
@@ -422,6 +446,10 @@ export function RemoveConnection(arg1) {
   return window['go']['main']['App']['RemoveConnection'](arg1);
 }
 
+export function RemoveDockerContainer(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoveDockerContainer'](arg1, arg2, arg3);
+}
+
 export function RemoveJDBCDriver(arg1, arg2) {
   return window['go']['main']['App']['RemoveJDBCDriver'](arg1, arg2);
 }
@@ -436,6 +464,10 @@ export function ResizeLocalShell(arg1, arg2, arg3) {
 
 export function ResizeSSH(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSH'](arg1, arg2, arg3);
+}
+
+export function RestartDockerContainer(arg1, arg2) {
+  return window['go']['main']['App']['RestartDockerContainer'](arg1, arg2);
 }
 
 export function RestartJDBCAgent() {
@@ -558,8 +590,24 @@ export function ShowQuestionDialog(arg1, arg2) {
   return window['go']['main']['App']['ShowQuestionDialog'](arg1, arg2);
 }
 
+export function StartDockerContainer(arg1, arg2) {
+  return window['go']['main']['App']['StartDockerContainer'](arg1, arg2);
+}
+
+export function StartDockerContainerLogs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['StartDockerContainerLogs'](arg1, arg2, arg3);
+}
+
 export function StartSQLFile(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['StartSQLFile'](arg1, arg2, arg3, arg4);
+}
+
+export function StopDockerContainer(arg1, arg2) {
+  return window['go']['main']['App']['StopDockerContainer'](arg1, arg2);
+}
+
+export function StopDockerContainerLogs(arg1, arg2) {
+  return window['go']['main']['App']['StopDockerContainerLogs'](arg1, arg2);
 }
 
 export function SuggestCommands(arg1, arg2, arg3) {
@@ -570,32 +618,16 @@ export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
-export function TestDockerConnection(arg1) {
-  return window['go']['main']['App']['TestDockerConnection'](arg1);
-}
-
-export function ConnectDocker(arg1, arg2) {
-  return window['go']['main']['App']['ConnectDocker'](arg1, arg2);
-}
-
-export function CloseDocker(arg1) {
-  return window['go']['main']['App']['CloseDocker'](arg1);
-}
-
-export function ListDockerContainers(arg1, arg2) {
-  return window['go']['main']['App']['ListDockerContainers'](arg1, arg2);
-}
-
-export function DetectLocalDocker() {
-  return window['go']['main']['App']['DetectLocalDocker']();
-}
-
 export function TestDatabaseConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['TestDatabaseConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function TestDatabaseConnectionWithOptions(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['main']['App']['TestDatabaseConnectionWithOptions'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+}
+
+export function TestDockerConnection(arg1) {
+  return window['go']['main']['App']['TestDockerConnection'](arg1);
 }
 
 export function TestNativeDatabaseConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
