@@ -44,6 +44,7 @@
   let editingAsset = null;
   let cloningAsset = null;
   let preferredGroup = '';
+  let addDialogDefaults = null;
   let connectionDialogRequestVersion = 0;
   let terminalPanelRef;
   let activeMode = 'ssh';
@@ -332,9 +333,15 @@
     }
   }
 
-  function openAddConnection(group) {
+  // group 为分组路径字符串；也可直接传入 defaults 对象（如 { assetType: 'docker', transport: 'local' }）。
+  function openAddConnection(group, defaults = null) {
     editingAsset = null;
     cloningAsset = null;
+    if (group && typeof group === 'object') {
+      defaults = group;
+      group = '';
+    }
+    addDialogDefaults = defaults && typeof defaults === 'object' ? defaults : null;
     preferredGroup = resolvePreferredConnectionGroup(group);
     connectionDialogRequestVersion += 1;
     isAddDialogOpen = true;
@@ -1250,6 +1257,7 @@
       dialogRequestVersion={connectionDialogRequestVersion}
       preferredDomain={activeDomain}
       preferredGroup={preferredGroup}
+      defaults={addDialogDefaults}
       onAdd={handleAddAsset}
       onUpdate={handleUpdateAsset}
     />

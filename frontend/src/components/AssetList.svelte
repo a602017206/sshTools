@@ -6,9 +6,10 @@
   import DatabaseSidebarTree from './DatabaseSidebarTree.svelte';
   import DatabaseTypeIcon from './icons/DatabaseTypeIcon.svelte';
   import { onMount } from 'svelte';
+  import { defaultDockerName } from '../lib/dockerTransport.js';
   import { shouldConnectAsset } from '../lib/assetActivation.js';
   import { assetLinkStateLabel, getAssetLinkState } from '../lib/assetLinkState.js';
-  import { filterAssetsByDomain } from '../lib/assetDomain.js';
+  import { filterAssetsByDomain, resolveAssetDomain } from '../lib/assetDomain.js';
   import { assetSupportsJdbcSidebar } from '../lib/nativeDatabaseTypes.js';
   import { databaseTypeLabel, resolveDatabaseType } from '../lib/databaseTypeIcon.js';
   import {
@@ -59,6 +60,42 @@
     return session?.connection?.id || null;
   })();
 
+  // Docker 域：探测本机 Docker，未添加本机资产时提示一键添加。
+  let localDockerDetected = false;
+  let dockerDetectDone = false;
+  $: if (activeDomain === 'docker' && !dockerDetectDone) {
+    detectLocalDocker();
+  }
+  $: hasLocalDockerAsset = ($assetsStore || []).some(
+    (asset) => asset.type === 'docker' && asset.metadata?.transport === 'local'
+  );
+  $: showLocalDockerPrompt = activeDomain === 'docker' && localDockerDetected && !hasLocalDockerAsset;
+
+  async function detectLocalDocker() {
+    dockerDetectDone = true;
+    try {
+      const { DetectLocalDocker } = await import('../../wailsjs/go/main/App.js');
+      const result = await DetectLocalDocker();
+      localDockerDetected = !!result?.ok;
+    } catch {
+      localDockerDetected = false;
+    }
+  }
+
+  function handleAddLocalDocker() {
+    onAddClick?.('', { assetType: 'docker', transport: 'local', name: '本机 Docker' });
+  }
+
+  function handleAddDockerFromSsh(asset) {
+    showDbContextMenu = false;
+    onAddClick?.('', {
+      assetType: 'docker',
+      transport: 'ssh',
+      sshConnectionId: asset.id,
+      name: defaultDockerName(asset),
+    });
+  }
+
   onMount(async () => {
     try {
       const { GetVersion } = await import('../../wailsjs/go/main/App.js');
@@ -104,7 +141,7 @@
     event.stopPropagation();
     showGroupContextMenu = false;
     dbContextMenuAsset = asset;
-    dbContextMenuPosition = resolveContextMenuPoint(event, { menuWidth: 176, menuHeight: 88 });
+    dbContextMenuPosition = resolveContextMenuPoint(event, { menuWidth: 176, menuHeight: 128 });
     showDbContextMenu = true;
   }
 
@@ -710,6 +747,18 @@
 
   <!-- 资产列表 -->
   <div class="flex-1 overflow-y-auto scrollbar-thin py-2">
+    {#if showLocalDockerPrompt}
+      <div class="mx-2 mb-2 px-3 py-2 rounded-md border text-xs" style="border-color: var(--border-primary); color: var(--text-secondary);">
+        <div class="mb-2">检测到本机 Docker 可用</div>
+        <button
+          type="button"
+          class="ops-icon-button px-2 py-1 rounded-md text-xs accent-text"
+          on:click|stopPropagation={handleAddLocalDocker}
+        >
+          添加本机 Docker
+        </button>
+      </div>
+    {/if}
     {#each visibleGroupRows as row (row.kind === 'group' ? `g:${row.node.path}` : `a:${row.asset.id}`)}
       {#if row.kind === 'group'}
         <button
@@ -858,6 +907,16 @@
       </svg>
       <span>克隆连接</span>
     </button>
+    {#if resolveAssetDomain(dbContextMenuAsset) === 'ssh'}
+      <button
+        type="button"
+        class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+        on:click={() => handleAddDockerFromSsh(dbContextMenuAsset)}
+      >
+        <DatabaseTypeIcon kind="docker" size={16} />
+        <span>添加 Docker</span>
+      </button>
+    {/if}
     {#if dbContextMenuAsset.type === 'database'}
       <button
         type="button"
