@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
+  import DockerContainerDetail from './DockerContainerDetail.svelte';
   import { portalToBody, resolveContextMenuPoint } from '../lib/contextMenu.js';
   import {
     actionSuccessLabel,
@@ -21,7 +22,7 @@
   export let connection = null;
   /** (connected: boolean, error: string) => void，供 TerminalPanel 同步页签状态 */
   export let onStatus = () => {};
-  /** 打开详情时回调 (containerId, detail|null)，供 Task 7 详情侧栏接入 */
+  /** 打开/关闭详情时回调 (containerId, detail|null) */
   export let onSelect = () => {};
 
   let status = 'idle'; // idle | connecting | connected | error
@@ -276,6 +277,7 @@
     </div>
   </div>
 
+  <div class="docker-main">
   <div class="docker-body">
     {#if status === 'connecting' || status === 'idle'}
       <div class="docker-empty" role="status">
@@ -348,6 +350,19 @@
         </table>
       </div>
     {/if}
+  </div>
+  {#if connected && selectedContainerId}
+    <!-- key：切换容器时销毁旧侧栏（onDestroy 内 StopLogs），再挂载新的 -->
+    {#key selectedContainerId}
+      <DockerContainerDetail
+        {sessionId}
+        containerId={selectedContainerId}
+        detail={selectedDetail}
+        {detailError}
+        onClose={closeDetail}
+      />
+    {/key}
+  {/if}
   </div>
 </div>
 
@@ -483,8 +498,16 @@
     outline-offset: 2px;
   }
 
+  .docker-main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+  }
+
   .docker-body {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
