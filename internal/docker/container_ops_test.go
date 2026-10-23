@@ -2,14 +2,26 @@ package docker_test
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"AHaSSHTools/internal/docker"
 )
+
+func dockerMultiplexFrame(streamType byte, payload string) []byte {
+	b := make([]byte, 8+len(payload))
+	b[0] = streamType
+	binary.BigEndian.PutUint32(b[4:8], uint32(len(payload)))
+	copy(b[8:], payload)
+	return b
+}
 
 func newTestDockerClient(t *testing.T, handler http.HandlerFunc) (*docker.Client, *httptest.Server) {
 	t.Helper()
@@ -165,5 +177,88 @@ func TestInspectContainerMapsDetail(t *testing.T) {
 	}
 	if !strings.Contains(detail.Ports, "8080") || !strings.Contains(detail.Ports, "80") {
 		t.Fatalf("Ports: got %q", detail.Ports)
+	}
+}
+
+func TestGetContainerLogsDecodesMultiplex(t *testing.T) {
+	const id = "logbox1"
+	c, srv := newTestDockerClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/containers/"+id+"/logs" || r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		q := r.URL.Query()
+		if q.Get("stdout") != "1" || q.Get("stderr") != "1" || q.Get("timestamps") != "0" {
+			t.Fatalf("query: %v", q)
+		}
+		if q.Get("tail") != "50" {
+			t.Fatalf("tail: got %q, want 50", q.Get("tail"))
+		}
+		if q.Get("follow") != "" {
+			t.Fatalf("unexpected follow=%q", q.Get("follow"))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(dockerMultiplexFrame(1, "hello stdout\n"))
+		_, _ = w.Write(dockerMultiplexFrame(2, "hello stderr\n"))
+	}))
+	defer srv.Close()
+	defer c.Close()
+
+	got, err := c.GetContainerLogs(context.Background(), id, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "hello stdout\nhello stderr\n"
+	if got != want {
+		t.Fatalf("logs: got %q, want %q", got, want)
+	}
+}
+
+func TestFollowContainerLogsStreamAndContextCancel(t *testing.T) {
+	const id = "logfollow1"
+	var requestDone atomic.Bool
+	c, srv := newTestDockerClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/containers/"+id+"/logs" || r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("follow") != "1" {
+			t.Fatalf("follow: got %q", r.URL.Query().Get("follow"))
+		}
+		if r.URL.Query().Get("tail") != "10" {
+			t.Fatalf("tail: got %q", r.URL.Query().Get("tail"))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(dockerMultiplexFrame(1, "chunk1\n"))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		<-r.Context().Done()
+		requestDone.Store(true)
+	}))
+	defer srv.Close()
+	defer c.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	rc, err := c.FollowContainerLogs(ctx, id, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 64)
+	n, err := rc.Read(buf)
+	if err != nil && err != io.EOF {
+		t.Fatalf("read: %v", err)
+	}
+	if string(buf[:n]) != "chunk1\n" {
+		t.Fatalf("first read: got %q", buf[:n])
+	}
+	cancel()
+	_ = rc.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for !requestDone.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("server did not observe canceled request context")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
