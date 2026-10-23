@@ -1,6 +1,7 @@
 export const APP_MODES = [
   { id: 'ssh', label: 'SSH 会话' },
   { id: 'database', label: '数据' },
+  { id: 'docker', label: '容器' },
   { id: 'overview', label: '状态墙' }
 ];
 
@@ -21,7 +22,6 @@ const legacyModeMap = {
   terminal: 'ssh',
   files: 'ssh',
   performance: 'ssh',
-  docker: 'ssh',
   logs: 'ssh',
   database: 'database',
   ssh: 'ssh'
@@ -33,20 +33,29 @@ export function resolveMode(mode) {
 }
 
 export function modeForAsset(asset) {
-  return asset?.type === 'database' ? 'database' : 'ssh';
+  if (asset?.type === 'database') return 'database';
+  if (asset?.type === 'docker') return 'docker';
+  return 'ssh';
 }
 
 export function isDatabaseSession(session) {
   return session?.type === 'database';
 }
 
-/** SSH 模式展示终端/本地会话；数据库模式只展示数据库会话 */
+export function isDockerSession(session) {
+  return session?.type === 'docker';
+}
+
+/** SSH / 数据库 / Docker 模式各自只展示对应类型的会话标签 */
 export function sessionMatchesMode(session, mode) {
   const resolved = resolveMode(mode);
   if (resolved === 'database') {
     return isDatabaseSession(session);
   }
-  return !isDatabaseSession(session);
+  if (resolved === 'docker') {
+    return isDockerSession(session);
+  }
+  return !isDatabaseSession(session) && !isDockerSession(session);
 }
 
 export function resolveSshToolTab(tab) {
@@ -68,6 +77,13 @@ export function getWorkspaceMeta(workspace) {
     return {
       title: '数据库',
       description: '连接实例后浏览对象、设计表并执行查询。',
+      available: true
+    };
+  }
+  if (mode === 'docker') {
+    return {
+      title: '容器',
+      description: '连接 Docker 引擎后浏览与管理容器。',
       available: true
     };
   }
