@@ -409,3 +409,181 @@ func TestCombinedOutputWithTimeout(t *testing.T) {
 		t.Fatal("timeout took too long")
 	}
 }
+
+// ---- Phase 2 Task 4: 生命周期 / Inspect / 一次性日志 ----
+
+func newCLIDockerService(t *testing.T, sess *fakeDockerSSH) *DockerService {
+	t.Helper()
+	svc := newTestDockerService(sess, nil)
+	if err := svc.ConnectDocker("s1", dockerSSHConn(nil)); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if svc.sessionMode("s1") != dockerModeCLI {
+		t.Fatalf("mode=%q", svc.sessionMode("s1"))
+	}
+	sess.commands = nil
+	return svc
+}
+
+func TestDockerCLILifecycleCommands(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+	sess.output = ""
+
+	if err := svc.StartDockerContainer("s1", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.StopDockerContainer("s1", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RestartDockerContainer("s1", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveDockerContainer("s1", "abc", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveDockerContainer("s1", "abc", true); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"docker start 'abc'",
+		"docker stop 'abc'",
+		"docker restart 'abc'",
+		"docker rm 'abc'",
+		"docker rm -f 'abc'",
+	}
+	if strings.Join(sess.commands, "|") != strings.Join(want, "|") {
+		t.Fatalf("commands=%v", sess.commands)
+	}
+}
+
+func TestDockerCLILifecycleErrorSurfacesOutput(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+	sess.output = "Error: No such container: nope"
+	sess.outputErr = errors.New("exit status 1")
+	err := svc.StartDockerContainer("s1", "nope")
+	if err == nil || !strings.Contains(err.Error(), "No such container") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestDockerCLIInspectAndLogs(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+
+	sess.output = `[{"Id":"abcdef1234567890","Name":"/web","Config":{"Image":"nginx"},"State":{"Status":"running"}}]`
+	detail, err := svc.InspectDockerContainer("s1", "abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Name != "web" || detail.Image != "nginx" || detail.State != "running" || detail.ID != "abcdef123456" {
+		t.Fatalf("detail=%+v", detail)
+	}
+	if got := sess.commands[len(sess.commands)-1]; got != "docker inspect 'abc'" {
+		t.Fatalf("cmd=%q", got)
+	}
+
+	sess.output = "line1\nline2\n"
+	logs, err := svc.GetDockerContainerLogs("s1", "abc", 200)
+	if err != nil || logs != "line1\nline2\n" {
+		t.Fatalf("logs=%q err=%v", logs, err)
+	}
+	if got := sess.commands[len(sess.commands)-1]; got != "docker logs --tail 200 'abc'" {
+		t.Fatalf("cmd=%q", got)
+	}
+}
+
+func TestDockerContainerOpsUnknownSession(t *testing.T) {
+	svc := newTestDockerService(&fakeDockerSSH{}, nil)
+	if err := svc.StartDockerContainer("nope", "a"); err == nil {
+		t.Error("start: expected error")
+	}
+	if err := svc.StopDockerContainer("nope", "a"); err == nil {
+		t.Error("stop: expected error")
+	}
+	if err := svc.RestartDockerContainer("nope", "a"); err == nil {
+		t.Error("restart: expected error")
+	}
+	if err := svc.RemoveDockerContainer("nope", "a", true); err == nil {
+		t.Error("remove: expected error")
+	}
+	if _, err := svc.InspectDockerContainer("nope", "a"); err == nil {
+		t.Error("inspect: expected error")
+	}
+	if _, err := svc.GetDockerContainerLogs("nope", "a", 10); err == nil {
+		t.Error("logs: expected error")
+	}
+}
+
+func TestDockerContainerOpsRejectEmptyID(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+	if err := svc.StartDockerContainer("s1", "  "); err == nil {
+		t.Fatal("expected error for empty id")
+	}
+	if len(sess.commands) != 0 {
+		t.Fatalf("no command expected: %v", sess.commands)
+	}
+}
+
+func TestDockerAPILifecycleInspectLogs(t *testing.T) {
+	var mu sync.Mutex
+	var calls []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls = append(calls, r.Method+" "+r.URL.RequestURI())
+		mu.Unlock()
+		switch {
+		case r.URL.Path == "/_ping":
+			_, _ = w.Write([]byte("OK"))
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/containers/"):
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/containers/abc/json":
+			_, _ = w.Write([]byte(`{"Id":"abcdef1234567890","Name":"/api","Config":{"Image":"img"},"State":{"Status":"running"}}`))
+		case r.URL.Path == "/containers/abc/logs":
+			// Docker 多路复用帧：stdout, 长度 3
+			_, _ = w.Write([]byte{1, 0, 0, 0, 0, 0, 0, 3, 'h', 'i', '\n'})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	host, portStr, _ := net.SplitHostPort(srv.Listener.Addr().String())
+	var port int
+	fmt.Sscanf(portStr, "%d", &port)
+	svc := NewDockerService(nil)
+	if err := svc.ConnectDocker("t", config.ConnectionConfig{Host: host, Port: port, Type: "docker"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.StartDockerContainer("t", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.StopDockerContainer("t", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RestartDockerContainer("t", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveDockerContainer("t", "abc", true); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := svc.InspectDockerContainer("t", "abc")
+	if err != nil || detail.Name != "api" || detail.Image != "img" {
+		t.Fatalf("detail=%+v err=%v", detail, err)
+	}
+	logs, err := svc.GetDockerContainerLogs("t", "abc", 50)
+	if err != nil || logs != "hi\n" {
+		t.Fatalf("logs=%q err=%v", logs, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	joined := strings.Join(calls, "\n")
+	for _, w := range []string{"POST /containers/abc/start", "POST /containers/abc/stop", "POST /containers/abc/restart", "DELETE /containers/abc?force=1", "tail=50"} {
+		if !strings.Contains(joined, w) {
+			t.Errorf("missing call %q in:\n%s", w, joined)
+		}
+	}
+}

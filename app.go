@@ -2224,6 +2224,54 @@ func (a *App) CloseDocker(sessionID string) error {
 }
 
 // ListDockerContainers 列出容器。
+
+// StartDockerContainer 启动容器（不自动刷新列表）。
+func (a *App) StartDockerContainer(sessionID, id string) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.StartDockerContainer(sessionID, id)
+}
+
+// StopDockerContainer 停止容器。
+func (a *App) StopDockerContainer(sessionID, id string) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.StopDockerContainer(sessionID, id)
+}
+
+// RestartDockerContainer 重启容器。
+func (a *App) RestartDockerContainer(sessionID, id string) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.RestartDockerContainer(sessionID, id)
+}
+
+// RemoveDockerContainer 删除容器；force 为 true 时强制删除。
+func (a *App) RemoveDockerContainer(sessionID, id string, force bool) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.RemoveDockerContainer(sessionID, id, force)
+}
+
+// InspectDockerContainer 返回容器详情。
+func (a *App) InspectDockerContainer(sessionID, id string) (docker.ContainerDetail, error) {
+	if a.dockerService == nil {
+		return docker.ContainerDetail{}, errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.InspectDockerContainer(sessionID, id)
+}
+
+// GetDockerContainerLogs 一次性获取容器日志（最后 tail 行，<=0 为全部）。
+func (a *App) GetDockerContainerLogs(sessionID, id string, tail int) (string, error) {
+	if a.dockerService == nil {
+		return "", errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.GetDockerContainerLogs(sessionID, id, tail)
+}
 func (a *App) ListDockerContainers(sessionID string, all bool) ([]docker.ContainerSummary, error) {
 	if a.dockerService == nil {
 		return nil, errors.New("docker 服务未初始化")

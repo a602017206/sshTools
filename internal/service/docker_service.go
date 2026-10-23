@@ -22,6 +22,8 @@ const (
 
 	defaultDockerRemoteSocket = "/var/run/docker.sock"
 	dockerOpTimeout           = 15 * time.Second
+	// 启停/删除可能等待容器优雅退出（docker stop 默认 10s），给更长超时。
+	dockerLifecycleTimeout = 60 * time.Second
 )
 
 // dockerSSHSession is the SSH capability DockerService needs. It is backed by a
@@ -231,6 +233,129 @@ func (s *DockerService) ListDockerContainers(sessionID string, all bool) ([]dock
 	ctx, cancel := context.WithTimeout(context.Background(), dockerOpTimeout)
 	defer cancel()
 	return sess.apiClient.ListContainers(ctx, all)
+}
+
+// lookupSession returns the registered session or an error for unknown IDs.
+func (s *DockerService) lookupSession(sessionID string) (*dockerSession, error) {
+	s.mu.Lock()
+	sess := s.sessions[sessionID]
+	s.mu.Unlock()
+	if sess == nil {
+		return nil, fmt.Errorf("docker: 会话 %q 不存在或已关闭", sessionID)
+	}
+	return sess, nil
+}
+
+func validateContainerID(id string) (string, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", fmt.Errorf("docker: 容器 ID 不能为空")
+	}
+	return id, nil
+}
+
+// timeoutCLISession bounds every remote command so a stuck SSH channel cannot
+// block the caller forever.
+type timeoutCLISession struct {
+	sess    dockerSSHSession
+	timeout time.Duration
+}
+
+func (t timeoutCLISession) CombinedOutput(cmd string) ([]byte, error) {
+	return combinedOutputWithTimeout(t.sess, cmd, t.timeout)
+}
+
+// cliSession returns a timeout-bounded docker.CLISession; a nil ssh yields a nil
+// interface so docker.CLI* report the "missing SSH session" error.
+func (sess *dockerSession) cliSession(timeout time.Duration) docker.CLISession {
+	if sess.ssh == nil {
+		return nil
+	}
+	return timeoutCLISession{sess: sess.ssh, timeout: timeout}
+}
+
+// runContainerOp resolves the session and dispatches to the API or CLI branch.
+func (s *DockerService) runContainerOp(
+	sessionID, id string,
+	api func(ctx context.Context, c *docker.Client, id string) error,
+	cli func(c docker.CLISession, id string) error,
+) error {
+	sess, err := s.lookupSession(sessionID)
+	if err != nil {
+		return err
+	}
+	if id, err = validateContainerID(id); err != nil {
+		return err
+	}
+	if sess.mode == dockerModeCLI {
+		return cli(sess.cliSession(dockerLifecycleTimeout), id)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dockerLifecycleTimeout)
+	defer cancel()
+	return api(ctx, sess.apiClient, id)
+}
+
+// StartDockerContainer starts a container. It does not refresh the list.
+func (s *DockerService) StartDockerContainer(sessionID, id string) error {
+	return s.runContainerOp(sessionID, id,
+		func(ctx context.Context, c *docker.Client, id string) error { return c.StartContainer(ctx, id) },
+		docker.CLIStart)
+}
+
+// StopDockerContainer stops a container.
+func (s *DockerService) StopDockerContainer(sessionID, id string) error {
+	return s.runContainerOp(sessionID, id,
+		func(ctx context.Context, c *docker.Client, id string) error { return c.StopContainer(ctx, id) },
+		docker.CLIStop)
+}
+
+// RestartDockerContainer restarts a container.
+func (s *DockerService) RestartDockerContainer(sessionID, id string) error {
+	return s.runContainerOp(sessionID, id,
+		func(ctx context.Context, c *docker.Client, id string) error { return c.RestartContainer(ctx, id) },
+		docker.CLIRestart)
+}
+
+// RemoveDockerContainer removes a container, optionally forcing removal.
+func (s *DockerService) RemoveDockerContainer(sessionID, id string, force bool) error {
+	return s.runContainerOp(sessionID, id,
+		func(ctx context.Context, c *docker.Client, id string) error { return c.RemoveContainer(ctx, id, force) },
+		func(c docker.CLISession, id string) error { return docker.CLIRemove(c, id, force) })
+}
+
+// InspectDockerContainer returns container details.
+func (s *DockerService) InspectDockerContainer(sessionID, id string) (docker.ContainerDetail, error) {
+	sess, err := s.lookupSession(sessionID)
+	if err != nil {
+		return docker.ContainerDetail{}, err
+	}
+	if id, err = validateContainerID(id); err != nil {
+		return docker.ContainerDetail{}, err
+	}
+	if sess.mode == dockerModeCLI {
+		return docker.CLIInspect(sess.cliSession(dockerOpTimeout), id)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dockerOpTimeout)
+	defer cancel()
+	return sess.apiClient.InspectContainer(ctx, id)
+}
+
+// GetDockerContainerLogs returns a one-shot snapshot of the last tail lines
+// (tail<=0 means all). Streaming follow is handled separately.
+func (s *DockerService) GetDockerContainerLogs(sessionID, id string, tail int) (string, error) {
+	sess, err := s.lookupSession(sessionID)
+	if err != nil {
+		return "", err
+	}
+	if id, err = validateContainerID(id); err != nil {
+		return "", err
+	}
+	if sess.mode == dockerModeCLI {
+		return docker.CLILogsTail(sess.cliSession(dockerOpTimeout), id, tail)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dockerOpTimeout)
+	defer cancel()
+	return sess.apiClient.GetContainerLogs(ctx, id, tail)
 }
 
 func (s *DockerService) sessionMode(sessionID string) string {
