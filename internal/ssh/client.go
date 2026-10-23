@@ -112,6 +112,20 @@ func (c *Client) Dial(network, addr string) (net.Conn, error) {
 	return c.client.Dial(network, addr)
 }
 
+// CombinedOutput runs cmd in a new session on the remote host and returns
+// its combined stdout and stderr. It does not allocate a PTY.
+func (c *Client) CombinedOutput(cmd string) ([]byte, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("ssh client not connected")
+	}
+	session, err := c.client.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ssh session: %w", err)
+	}
+	defer session.Close()
+	return session.CombinedOutput(cmd)
+}
+
 // getKeyAuth loads a private key file and returns an SSH auth method
 func getKeyAuth(keyPath, passphrase string) (cryptossh.AuthMethod, error) {
 	// Read the private key file

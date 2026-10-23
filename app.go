@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"AHaSSHTools/internal/config"
+	"AHaSSHTools/internal/docker"
 	"AHaSSHTools/internal/service"
 	"AHaSSHTools/internal/service/copilot"
 	"AHaSSHTools/internal/ssh"
@@ -51,6 +52,7 @@ type App struct {
 	monitorService        *service.MonitorService
 	settingsService       *service.SettingsService
 	devToolsService       *service.DevToolsService
+	dockerService         *service.DockerService
 	databaseService       *service.DatabaseService
 	nativeDatabaseService *service.NativeDatabaseService
 	jdbcPaths             service.JDBCPaths
@@ -149,6 +151,7 @@ func (a *App) startup(ctx context.Context) {
 	a.monitorService = service.NewMonitorService(sessionManager)
 	a.settingsService = service.NewSettingsService(configManager)
 	a.devToolsService = service.NewDevToolsService()
+	a.dockerService = service.NewDockerService(a.connectionService)
 
 	homeDir, homeErr := os.UserHomeDir()
 	if homeErr != nil {
@@ -2177,4 +2180,48 @@ func (a *App) GetTableDDL(sessionID, database, table string) (*service.TableDDL,
 // GetTableDDLInSchema returns table DDL scoped to a PostgreSQL-compatible schema.
 func (a *App) GetTableDDLInSchema(sessionID, database, schema, table string) (*service.TableDDL, error) {
 	return a.databaseService.GetTableDDLInSchema(sessionID, database, schema, table)
+}
+
+// DetectLocalDocker 探测本机 Docker 是否可用，无需已保存的资产。
+func (a *App) DetectLocalDocker() (map[string]interface{}, error) {
+	if a.dockerService == nil {
+		return nil, errors.New("docker 服务未初始化")
+	}
+	ok, detail, err := a.dockerService.DetectLocalDocker()
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"ok": ok, "detail": detail}, nil
+}
+
+// TestDockerConnection 测试 Docker 连接（local / tcp / ssh）。
+func (a *App) TestDockerConnection(conn config.ConnectionConfig) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.TestDockerConnection(conn)
+}
+
+// ConnectDocker 建立 Docker 会话。
+func (a *App) ConnectDocker(sessionID string, conn config.ConnectionConfig) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.ConnectDocker(sessionID, conn)
+}
+
+// CloseDocker 关闭 Docker 会话（含隧道与专用 SSH 连接）。
+func (a *App) CloseDocker(sessionID string) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.CloseDocker(sessionID)
+}
+
+// ListDockerContainers 列出容器。
+func (a *App) ListDockerContainers(sessionID string, all bool) ([]docker.ContainerSummary, error) {
+	if a.dockerService == nil {
+		return nil, errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.ListDockerContainers(sessionID, all)
 }
