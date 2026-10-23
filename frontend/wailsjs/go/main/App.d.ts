@@ -290,6 +290,8 @@ export function SuggestCommands(arg1:string,arg2:string,arg3:number):Promise<Arr
 
 export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
+export function TestDockerConnection(arg1:config.ConnectionConfig):Promise<void>;
+
 export function TestDatabaseConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function TestDatabaseConnectionWithOptions(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Record<string, string>):Promise<void>;

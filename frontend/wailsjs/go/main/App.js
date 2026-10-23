@@ -570,6 +570,10 @@ export function TestConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
+export function TestDockerConnection(arg1) {
+  return window['go']['main']['App']['TestDockerConnection'](arg1);
+}
+
 export function TestDatabaseConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['TestDatabaseConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
 }

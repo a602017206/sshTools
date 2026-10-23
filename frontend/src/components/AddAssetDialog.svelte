@@ -11,6 +11,7 @@
   import { groupDatabaseTypesByCategory } from '../lib/databaseTypeCatalog.js';
   import { applyPreferredGroupToFormData, resolvePreferredConnectionGroup } from '../lib/assetGroupTree.js';
   import { TERMINAL_CHARSET_OPTIONS, normalizeTerminalCharset } from '../lib/terminalCharset.js';
+  import { buildDockerMetadata } from '../lib/dockerTransport.js';
 
   export let isOpen = false;
   export let onAdd = () => {};
@@ -20,8 +21,20 @@
   export let dialogRequestVersion = 0;
   export let preferredDomain = 'all';
   export let preferredGroup = '';
+  // 打开参数：{ assetType: 'docker', transport: 'ssh', sshConnectionId, name }
+  export let defaults = null;
 
   let assetType = 'ssh';
+  let dockerTransport = 'local'; // local | ssh | tcp
+  let dockerSshConnectionId = '';
+  let dockerExtraMetadata = {}; // 编辑时保留 socket_path / remote_socket / cli_fallback / tls
+  let sshConnections = [];
+  let sshConnectionsLoaded = false;
+  const dockerTransportOptions = [
+    { value: 'local', label: '本机', help: '连接本机 Docker（默认 socket）' },
+    { value: 'ssh', label: 'SSH', help: '通过已保存的 SSH 连接访问远端 Docker' },
+    { value: 'tcp', label: 'TCP', help: '直连 Docker TCP 端点（如 2375）' }
+  ];
   let authType = 'password';
   let testingConnection = false;
   let testResult = '';
@@ -96,9 +109,10 @@
     assetType !== 'database' || databaseTypeRequiresPassword(formData.dbType)
   );
   $: showDatabasePasswordFields = authType === 'password' && !isSQLiteDatabase;
+  $: isDocker = assetType === 'docker';
+  $: showHostPortFields = !isSQLiteDatabase && (!isDocker || dockerTransport === 'tcp');
   $: showDatabaseUsernameField = !isSQLiteDatabase && (
     (assetType === 'ssh' && authType === 'password')
-    || assetType === 'docker'
     || (assetType === 'database' && authType !== 'none' && (requiresDatabaseUsername || supportsAuthNone))
   );
   $: selectedJDBCDriver = jdbcDrivers.find(driver => driver.id === formData.dbType);
@@ -121,13 +135,92 @@
     );
   }
 
+  function parseDockerExtraMetadata(metadata = {}) {
+    const extra = {};
+    if (metadata.socket_path) extra.socketPath = metadata.socket_path;
+    if (metadata.remote_socket) extra.remoteSocket = metadata.remote_socket;
+    if (metadata.cli_fallback === 'false') extra.cliFallback = false;
+    else if (metadata.cli_fallback === 'true') extra.cliFallback = true;
+    if (metadata.tls === 'true') extra.tls = true;
+    else if (metadata.tls === 'false') extra.tls = false;
+    return extra;
+  }
+
+  function dockerMetadata() {
+    return buildDockerMetadata({
+      transport: dockerTransport,
+      sshConnectionId: dockerTransport === 'ssh' ? dockerSshConnectionId : undefined,
+      ...(dockerTransport === 'local' ? { socketPath: dockerExtraMetadata.socketPath } : {}),
+      ...(dockerTransport === 'ssh' ? { remoteSocket: dockerExtraMetadata.remoteSocket, cliFallback: dockerExtraMetadata.cliFallback } : {}),
+      ...(dockerTransport === 'tcp' ? { tls: dockerExtraMetadata.tls } : {})
+    });
+  }
+
+  function validateDockerForm() {
+    if (dockerTransport === 'ssh' && !dockerSshConnectionId) {
+      return '请选择 SSH 连接';
+    }
+    if (dockerTransport === 'tcp') {
+      if (!formData.host) return '请填写主机地址';
+      const port = parseInt(formData.port);
+      if (!Number.isInteger(port) || port <= 0 || port > 65535) return '请填写有效端口';
+    }
+    return '';
+  }
+
+  function dockerConnectionConfig(id) {
+    return {
+      id,
+      name: formData.name,
+      host: dockerTransport === 'tcp' ? formData.host : '',
+      port: dockerTransport === 'tcp' ? parseInt(formData.port) : 0,
+      user: '',
+      auth_type: 'none',
+      key_path: '',
+      tags: [formData.group || '默认分组'],
+      type: 'docker',
+      metadata: dockerMetadata()
+    };
+  }
+
+  async function loadSSHConnections() {
+    sshConnectionsLoaded = true;
+    if (!window.wailsBindings || typeof window.wailsBindings.GetConnections !== 'function') {
+      return;
+    }
+    try {
+      const list = await window.wailsBindings.GetConnections();
+      sshConnections = (list || []).filter((conn) => (conn.type || 'ssh') === 'ssh');
+    } catch (error) {
+      console.warn('Failed to load SSH connections:', error);
+    }
+  }
+
+  function selectDockerTransport(transport) {
+    dockerTransport = transport;
+    testResult = '';
+    if (transport === 'tcp' && !editingAsset && !formData.host) {
+      formData.port = getDefaultPortFor('docker');
+    }
+  }
+
   async function handleTestConnection() {
     if (!window.wailsBindings) {
       testResult = 'Wails 绑定未加载';
       return;
     }
 
-    if (!isSQLiteDatabase && !formData.host) {
+    if (isDocker) {
+      const dockerError = validateDockerForm();
+      if (dockerError) {
+        testResult = dockerError;
+        return;
+      }
+      if (typeof window.wailsBindings.TestDockerConnection !== 'function') {
+        testResult = '当前版本不支持 Docker 连接测试';
+        return;
+      }
+    } else if (!isSQLiteDatabase && !formData.host) {
       testResult = '请填写主机地址';
       return;
     }
@@ -157,7 +250,9 @@
     testResult = '';
 
     try {
-      if (assetType === 'database' && isNativeDatabase) {
+      if (isDocker) {
+        await window.wailsBindings.TestDockerConnection(dockerConnectionConfig(formData.id || ''));
+      } else if (assetType === 'database' && isNativeDatabase) {
         await window.wailsBindings.TestNativeDatabaseConnection(
           formData.host,
           parseInt(formData.port),
@@ -221,7 +316,17 @@
       return;
     }
 
-    if (!formData.name || (!isSQLiteDatabase && !formData.host)) {
+    if (isDocker) {
+      if (!formData.name) {
+        alert('请填写连接名称');
+        return;
+      }
+      const dockerError = validateDockerForm();
+      if (dockerError) {
+        alert(dockerError);
+        return;
+      }
+    } else if (!formData.name || (!isSQLiteDatabase && !formData.host)) {
       alert('请填写必填字段（连接名称、主机地址）');
       return;
     }
@@ -256,8 +361,9 @@
 
     try {
       const isEdit = !!editingAsset?.id;
-      const connectionData = {
-        id: isEdit ? editingAsset.id : `conn_${Date.now()}`,
+      const connectionId = isEdit ? editingAsset.id : `conn_${Date.now()}`;
+      const connectionData = isDocker ? dockerConnectionConfig(connectionId) : {
+        id: connectionId,
         name: formData.name,
         host: isSQLiteDatabase ? '' : formData.host,
         port: parseInt(formData.port),
@@ -313,6 +419,9 @@
   function resetForm() {
     assetType = 'ssh';
     authType = 'password';
+    dockerTransport = 'local';
+    dockerSshConnectionId = '';
+    dockerExtraMetadata = {};
     formData = createBlankConnectionFormData();
     testResult = '';
     showPassword = false;
@@ -324,8 +433,29 @@
     editingAssetLoaded = false; // Reset the loaded flag
     resetEditingAssetId = null;
     applyPreferredDomainDefaults();
+    applyOpenDefaults();
     formData = applyPreferredGroupToFormData(formData, preferredGroup);
     groupSearchTerm = formData.group || '';
+  }
+
+  // 支持从外部（如 SSH 资产菜单）预置 Docker 接入方式与关联 SSH 连接。
+  function applyOpenDefaults() {
+    if (!defaults) return;
+    if (defaults.assetType) {
+      assetType = defaults.assetType;
+      formData.port = getDefaultPortFor(assetType, formData.dbType);
+    }
+    if (assetType === 'docker') {
+      if (['local', 'ssh', 'tcp'].includes(defaults.transport)) {
+        dockerTransport = defaults.transport;
+      }
+      if (defaults.sshConnectionId) {
+        dockerSshConnectionId = defaults.sshConnectionId;
+      }
+    }
+    if (defaults.name) {
+      formData.name = defaults.name;
+    }
   }
 
   function applyPreferredDomainDefaults() {
@@ -342,6 +472,12 @@
     formData = { ...createBlankConnectionFormData(), ...cloningAsset, id: '', passphrase: '' };
     assetType = cloningAsset.type || 'ssh';
     authType = cloningAsset.authType || 'password';
+    if (assetType === 'docker') {
+      const metadata = cloningAsset.metadata || {};
+      dockerTransport = metadata.transport || 'local';
+      dockerSshConnectionId = metadata.ssh_connection_id || '';
+      dockerExtraMetadata = parseDockerExtraMetadata(metadata);
+    }
     groupSearchTerm = formData.group;
     testResult = '';
     appliedCloningAsset = cloningAsset;
@@ -446,6 +582,9 @@
     if (authType !== 'password' && authType !== 'key') {
       authType = 'password';
     }
+  } else if (assetType === 'docker') {
+    // Docker 不使用用户名/密码，认证由接入方式（本机 / SSH 连接 / TCP）决定
+    authType = 'none';
   } else if (supportsAuthNone) {
     if (authType !== 'none' && authType !== 'password') {
       authType = 'none';
@@ -483,6 +622,11 @@
         };
         assetType = conn.type || 'ssh';
         authType = conn.auth_type || 'password';
+        if (assetType === 'docker') {
+          dockerTransport = conn.metadata?.transport || 'local';
+          dockerSshConnectionId = conn.metadata?.ssh_connection_id || '';
+          dockerExtraMetadata = parseDockerExtraMetadata(conn.metadata || {});
+        }
         editingAssetLoaded = true; // Mark as loaded
 
         // Load password if saved
@@ -506,6 +650,14 @@
 
   $: if (isOpen && editingAsset) {
     loadConnectionData();
+  }
+
+  $: if (isOpen && assetType === 'docker' && dockerTransport === 'ssh' && !sshConnectionsLoaded) {
+    loadSSHConnections();
+  }
+
+  $: if (!isOpen) {
+    sshConnectionsLoaded = false;
   }
 
   $: if (isOpen && assetType === 'database' && !isNativeDatabase && !jdbcDriversLoaded) {
@@ -537,8 +689,6 @@
     showGroupDropdown = true;
     selectedGroupIndex = -1;
     editingAssetLoaded = false; // Reset the loaded flag
-    assetType = 'ssh'; // Reset asset type
-    authType = 'password'; // Reset auth type
   }
 
   function selectGroup(group) {
@@ -680,6 +830,48 @@
          class={inputClass}
        />
      </div>
+
+     {#if assetType === 'docker'}
+       <div>
+         <div class={labelClass}>接入方式</div>
+         <div class="flex gap-2">
+           {#each dockerTransportOptions as option (option.value)}
+             <button
+               type="button"
+               on:click={() => selectDockerTransport(option.value)}
+               class={authChoiceClass(dockerTransport === option.value)}
+             >
+               <div class="text-xs font-medium">{option.label}</div>
+             </button>
+           {/each}
+         </div>
+         <p class="mt-0.5 text-[10px] ops-help">
+           {dockerTransportOptions.find((option) => option.value === dockerTransport)?.help}
+         </p>
+       </div>
+
+       {#if dockerTransport === 'ssh'}
+         <div>
+           <label class={labelClass} for="docker-ssh-connection">
+             SSH 连接 <span class="ops-required">*</span>
+           </label>
+           <select
+             id="docker-ssh-connection"
+             bind:value={dockerSshConnectionId}
+             on:change={() => { testResult = ''; }}
+             class={inputClass}
+           >
+             <option value="">请选择 SSH 连接</option>
+             {#each sshConnections as conn (conn.id)}
+               <option value={conn.id}>{conn.name}{conn.host ? ` (${conn.host})` : ''}</option>
+             {/each}
+           </select>
+           {#if sshConnectionsLoaded && sshConnections.length === 0}
+             <p class="mt-0.5 text-[10px] ops-help">暂无已保存的 SSH 连接，请先添加 SSH 资产。</p>
+           {/if}
+         </div>
+       {/if}
+     {/if}
 
      {#if assetType === 'ssh'}
        <div>
@@ -830,7 +1022,7 @@
 	   {/if}
      {/if}
 
-     {#if !isSQLiteDatabase}
+     {#if showHostPortFields}
        <div class="grid grid-cols-3 gap-2">
          <div class="col-span-2">
            <label class={labelClass} for="connection-host">
