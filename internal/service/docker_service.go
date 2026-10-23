@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -31,6 +32,8 @@ const (
 type dockerSSHSession interface {
 	Dial(network, addr string) (net.Conn, error)
 	CombinedOutput(cmd string) ([]byte, error)
+	// StreamOutput 启动 cmd 并返回合并后的 stdout/stderr 流；Close 会终止远程命令。
+	StreamOutput(cmd string) (io.ReadCloser, error)
 	Close() error
 }
 
@@ -103,9 +106,15 @@ type dockerSession struct {
 	apiClient *docker.Client
 	tunnel    *docker.UnixTunnel
 	ssh       dockerSSHSession
+
+	// 日志跟流；close() 时全部停止。
+	followMu      sync.Mutex
+	follows       map[string]*dockerFollow
+	followsClosed bool
 }
 
 func (s *dockerSession) close() error {
+	s.stopAllFollows()
 	var first error
 	keep := func(err error) {
 		if err != nil && first == nil {

@@ -1100,19 +1100,13 @@ func (a *App) UploadExpandedItems(sessionID string, remotePath string, items []s
 
 // DownloadFile downloads a single file
 func (a *App) DownloadFile(sessionID string, remotePath string, localPath string) (string, error) {
-	// Use service with Wails-specific progress callback
-	return a.sftpService.DownloadFile(sessionID, remotePath, localPath, func(progress ssh.TransferProgress) {
-		// Emit event to frontend
-		runtime.EventsEmit(a.ctx, sftpProgressEventPrefix+progress.TransferID, progress)
-	})
+	// 与上传一致：同时发 transfer 与 session 进度事件，避免订阅稍晚丢首包进度
+	return a.sftpService.DownloadFile(sessionID, remotePath, localPath, a.emitSFTPProgress)
 }
 
 // DownloadFiles downloads multiple files
 func (a *App) DownloadFiles(sessionID string, remotePaths []string, localPath string) ([]string, error) {
-	return a.sftpService.DownloadFiles(sessionID, remotePaths, localPath, func(progress ssh.TransferProgress) {
-		// Emit event to frontend
-		runtime.EventsEmit(a.ctx, sftpProgressEventPrefix+progress.TransferID, progress)
-	})
+	return a.sftpService.DownloadFiles(sessionID, remotePaths, localPath, a.emitSFTPProgress)
 }
 
 // DeleteFile deletes a single file or directory
@@ -2224,6 +2218,12 @@ func (a *App) CloseDocker(sessionID string) error {
 }
 
 // ListDockerContainers 列出容器。
+func (a *App) ListDockerContainers(sessionID string, all bool) ([]docker.ContainerSummary, error) {
+	if a.dockerService == nil {
+		return nil, errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.ListDockerContainers(sessionID, all)
+}
 
 // StartDockerContainer 启动容器（不自动刷新列表）。
 func (a *App) StartDockerContainer(sessionID, id string) error {
@@ -2272,9 +2272,22 @@ func (a *App) GetDockerContainerLogs(sessionID, id string, tail int) (string, er
 	}
 	return a.dockerService.GetDockerContainerLogs(sessionID, id, tail)
 }
-func (a *App) ListDockerContainers(sessionID string, all bool) ([]docker.ContainerSummary, error) {
+
+// StartDockerContainerLogs 开始跟流容器日志；数据通过 docker:logs:{sessionID}:{id} 事件推送。
+func (a *App) StartDockerContainerLogs(sessionID, id string, tail int) error {
 	if a.dockerService == nil {
-		return nil, errors.New("docker 服务未初始化")
+		return errors.New("docker 服务未初始化")
 	}
-	return a.dockerService.ListDockerContainers(sessionID, all)
+	event := "docker:logs:" + sessionID + ":" + id
+	return a.dockerService.StartDockerContainerLogs(sessionID, id, tail, func(chunk string) {
+		runtime.EventsEmit(a.ctx, event, map[string]string{"chunk": chunk})
+	})
+}
+
+// StopDockerContainerLogs 停止容器日志跟流。
+func (a *App) StopDockerContainerLogs(sessionID, id string) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.StopDockerContainerLogs(sessionID, id)
 }

@@ -1,7 +1,9 @@
 package ssh
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"time"
@@ -124,6 +126,49 @@ func (c *Client) CombinedOutput(cmd string) ([]byte, error) {
 	}
 	defer session.Close()
 	return session.CombinedOutput(cmd)
+}
+
+// StreamOutput starts cmd in a new session (no PTY) and returns a reader that
+// yields its merged stdout and stderr as they arrive. Closing the reader tears
+// down the session, which terminates the remote command.
+func (c *Client) StreamOutput(cmd string) (io.ReadCloser, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("ssh client not connected")
+	}
+	session, err := c.client.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ssh session: %w", err)
+	}
+	pr, pw := io.Pipe()
+	// io.Pipe 的写入是串行的，stdout/stderr 可安全共用同一个 writer。
+	session.Stdout = pw
+	session.Stderr = pw
+	if err := session.Start(cmd); err != nil {
+		_ = session.Close()
+		_ = pw.Close()
+		return nil, fmt.Errorf("failed to start command: %w", err)
+	}
+	go func() {
+		err := session.Wait()
+		_ = session.Close()
+		var ee *cryptossh.ExitError
+		if err != nil && !errors.As(err, &ee) {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.Close()
+	}()
+	return &streamReader{PipeReader: pr, session: session}, nil
+}
+
+type streamReader struct {
+	*io.PipeReader
+	session *cryptossh.Session
+}
+
+func (s *streamReader) Close() error {
+	_ = s.session.Close()
+	return s.PipeReader.Close()
 }
 
 // getKeyAuth loads a private key file and returns an SSH auth method

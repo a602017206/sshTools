@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 func (c *Client) GetContainerLogs(ctx context.Context, id string, tail int) (string, error) {
@@ -131,10 +132,11 @@ func (m *multiplexReader) readFrameHeader() error {
 }
 
 type demuxLogReadCloser struct {
-	ctx      context.Context
-	body     io.ReadCloser
-	mr       *multiplexReader
-	closeOnce bool
+	ctx       context.Context
+	body      io.ReadCloser
+	mr        *multiplexReader
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func (d *demuxLogReadCloser) Read(p []byte) (int, error) {
@@ -142,9 +144,6 @@ func (d *demuxLogReadCloser) Read(p []byte) (int, error) {
 }
 
 func (d *demuxLogReadCloser) Close() error {
-	if d.closeOnce {
-		return nil
-	}
-	d.closeOnce = true
-	return d.body.Close()
+	d.closeOnce.Do(func() { d.closeErr = d.body.Close() })
+	return d.closeErr
 }

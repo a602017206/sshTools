@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"AHaSSHTools/internal/config"
 	"AHaSSHTools/internal/ssh"
@@ -42,6 +44,58 @@ type fakeDockerSSH struct {
 	outputErr error
 	commands  []string
 	closed    int
+	streamErr error
+	streams   []*fakeStream
+}
+
+// fakeStream 是可由测试推送数据的可取消管道。
+type fakeStream struct {
+	pr     *io.PipeReader
+	pw     *io.PipeWriter
+	mu     sync.Mutex
+	closed bool
+}
+
+func newFakeStream() *fakeStream {
+	pr, pw := io.Pipe()
+	return &fakeStream{pr: pr, pw: pw}
+}
+
+func (f *fakeStream) Read(p []byte) (int, error) { return f.pr.Read(p) }
+
+func (f *fakeStream) Close() error {
+	f.mu.Lock()
+	f.closed = true
+	f.mu.Unlock()
+	_ = f.pr.Close()
+	return f.pw.Close()
+}
+
+func (f *fakeStream) isClosed() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.closed
+}
+
+func (f *fakeDockerSSH) StreamOutput(cmd string) (io.ReadCloser, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.commands = append(f.commands, cmd)
+	if f.streamErr != nil {
+		return nil, f.streamErr
+	}
+	st := newFakeStream()
+	f.streams = append(f.streams, st)
+	return st, nil
+}
+
+func (f *fakeDockerSSH) stream(i int) *fakeStream {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if i < len(f.streams) {
+		return f.streams[i]
+	}
+	return nil
 }
 
 func (f *fakeDockerSSH) Dial(network, addr string) (net.Conn, error) {
@@ -586,4 +640,237 @@ func TestDockerAPILifecycleInspectLogs(t *testing.T) {
 			t.Errorf("missing call %q in:\n%s", w, joined)
 		}
 	}
+}
+
+// ---- Phase 2 Task 5: 日志跟流 ----
+
+type chunkCollector struct {
+	mu     sync.Mutex
+	chunks []string
+}
+
+func (c *chunkCollector) emit(s string) {
+	c.mu.Lock()
+	c.chunks = append(c.chunks, s)
+	c.mu.Unlock()
+}
+
+func (c *chunkCollector) joined() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return strings.Join(c.chunks, "")
+}
+
+func (c *chunkCollector) waitFor(t *testing.T, want string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(c.joined(), want) {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("等待 %q 超时，当前=%q", want, c.joined())
+}
+
+func waitStream(t *testing.T, sess *fakeDockerSSH, i int) *fakeStream {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if st := sess.stream(i); st != nil {
+			return st
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("stream %d 未创建", i)
+	return nil
+}
+
+func TestDockerCLILogFollowStreamsAndStops(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+	col := &chunkCollector{}
+	if err := svc.StartDockerContainerLogs("s1", "abc", 100, col.emit); err != nil {
+		t.Fatal(err)
+	}
+	if got := sess.commands[len(sess.commands)-1]; got != "docker logs -f --tail 100 'abc'" {
+		t.Fatalf("cmd=%q", got)
+	}
+	st := waitStream(t, sess, 0)
+	_, _ = st.pw.Write([]byte("hello\n"))
+	col.waitFor(t, "hello\n")
+	_, _ = st.pw.Write([]byte("world\n"))
+	col.waitFor(t, "world\n")
+
+	if err := svc.StopDockerContainerLogs("s1", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if !st.isClosed() {
+		t.Fatal("Stop 后流应被关闭")
+	}
+	before := col.joined()
+	_, _ = st.pw.Write([]byte("late\n"))
+	time.Sleep(30 * time.Millisecond)
+	if col.joined() != before {
+		t.Fatalf("Stop 后不应再 emit: %q", col.joined())
+	}
+	// 重复 Stop 为 no-op
+	if err := svc.StopDockerContainerLogs("s1", "abc"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDockerLogFollowRestartStopsPrevious(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+	first, second := &chunkCollector{}, &chunkCollector{}
+	if err := svc.StartDockerContainerLogs("s1", "abc", 0, first.emit); err != nil {
+		t.Fatal(err)
+	}
+	st1 := waitStream(t, sess, 0)
+	if err := svc.StartDockerContainerLogs("s1", "abc", 0, second.emit); err != nil {
+		t.Fatal(err)
+	}
+	if !st1.isClosed() {
+		t.Fatal("重启后旧流应被关闭")
+	}
+	st2 := waitStream(t, sess, 1)
+	_, _ = st2.pw.Write([]byte("new\n"))
+	second.waitFor(t, "new\n")
+	if first.joined() != "" {
+		t.Fatalf("旧回调不应收到数据: %q", first.joined())
+	}
+	if got := sess.commands[len(sess.commands)-1]; got != "docker logs -f 'abc'" {
+		t.Fatalf("cmd=%q", got)
+	}
+}
+
+func TestDockerCloseStopsLogFollowEmits(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+	col := &chunkCollector{}
+	if err := svc.StartDockerContainerLogs("s1", "abc", 10, col.emit); err != nil {
+		t.Fatal(err)
+	}
+	st := waitStream(t, sess, 0)
+	_, _ = st.pw.Write([]byte("a\n"))
+	col.waitFor(t, "a\n")
+	if err := svc.CloseDocker("s1"); err != nil {
+		t.Fatal(err)
+	}
+	if !st.isClosed() {
+		t.Fatal("CloseDocker 应关闭日志流")
+	}
+	before := col.joined()
+	_, _ = st.pw.Write([]byte("b\n"))
+	time.Sleep(30 * time.Millisecond)
+	if col.joined() != before {
+		t.Fatalf("CloseDocker 后不应再 emit: %q", col.joined())
+	}
+}
+
+func TestDockerCloseAllStopsEveryLogFollow(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+	col := &chunkCollector{}
+	for _, id := range []string{"c1", "c2"} {
+		if err := svc.StartDockerContainerLogs("s1", id, 10, col.emit); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s1, s2 := waitStream(t, sess, 0), waitStream(t, sess, 1)
+	if err := svc.CloseAll(); err != nil {
+		t.Fatal(err)
+	}
+	if !s1.isClosed() || !s2.isClosed() {
+		t.Fatal("CloseAll 应关闭全部日志流")
+	}
+}
+
+func TestDockerLogFollowErrors(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+	emit := func(string) {}
+	if err := svc.StartDockerContainerLogs("nope", "abc", 1, emit); err == nil {
+		t.Error("未知会话应报错")
+	}
+	if err := svc.StartDockerContainerLogs("s1", " ", 1, emit); err == nil {
+		t.Error("空 ID 应报错")
+	}
+	if err := svc.StartDockerContainerLogs("s1", "abc", 1, nil); err == nil {
+		t.Error("nil emit 应报错")
+	}
+	if err := svc.StopDockerContainerLogs("nope", "abc"); err != nil {
+		t.Errorf("未知会话 Stop 应为 no-op: %v", err)
+	}
+	sess.streamErr = errors.New("boom")
+	if err := svc.StartDockerContainerLogs("s1", "abc", 1, emit); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("流创建失败应返回错误: %v", err)
+	}
+}
+
+func TestDockerLogFollowEmitsWholeUTF8Runes(t *testing.T) {
+	sess := &fakeDockerSSH{dialErr: errors.New("x"), output: cliJSONLine}
+	svc := newCLIDockerService(t, sess)
+	col := &chunkCollector{}
+	if err := svc.StartDockerContainerLogs("s1", "abc", 1, col.emit); err != nil {
+		t.Fatal(err)
+	}
+	st := waitStream(t, sess, 0)
+	b := []byte("日志\n")
+	_, _ = st.pw.Write(b[:4]) // 切断第二个汉字
+	time.Sleep(30 * time.Millisecond)
+	col.mu.Lock()
+	for _, c := range col.chunks {
+		if !utf8.ValidString(c) {
+			col.mu.Unlock()
+			t.Fatalf("chunk 含不完整 UTF-8: %q", c)
+		}
+	}
+	col.mu.Unlock()
+	_, _ = st.pw.Write(b[4:])
+	col.waitFor(t, "日志\n")
+}
+
+func TestDockerAPILogFollow(t *testing.T) {
+	released := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_ping":
+			_, _ = w.Write([]byte("OK"))
+		case "/containers/abc/logs":
+			if r.URL.Query().Get("follow") != "1" || r.URL.Query().Get("tail") != "20" {
+				t.Errorf("query=%s", r.URL.RawQuery)
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte{1, 0, 0, 0, 0, 0, 0, 3, 'h', 'i', '\n'})
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+			close(released)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	host, portStr, _ := net.SplitHostPort(srv.Listener.Addr().String())
+	var port int
+	fmt.Sscanf(portStr, "%d", &port)
+	svc := NewDockerService(nil)
+	if err := svc.ConnectDocker("t", config.ConnectionConfig{Host: host, Port: port, Type: "docker"}); err != nil {
+		t.Fatal(err)
+	}
+	col := &chunkCollector{}
+	if err := svc.StartDockerContainerLogs("t", "abc", 20, col.emit); err != nil {
+		t.Fatal(err)
+	}
+	col.waitFor(t, "hi\n")
+	if err := svc.StopDockerContainerLogs("t", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-released:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop 后服务端请求应被取消")
+	}
+	_ = svc.CloseAll()
 }
