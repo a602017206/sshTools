@@ -292,6 +292,14 @@ export function TestConnection(arg1:string,arg2:number,arg3:string,arg4:string,a
 
 export function TestDockerConnection(arg1:config.ConnectionConfig):Promise<void>;
 
+export function ConnectDocker(arg1:string,arg2:config.ConnectionConfig):Promise<void>;
+
+export function CloseDocker(arg1:string):Promise<void>;
+
+export function ListDockerContainers(arg1:string,arg2:boolean):Promise<Array<Record<string, any>>>;
+
+export function DetectLocalDocker():Promise<Record<string, any>>;
+
 export function TestDatabaseConnection(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function TestDatabaseConnectionWithOptions(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Record<string, string>):Promise<void>;

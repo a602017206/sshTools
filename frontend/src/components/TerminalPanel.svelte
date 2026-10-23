@@ -5,6 +5,7 @@
   import DatabaseTablePanel from './DatabaseTablePanel.svelte';
   import TableStructurePanel from './TableStructurePanel.svelte';
   import NativeDatabasePanel from './NativeDatabasePanel.svelte';
+  import DockerWorkspace from './DockerWorkspace.svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import BatchExecuteDialog from './BatchExecuteDialog.svelte';
   import {
@@ -104,7 +105,7 @@
   }, new Map());
   $: batchTargets = listBatchTargets(visibleSessions);
   $: activeVisibleSession = visibleSessions.find((session) => session.sessionId === $activeSessionIdStore) || null;
-  $: viewportIsConsole = !activeVisibleSession || activeVisibleSession.type !== 'database';
+  $: viewportIsConsole = !activeVisibleSession || (activeVisibleSession.type !== 'database' && activeVisibleSession.type !== 'docker');
   $: visibleSessionIds = visibleSessions.map((session) => session.sessionId);
   $: tabCloseMenuFlags = sessionTabCloseMenuFlags(visibleSessionIds, tabContextSessionId);
   $: closeConfirmCopy = batchCloseConfirmCopy(pendingCloseIds);
@@ -184,6 +185,41 @@
       return conns;
     });
     activeSessionIdStore.set(sessionId);
+  }
+
+  /** 打开 Docker 会话：只建标签，ConnectDocker 由 DockerWorkspace 挂载后发起，不走 ConnectSSH */
+  export function openDockerSession({ asset, sessionId }) {
+    if (!asset || !sessionId) return;
+
+    if ($connectionsStore.has(sessionId)) {
+      activeSessionIdStore.set(sessionId);
+      return;
+    }
+
+    connectionsStore.update(conns => {
+      conns.set(sessionId, {
+        sessionId,
+        connection: asset,
+        connected: false,
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+        type: 'docker',
+        panelType: 'docker-workspace'
+      });
+      return conns;
+    });
+    activeSessionIdStore.set(sessionId);
+  }
+
+  function handleDockerStatus(sessionId, connected) {
+    connectionsStore.update(conns => {
+      const session = conns.get(sessionId);
+      if (session) {
+        session.connected = connected;
+        conns.set(sessionId, session);
+      }
+      return conns;
+    });
   }
 
   /** 断开数据库连接：先关闭右侧全部相关标签，再关闭后端会话 */
@@ -616,7 +652,16 @@
         }
       }
       updateAssetDbStateBySession(sessionId, false);
-    } else if (closeBackend && !isDatabaseTablePanel && !isDatabaseQueryPanel && !isDatabaseDesignerPanel) {
+    } else if (closeBackend && session?.type === 'docker') {
+      const { CloseDocker } = window.wailsBindings || {};
+      if (typeof CloseDocker === 'function') {
+        try {
+          await CloseDocker(sessionId);
+        } catch (error) {
+          console.error('Failed to close docker session:', error);
+        }
+      }
+    } else if (closeBackend && session?.type !== 'docker' && !isDatabaseTablePanel && !isDatabaseQueryPanel && !isDatabaseDesignerPanel) {
       const { CloseSSH } = window.wailsBindings || {};
       if (typeof CloseSSH === 'function') {
         try {
@@ -1370,7 +1415,7 @@
   <div class="session-tabbar flex items-center border-b overflow-x-auto" style="border-color: var(--glass-border);">
     {#if visibleSessions.length === 0}
       <div class="px-4 py-2 text-xs ops-muted">
-        {mode === 'database' ? '没有数据库会话' : '没有活动连接'}
+        {mode === 'database' ? '没有数据库会话' : mode === 'docker' ? '没有 Docker 会话' : '没有活动连接'}
       </div>
     {:else}
       {#each visibleSessions as session (session.sessionId)}
@@ -1498,6 +1543,12 @@
               />
             {:else if session.type === 'database' && session.panelType === 'native-database'}
               <NativeDatabasePanel sessionId={session.sessionId} dbConfig={session.connection} />
+            {:else if session.type === 'docker'}
+              <DockerWorkspace
+                sessionId={session.sessionId}
+                connection={session.connection}
+                onStatus={(ok) => handleDockerStatus(session.sessionId, ok)}
+              />
             {:else}
               <Terminal
                 bind:this={terminalRefs[session.sessionId]}

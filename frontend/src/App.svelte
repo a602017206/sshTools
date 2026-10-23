@@ -25,7 +25,7 @@
   import SessionToolDock from './components/SessionToolDock.svelte';
   import AIPanel from './components/AIPanel.svelte';
   import DatabaseWorkspaceEmpty from './components/DatabaseWorkspaceEmpty.svelte';
-  import { modeForAsset, resolveMode, resolveSshToolTab } from './lib/workspaceTabs.js';
+  import { isDockerSession, modeForAsset, resolveMode, resolveSshToolTab, sessionMatchesMode } from './lib/workspaceTabs.js';
   import { formatConnectionError } from './lib/formatConnectionError.js';
   import { createClonedConnectionFormData } from './lib/connectionFormData.js';
   import { resolvePreferredConnectionGroup } from './lib/assetGroupTree.js';
@@ -72,7 +72,7 @@
   let sqlFileProgress = null;
 
   $: connectionsArray = $connectionsStore ? Array.from($connectionsStore.values()) : [];
-  $: sshSessions = connectionsArray.filter((session) => session?.type !== 'database');
+  $: sshSessions = connectionsArray.filter((session) => session?.type !== 'database' && !isDockerSession(session));
   $: databaseSessions = connectionsArray.filter((session) => session?.type === 'database');
   $: hasDatabaseSession = databaseSessions.length > 0;
   $: connectedSshSessions = sshSessions.filter((session) => session?.connected);
@@ -87,7 +87,7 @@
   $: copilotWidth = $copilotStore.width;
   $: copilotSession = connectionsArray.find((session) => {
     if (!session || session.sessionId !== $activeSessionIdStore) return false;
-    return activeMode === 'database' ? session.type === 'database' : session.type !== 'database';
+    return sessionMatchesMode(session, activeMode);
   }) || null;
   $: copilotHasSession = Boolean(copilotSession);
   $: copilotSessionId = copilotSession?.sessionId || null;
@@ -307,14 +307,14 @@
   function ensureSshSessionActive() {
     if (!boundSshSession) return;
     const current = $connectionsStore?.get?.($activeSessionIdStore);
-    if (!current || current.type === 'database') {
+    if (!current || current.type === 'database' || isDockerSession(current)) {
       activeSessionIdStore.set(boundSshSession.sessionId);
     }
   }
 
   function selectMode(mode) {
     activeMode = resolveMode(mode);
-    if (activeMode === 'database') {
+    if (activeMode === 'database' || activeMode === 'docker') {
       isRightPanelCollapsed = true;
       return;
     }
@@ -465,6 +465,18 @@
     if (asset.type === 'database') {
       isRightPanelCollapsed = true;
       handleDatabaseConnect({ asset, openPanel: true });
+      return;
+    }
+
+    // Docker 资产不走 ConnectSSH：只在 TerminalPanel 打开 DockerWorkspace 会话
+    if (asset.type === 'docker') {
+      isRightPanelCollapsed = true;
+      if (terminalPanelRef && typeof terminalPanelRef.openDockerSession === 'function') {
+        terminalPanelRef.openDockerSession({ asset, sessionId: `docker-${asset.id}` });
+      } else {
+        console.error('TerminalPanel docker session API not available');
+        alert('Docker 面板未初始化');
+      }
       return;
     }
 
@@ -1099,7 +1111,7 @@
     {/if}
 
     <div class="flex-1 min-w-0 min-h-0 flex flex-col ops-main-stage relative" style="padding: 10px 8px;">
-      <TerminalPanel bind:this={terminalPanelRef} activeMode={activeMode === 'database' ? 'database' : 'ssh'} />
+      <TerminalPanel bind:this={terminalPanelRef} activeMode={activeMode === 'database' || activeMode === 'docker' ? activeMode : 'ssh'} />
       {#if activeMode === 'overview'}
         <div class="absolute inset-0 z-20 ops-wall-overlay">
           <OpsDashboard onConnect={handleConnect} onCreateConnection={openAddConnection} />

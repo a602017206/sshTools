@@ -77,6 +77,7 @@
           (session) =>
             session?.connected &&
             session?.type !== 'database' &&
+            session?.type !== 'docker' &&
             session?.sessionId &&
             boardIds.has(session?.connection?.id)
         );

@@ -574,6 +574,22 @@ export function TestDockerConnection(arg1) {
   return window['go']['main']['App']['TestDockerConnection'](arg1);
 }
 
+export function ConnectDocker(arg1, arg2) {
+  return window['go']['main']['App']['ConnectDocker'](arg1, arg2);
+}
+
+export function CloseDocker(arg1) {
+  return window['go']['main']['App']['CloseDocker'](arg1);
+}
+
+export function ListDockerContainers(arg1, arg2) {
+  return window['go']['main']['App']['ListDockerContainers'](arg1, arg2);
+}
+
+export function DetectLocalDocker() {
+  return window['go']['main']['App']['DetectLocalDocker']();
+}
+
 export function TestDatabaseConnection(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['TestDatabaseConnection'](arg1, arg2, arg3, arg4, arg5, arg6);
 }

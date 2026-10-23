@@ -20,6 +20,7 @@ export function sessionAccentColor(sessionId) {
 
 function tabGroupKey(session) {
   if (session?.type === 'database') return `db:${session?.connection?.id || session?.sessionId || ''}`;
+  if (session?.type === 'docker') return `docker:${session?.connection?.id || session?.sessionId || ''}`;
   if (session?.type === 'local') return `local:${session?.sessionId || ''}`;
   return `ssh:${session?.connection?.id || session?.sessionId || ''}`;
 }
@@ -47,6 +48,7 @@ export function sessionTabTitle(session, ordinal = 1, groupSize = 1) {
 /** 页签副标题：SSH 显示 用户@主机:端口，断开时标注。 */
 export function sessionTabSubtitle(session) {
   if (session?.type === 'database') return '数据库';
+  if (session?.type === 'docker') return session?.connected ? 'Docker' : 'Docker · 未连接';
   if (session?.type === 'local') return '本地终端';
   const conn = session?.connection || {};
   const identity = conn.host
@@ -61,6 +63,7 @@ export function isBatchableSession(session) {
   return Boolean(
     session?.connected &&
       session?.type !== 'database' &&
+      session?.type !== 'docker' &&
       session?.type !== 'local' &&
       session?.connection?.host
   );

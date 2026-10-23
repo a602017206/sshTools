@@ -90,7 +90,11 @@ function findConnectedSession(asset, sessions) {
   }
   return (
     sessions.find(
-      (session) => session?.type !== 'database' && session?.connected && session?.connection?.id === asset.id
+      (session) =>
+        session?.type !== 'database' &&
+        session?.type !== 'docker' &&
+        session?.connected &&
+        session?.connection?.id === asset.id
     ) || null
   );
 }
