@@ -55,7 +55,7 @@
   function startDetailResize(event) {
     event.preventDefault();
     detailResizeStartX = event.clientX;
-    detailResizeStartWidth = detailWidth;
+    detailResizeStartWidth = clampDockerDetailWidth(detailWidth, dockerMainEl?.clientWidth || 0);
     window.addEventListener('pointermove', resizeDetail);
     window.addEventListener('pointerup', stopDetailResize, { once: true });
   }
@@ -547,6 +547,7 @@
 
   .docker-detail-shell {
     flex-shrink: 0;
+    max-width: max(320px, 55%);
     display: flex;
     flex-direction: row;
     min-width: 0;
