@@ -164,3 +164,14 @@ func TestCLILogsTail(t *testing.T) {
 		t.Fatalf("cmd: %q", sess.commands[0])
 	}
 }
+
+func TestBuildDockerExecCommand(t *testing.T) {
+	got := docker.BuildDockerExecCommand("abc123")
+	if got != "docker exec -i -t 'abc123' /bin/sh" {
+		t.Fatalf("cmd: %q", got)
+	}
+	evil := docker.BuildDockerExecCommand("x'; rm -rf / #")
+	if evil != "docker exec -i -t 'x'\\''; rm -rf / #' /bin/sh" {
+		t.Fatalf("not quoted: %q", evil)
+	}
+}

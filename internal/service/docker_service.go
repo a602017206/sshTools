@@ -34,6 +34,8 @@ type dockerSSHSession interface {
 	CombinedOutput(cmd string) ([]byte, error)
 	// StreamOutput 启动 cmd 并返回合并后的 stdout/stderr 流；Close 会终止远程命令。
 	StreamOutput(cmd string) (io.ReadCloser, error)
+	// StartPTYCommand 申请 PTY 并启动 cmd，返回可读写、可 Resize 的交互流；Close 终止远程命令。
+	StartPTYCommand(cmd string, cols, rows int) (ssh.InteractiveStream, error)
 	Close() error
 }
 

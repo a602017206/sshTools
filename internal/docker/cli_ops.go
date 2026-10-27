@@ -51,6 +51,12 @@ func BuildDockerLogsFollowCommand(containerID string, tail int) string {
 	return base + " " + shellQuote(containerID)
 }
 
+// BuildDockerExecCommand builds an interactive shell command for a container
+// (docker exec -i -t <id> /bin/sh). The caller must run it under a PTY.
+func BuildDockerExecCommand(containerID string) string {
+	return "docker exec -i -t " + shellQuote(containerID) + " /bin/sh"
+}
+
 func CLIStart(sess CLISession, id string) error {
 	return cliRun(sess, BuildDockerStartCommand(id))
 }

@@ -89,6 +89,41 @@ func (f *fakeDockerSSH) StreamOutput(cmd string) (io.ReadCloser, error) {
 	return st, nil
 }
 
+// fakePTYStream 是 StartPTYCommand 的测试替身。
+type fakePTYStream struct {
+	*fakeStream
+	mu      sync.Mutex
+	written []byte
+	cols    int
+	rows    int
+}
+
+func (f *fakePTYStream) Write(p []byte) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.written = append(f.written, p...)
+	return len(p), nil
+}
+
+func (f *fakePTYStream) Resize(cols, rows int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cols, f.rows = cols, rows
+	return nil
+}
+
+func (f *fakeDockerSSH) StartPTYCommand(cmd string, cols, rows int) (ssh.InteractiveStream, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.commands = append(f.commands, cmd)
+	if f.streamErr != nil {
+		return nil, f.streamErr
+	}
+	st := &fakePTYStream{fakeStream: newFakeStream(), cols: cols, rows: rows}
+	f.streams = append(f.streams, st.fakeStream)
+	return st, nil
+}
+
 func (f *fakeDockerSSH) stream(i int) *fakeStream {
 	f.mu.Lock()
 	defer f.mu.Unlock()
