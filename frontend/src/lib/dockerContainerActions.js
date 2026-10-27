@@ -13,6 +13,12 @@ function isTransient(container) {
   return /^restarting\b/i.test(statusOf(container));
 }
 
+/** 仅运行中的容器可 Exec（与 isUp 一致）。 */
+export function canExec(container) {
+  if (!container) return false;
+  return isUp(container);
+}
+
 /** 运行中（含 Paused、Restarting）的容器不可再启动。 */
 export function canStart(container) {
   if (!container) return false;
@@ -39,6 +45,7 @@ export function canRemove(container) {
 export function containerActionMenu(container) {
   return [
     { id: 'detail', label: '详情', disabled: !container },
+    { id: 'exec', label: 'Exec', disabled: !canExec(container) },
     { id: 'start', label: '启动', disabled: !canStart(container) },
     { id: 'stop', label: '停止', disabled: !canStop(container) },
     { id: 'restart', label: '重启', disabled: !canRestart(container) },

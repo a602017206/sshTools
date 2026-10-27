@@ -21,6 +21,7 @@ export function sessionAccentColor(sessionId) {
 function tabGroupKey(session) {
   if (session?.type === 'database') return `db:${session?.connection?.id || session?.sessionId || ''}`;
   if (session?.type === 'docker') return `docker:${session?.connection?.id || session?.sessionId || ''}`;
+  if (session?.type === 'docker-exec') return `docker-exec:${session?.containerId || session?.sessionId || ''}`;
   if (session?.type === 'local') return `local:${session?.sessionId || ''}`;
   return `ssh:${session?.connection?.id || session?.sessionId || ''}`;
 }
@@ -38,8 +39,18 @@ export function decorateSessionTabs(sessions) {
   return ordinals;
 }
 
+/** Docker 容器短 ID（前 12 位）。 */
+export function dockerShortId(containerId) {
+  return String(containerId || '').trim().slice(0, 12);
+}
+
 /** 页签标题：自定义名优先；未改名且同资产有多个页签时自动带 #序号。 */
 export function sessionTabTitle(session, ordinal = 1, groupSize = 1) {
+  if (session?.type === 'docker-exec' && !session?.tabName) {
+    const label = session?.containerName || dockerShortId(session?.containerId) || '容器';
+    const base = `${label} · exec`;
+    return groupSize > 1 ? `${base} #${ordinal}` : base;
+  }
   const base = session?.tabName || session?.connection?.name || '会话';
   if (session?.tabName) return base;
   return groupSize > 1 ? `${base} #${ordinal}` : base;
@@ -49,6 +60,7 @@ export function sessionTabTitle(session, ordinal = 1, groupSize = 1) {
 export function sessionTabSubtitle(session) {
   if (session?.type === 'database') return '数据库';
   if (session?.type === 'docker') return session?.connected ? 'Docker' : 'Docker · 未连接';
+  if (session?.type === 'docker-exec') return dockerShortId(session?.containerId) || 'Docker Exec';
   if (session?.type === 'local') return '本地终端';
   const conn = session?.connection || {};
   const identity = conn.host
@@ -64,9 +76,17 @@ export function isBatchableSession(session) {
     session?.connected &&
       session?.type !== 'database' &&
       session?.type !== 'docker' &&
+      session?.type !== 'docker-exec' &&
       session?.type !== 'local' &&
       session?.connection?.host
   );
+}
+
+/** 主视口是否为控制台（终端）样式：无会话、SSH、本地、docker-exec 为 true。 */
+export function viewportIsConsole(session) {
+  if (!session) return true;
+  if (session.type === 'docker-exec') return true;
+  return session.type !== 'database' && session.type !== 'docker';
 }
 
 export function listBatchTargets(sessions) {

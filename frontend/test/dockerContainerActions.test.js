@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   actionSuccessLabel,
   canRemove,
+  canExec,
   canRestart,
   canStart,
   canStop,
@@ -48,7 +49,7 @@ test('containerActionMenu disables by state', () => {
   assert.equal(stopped.stop.disabled, true);
   assert.deepEqual(
     containerActionMenu(up).map((i) => i.id),
-    ['detail', 'start', 'stop', 'restart', 'remove'],
+    ['detail', 'exec', 'start', 'stop', 'restart', 'remove'],
   );
 });
 
@@ -71,4 +72,14 @@ test('isStillRunningError detects running hint', () => {
 test('actionSuccessLabel', () => {
   assert.equal(actionSuccessLabel('start'), '已启动');
   assert.equal(actionSuccessLabel('x'), '操作完成');
+});
+
+test('canExec 仅运行中容器可用，菜单含 Exec', () => {
+  assert.equal(canExec(up), true);
+  assert.equal(canExec(exited), false);
+  assert.equal(canExec(restarting), false);
+  assert.equal(canExec(null), false);
+  const exec = containerActionMenu(up)[1];
+  assert.deepEqual(exec, { id: 'exec', label: 'Exec', disabled: false });
+  assert.equal(containerActionMenu(exited)[1].disabled, true);
 });

@@ -45,6 +45,12 @@ export function batchCloseConfirmCopy(idsToClose, sessions) {
     };
   }
   const target = (sessions || []).find((session) => session?.sessionId === ids[0]);
+  if (target?.type === 'docker-exec') {
+    return {
+      title: '关闭容器 Exec',
+      message: '确定要关闭此容器 Exec 会话吗？',
+    };
+  }
   if (target?.type === 'docker') {
     return {
       title: '关闭 Docker 连接',
@@ -54,5 +60,29 @@ export function batchCloseConfirmCopy(idsToClose, sessions) {
   return {
     title: '关闭 SSH 会话',
     message: '确定要关闭此 SSH 会话吗？',
+  };
+}
+
+/** 关闭会话时应调用的后端绑定名（供 TerminalPanel 分派）。 */
+export function closeBindingForSession(session) {
+  switch (session?.type) {
+    case 'docker-exec':
+      return 'CloseDockerExec';
+    case 'docker':
+      return 'CloseDocker';
+    case 'database':
+      return 'CloseDatabase';
+    default:
+      return 'CloseSSH';
+  }
+}
+
+/** docker-exec 关闭路径标志：走 CloseDockerExec，且不关闭父 Docker 连接。 */
+export function dockerExecCloseFlags(session) {
+  const isExec = session?.type === 'docker-exec';
+  return {
+    isDockerExec: isExec,
+    closeBinding: isExec ? 'CloseDockerExec' : '',
+    closeParent: false,
   };
 }

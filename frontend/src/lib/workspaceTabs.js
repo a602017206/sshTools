@@ -46,6 +46,10 @@ export function isDockerSession(session) {
   return session?.type === 'docker';
 }
 
+export function isDockerExecSession(session) {
+  return session?.type === 'docker-exec';
+}
+
 /** SSH / 数据库 / Docker 模式各自只展示对应类型的会话标签 */
 export function sessionMatchesMode(session, mode) {
   const resolved = resolveMode(mode);
@@ -53,9 +57,9 @@ export function sessionMatchesMode(session, mode) {
     return isDatabaseSession(session);
   }
   if (resolved === 'docker') {
-    return isDockerSession(session);
+    return isDockerSession(session) || isDockerExecSession(session);
   }
-  return !isDatabaseSession(session) && !isDockerSession(session);
+  return !isDatabaseSession(session) && !isDockerSession(session) && !isDockerExecSession(session);
 }
 
 export function resolveSshToolTab(tab) {
