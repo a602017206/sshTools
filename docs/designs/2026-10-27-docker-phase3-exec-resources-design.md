@@ -70,7 +70,7 @@
 
 | 方法 | 职责 |
 |------|------|
-| `StartDockerExec(dockerSessionID, containerID, cols, rows) (execSessionID, error)` | 创建并启动交互式 exec |
+| `StartDockerExec(dockerSessionID, containerID, execSessionID, cols, rows) (execSessionID, error)` | 创建并启动交互式 exec；`execSessionID` 由前端预生成以便先订阅事件，空串时后端生成 |
 | `SendDockerExecData(execSessionID, data)` | 写入 stdin |
 | `ResizeDockerExec(execSessionID, cols, rows)` | 调整 TTY |
 | `CloseDockerExec(execSessionID)` | 结束 exec |
