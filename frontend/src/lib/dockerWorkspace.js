@@ -43,3 +43,21 @@ export function visibleContainers(containers, onlyRunning) {
   const list = containers || [];
   return onlyRunning ? list.filter(isContainerRunning) : list;
 }
+
+export const DEFAULT_DOCKER_DETAIL_WIDTH = 420;
+export const MIN_DOCKER_DETAIL_WIDTH = 320;
+export const MAX_DOCKER_DETAIL_WIDTH = 720;
+
+/** 将详情侧栏宽度夹到规格范围，并可选按主区宽度限制为约 55%。 */
+export function clampDockerDetailWidth(width, mainWidth) {
+  const raw = Number(width);
+  const base = Number.isFinite(raw) ? raw : DEFAULT_DOCKER_DETAIL_WIDTH;
+  let next = Math.min(MAX_DOCKER_DETAIL_WIDTH, Math.max(MIN_DOCKER_DETAIL_WIDTH, base));
+  const main = Number(mainWidth);
+  if (Number.isFinite(main) && main > 0) {
+    const cap = Math.max(MIN_DOCKER_DETAIL_WIDTH, Math.floor(main * 0.55));
+    next = Math.min(next, Math.min(MAX_DOCKER_DETAIL_WIDTH, cap));
+    next = Math.max(MIN_DOCKER_DETAIL_WIDTH, next);
+  }
+  return next;
+}
