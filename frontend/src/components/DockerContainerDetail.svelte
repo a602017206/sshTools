@@ -331,14 +331,13 @@
 
 <style>
   .docker-detail {
-    flex-shrink: 0;
-    width: 400px;
-    max-width: 45%;
-    min-width: 320px;
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    border-left: 1px solid var(--glass-border);
+    border-left: none; /* 左边框由外层 docker-detail-shell 承担，避免双线 */
     background: var(--glass-bg-strong);
     color: var(--text-primary);
     font-size: 12px;

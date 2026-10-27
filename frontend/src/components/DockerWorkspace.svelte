@@ -15,7 +15,9 @@
     formatContainerCreated,
     isContainerRunning,
     usedCliFallback,
-    visibleContainers
+    visibleContainers,
+    clampDockerDetailWidth,
+    DEFAULT_DOCKER_DETAIL_WIDTH
   } from '../lib/dockerWorkspace.js';
 
   export let sessionId = '';
@@ -43,6 +45,31 @@
   export let selectedContainerId = '';
   export let selectedDetail = null;
   let detailError = '';
+
+  // 详情侧栏宽度（仅会话内记忆，不落盘）
+  let detailWidth = DEFAULT_DOCKER_DETAIL_WIDTH;
+  let detailResizeStartX = 0;
+  let detailResizeStartWidth = 0;
+  let dockerMainEl = null;
+
+  function startDetailResize(event) {
+    event.preventDefault();
+    detailResizeStartX = event.clientX;
+    detailResizeStartWidth = detailWidth;
+    window.addEventListener('pointermove', resizeDetail);
+    window.addEventListener('pointerup', stopDetailResize, { once: true });
+  }
+
+  function resizeDetail(event) {
+    const mainWidth = dockerMainEl?.clientWidth || 0;
+    const proposed = detailResizeStartWidth - (event.clientX - detailResizeStartX);
+    detailWidth = clampDockerDetailWidth(proposed, mainWidth);
+  }
+
+  function stopDetailResize() {
+    window.removeEventListener('pointermove', resizeDetail);
+    window.removeEventListener('pointerup', stopDetailResize);
+  }
 
   $: transportLabel = dockerTransportLabel(connection);
   $: rows = visibleContainers(containers, onlyRunning);
@@ -240,6 +267,7 @@
     connect();
     return () => {
       destroyed = true;
+      stopDetailResize();
       if (noticeTimer) clearTimeout(noticeTimer);
     };
   });
@@ -277,7 +305,7 @@
     </div>
   </div>
 
-  <div class="docker-main">
+  <div class="docker-main" bind:this={dockerMainEl}>
   <div class="docker-body">
     {#if status === 'connecting' || status === 'idle'}
       <div class="docker-empty" role="status">
@@ -353,15 +381,27 @@
   </div>
   {#if connected && selectedContainerId}
     <!-- key：切换容器时销毁旧侧栏（onDestroy 内 StopLogs），再挂载新的 -->
-    {#key selectedContainerId}
-      <DockerContainerDetail
-        {sessionId}
-        containerId={selectedContainerId}
-        detail={selectedDetail}
-        {detailError}
-        onClose={closeDetail}
-      />
-    {/key}
+    <div
+      class="docker-detail-shell"
+      style={`width: ${detailWidth}px;`}
+    >
+      <div
+        class="docker-detail-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整详情栏宽度"
+        on:pointerdown={startDetailResize}
+      ></div>
+      {#key selectedContainerId}
+        <DockerContainerDetail
+          {sessionId}
+          containerId={selectedContainerId}
+          detail={selectedDetail}
+          {detailError}
+          onClose={closeDetail}
+        />
+      {/key}
+    </div>
   {/if}
   </div>
 </div>
@@ -503,6 +543,29 @@
     min-height: 0;
     display: flex;
     flex-direction: row;
+  }
+
+  .docker-detail-shell {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: row;
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid var(--glass-border);
+    background: var(--glass-bg-strong);
+  }
+
+  .docker-detail-resizer {
+    width: 6px;
+    flex: 0 0 6px;
+    cursor: col-resize;
+    touch-action: none;
+    background: transparent;
+  }
+
+  .docker-detail-resizer:hover,
+  .docker-detail-resizer:focus-visible {
+    background: color-mix(in srgb, var(--ops-signal, #1687d4) 28%, transparent);
   }
 
   .docker-body {
