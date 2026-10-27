@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { assetsStore, connectionsStore } from '../stores.js';
   import { WALL_METRIC_CATALOG, buildAssetCards, groupCards, stateLabel, summarizeCards } from '../lib/assetWall.js';
+  import { sessionMatchesMode } from '../lib/workspaceTabs.js';
 
   export let onConnect = () => {};
   export let onCreateConnection = () => {};
@@ -76,8 +77,7 @@
         const liveSessions = sessions.filter(
           (session) =>
             session?.connected &&
-            session?.type !== 'database' &&
-            session?.type !== 'docker' &&
+            sessionMatchesMode(session, 'ssh') &&
             session?.sessionId &&
             boardIds.has(session?.connection?.id)
         );

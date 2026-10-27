@@ -25,7 +25,7 @@
   import SessionToolDock from './components/SessionToolDock.svelte';
   import AIPanel from './components/AIPanel.svelte';
   import DatabaseWorkspaceEmpty from './components/DatabaseWorkspaceEmpty.svelte';
-  import { isDockerSession, modeForAsset, resolveMode, resolveSshToolTab, sessionMatchesMode } from './lib/workspaceTabs.js';
+  import { modeForAsset, resolveMode, resolveSshToolTab, sessionMatchesMode } from './lib/workspaceTabs.js';
   import { formatConnectionError } from './lib/formatConnectionError.js';
   import { createClonedConnectionFormData } from './lib/connectionFormData.js';
   import { resolvePreferredConnectionGroup } from './lib/assetGroupTree.js';
@@ -73,7 +73,7 @@
   let sqlFileProgress = null;
 
   $: connectionsArray = $connectionsStore ? Array.from($connectionsStore.values()) : [];
-  $: sshSessions = connectionsArray.filter((session) => session?.type !== 'database' && !isDockerSession(session));
+  $: sshSessions = connectionsArray.filter((session) => sessionMatchesMode(session, 'ssh'));
   $: databaseSessions = connectionsArray.filter((session) => session?.type === 'database');
   $: hasDatabaseSession = databaseSessions.length > 0;
   $: connectedSshSessions = sshSessions.filter((session) => session?.connected);
@@ -308,7 +308,7 @@
   function ensureSshSessionActive() {
     if (!boundSshSession) return;
     const current = $connectionsStore?.get?.($activeSessionIdStore);
-    if (!current || current.type === 'database' || isDockerSession(current)) {
+    if (!current || !sessionMatchesMode(current, 'ssh')) {
       activeSessionIdStore.set(boundSshSession.sessionId);
     }
   }

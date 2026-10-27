@@ -16,9 +16,11 @@ export function dockerTransportLabel(asset) {
   return TRANSPORT_LABELS[transport] || transport;
 }
 
-/** Docker 状态文案以 "Up" 开头视为运行中（API 与 CLI 回退一致）。 */
+/** 列表 Status 以 "Up" 开头、或 Inspect 的 State/Status 为 "running" 时视为运行中。 */
 export function isContainerRunning(container) {
-  return /^up\b/i.test(String(container?.Status || container?.status || '').trim());
+  const status = String(container?.Status || container?.status || '').trim();
+  if (/^up\b/i.test(status) || /^running\b/i.test(status)) return true;
+  return /^running\b/i.test(String(container?.State || container?.state || '').trim());
 }
 
 export function containerField(container, key) {

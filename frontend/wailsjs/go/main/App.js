@@ -610,8 +610,8 @@ export function StartDockerContainerLogs(arg1, arg2, arg3) {
   return window['go']['main']['App']['StartDockerContainerLogs'](arg1, arg2, arg3);
 }
 
-export function StartDockerExec(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['StartDockerExec'](arg1, arg2, arg3, arg4);
+export function StartDockerExec(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['StartDockerExec'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function StartSQLFile(arg1, arg2, arg3, arg4) {

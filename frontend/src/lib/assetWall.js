@@ -5,6 +5,8 @@
  * 指标 Map（sessionId -> MonitoringData）。输出：可直接渲染的卡片数组。
  */
 
+import { sessionMatchesMode } from './workspaceTabs.js';
+
 /** 看板可显示的会话参数目录（与后端白名单保持一致）。 */
 export const WALL_METRIC_CATALOG = [
   { id: 'cpu', label: 'CPU' },
@@ -91,8 +93,7 @@ function findConnectedSession(asset, sessions) {
   return (
     sessions.find(
       (session) =>
-        session?.type !== 'database' &&
-        session?.type !== 'docker' &&
+        sessionMatchesMode(session, 'ssh') &&
         session?.connected &&
         session?.connection?.id === asset.id
     ) || null

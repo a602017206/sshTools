@@ -28,7 +28,7 @@
     resolveDatabaseSessionId
   } from '../lib/databaseSessionClose.js';
   import { resolveMode, sessionMatchesMode } from '../lib/workspaceTabs.js';
-  import { buildDockerExecTabSession } from '../lib/dockerExecSession.js';
+  import { buildDockerExecTabSession, newDockerExecSessionId } from '../lib/dockerExecSession.js';
   import { copilotStore } from '../stores/copilot.js';
   import {
     batchCloseConfirmCopy,
@@ -48,6 +48,8 @@
   let sessionUnsubscribers = new Map();
   let sessionCloseUnsubscribers = new Map();
   const dockerExecPending = new Map();
+  const dockerExecFlushScheduled = new Set();
+  const dockerExecClosedEarly = new Set();
   let osc7PendingBuffers = new Map();
   let handleDatabaseTableSelectEvent = null;
   let handleDatabaseTableStructureEvent = null;
@@ -240,9 +242,11 @@
     }
     dockerExecStarting = true;
     dockerExecError = '';
+    // 首包与结束事件可能早于 StartDockerExec 返回，必须先按自生成 ID 订阅再启动
+    const execSessionId = newDockerExecSessionId();
+    subscribeToDockerExecOutput(execSessionId);
     try {
-      const execSessionId = await StartDockerExec(parentDockerSessionId, containerId, 80, 24);
-      if (!execSessionId) throw new Error('未返回 Exec 会话 ID');
+      await StartDockerExec(parentDockerSessionId, containerId, execSessionId, 80, 24);
       const parent = $connectionsStore.get(parentDockerSessionId);
       const session = buildDockerExecTabSession({
         execSessionId,
@@ -253,13 +257,16 @@
       });
       session.createdAt = Date.now();
       session.lastActivity = Date.now();
-      subscribeToDockerExecOutput(execSessionId);
+      if (dockerExecClosedEarly.delete(execSessionId)) {
+        session.connected = false;
+      }
       connectionsStore.update(conns => {
         conns.set(execSessionId, session);
         return conns;
       });
       activeSessionIdStore.set(execSessionId);
       await tick();
+      scheduleDockerExecFlush(execSessionId);
       setTimeout(() => {
         const terminal = terminalRefs[execSessionId];
         if (!terminal) return;
@@ -272,6 +279,7 @@
       }, 50);
     } catch (error) {
       console.error('Failed to start docker exec:', error);
+      unsubscribeDockerExec(execSessionId);
       showDockerExecError(`打开容器终端失败：${error?.message || error}`);
     } finally {
       dockerExecStarting = false;
@@ -708,6 +716,7 @@
     // 释放终端引用
     delete terminalRefs[sessionId];
     dockerExecPending.delete(sessionId);
+    dockerExecClosedEarly.delete(sessionId);
     const execFlags = dockerExecCloseFlags(session);
 
     if (closeBackend && (isDatabaseListPanel || isNativeDatabasePanel)) {
@@ -1385,24 +1394,44 @@
   /** 订阅 Docker Exec 输出（base64，与 ssh:output 相同）；结束事件只标记断开，保留页签供查看输出。 */
   function subscribeToDockerExecOutput(sessionId) {
     const unsubscribe = EventsOn(`docker:exec:${sessionId}`, (encodedData) => {
-      const octets = decodeBase64Output(encodedData);
-      const terminal = terminalRefs[sessionId];
-      if (terminal) {
-        rememberTerminalOutput(sessionId, octets);
-        terminal.write(octets);
-      } else {
-        // Terminal 尚未挂载：先缓存，挂载后冲刷
-        const queue = dockerExecPending.get(sessionId) || [];
-        queue.push(octets);
-        dockerExecPending.set(sessionId, queue);
-        flushDockerExecPending(sessionId);
-      }
+      writeDockerExecChunk(sessionId, { octets: decodeBase64Output(encodedData) });
     });
     sessionUnsubscribers.set(sessionId, unsubscribe);
     const closeUnsubscribe = EventsOn(`docker:exec-closed:${sessionId}`, () => {
       markDockerExecDisconnected(sessionId);
     });
     sessionCloseUnsubscribers.set(sessionId, closeUnsubscribe);
+  }
+
+  function unsubscribeDockerExec(sessionId) {
+    sessionUnsubscribers.get(sessionId)?.();
+    sessionUnsubscribers.delete(sessionId);
+    sessionCloseUnsubscribers.get(sessionId)?.();
+    sessionCloseUnsubscribers.delete(sessionId);
+    dockerExecPending.delete(sessionId);
+    dockerExecClosedEarly.delete(sessionId);
+  }
+
+  /** 按到达顺序写入；页签未建或 Terminal 未挂载时排队，挂载后按序冲刷。 */
+  function writeDockerExecChunk(sessionId, chunk) {
+    const terminal = terminalRefs[sessionId];
+    if (terminal && !dockerExecPending.has(sessionId)) {
+      writeDockerExecChunkTo(terminal, sessionId, chunk);
+      return;
+    }
+    const queue = dockerExecPending.get(sessionId) || [];
+    queue.push(chunk);
+    dockerExecPending.set(sessionId, queue);
+    if ($connectionsStore.has(sessionId)) scheduleDockerExecFlush(sessionId);
+  }
+
+  function writeDockerExecChunkTo(terminal, sessionId, chunk) {
+    if (typeof chunk.line === 'string') {
+      terminal.writeln?.(chunk.line);
+      return;
+    }
+    rememberTerminalOutput(sessionId, chunk.octets);
+    terminal.write(chunk.octets);
   }
 
   function decodeBase64Output(encodedData) {
@@ -1414,35 +1443,51 @@
     return octets;
   }
 
+  function scheduleDockerExecFlush(sessionId) {
+    if (dockerExecFlushScheduled.has(sessionId)) return;
+    dockerExecFlushScheduled.add(sessionId);
+    flushDockerExecPending(sessionId);
+  }
+
   async function flushDockerExecPending(sessionId, attempt = 0) {
     await tick();
+    if (!dockerExecPending.has(sessionId)) {
+      dockerExecFlushScheduled.delete(sessionId);
+      return;
+    }
     const terminal = terminalRefs[sessionId];
     if (!terminal) {
-      if (attempt < 20 && dockerExecPending.has(sessionId)) {
+      if (attempt < 20) {
         setTimeout(() => flushDockerExecPending(sessionId, attempt + 1), 50);
+      } else {
+        // 保留队列，下一个输出块到达时再冲刷
+        dockerExecFlushScheduled.delete(sessionId);
       }
       return;
     }
     const queue = dockerExecPending.get(sessionId) || [];
     dockerExecPending.delete(sessionId);
-    for (const octets of queue) {
-      rememberTerminalOutput(sessionId, octets);
-      terminal.write(octets);
+    dockerExecFlushScheduled.delete(sessionId);
+    for (const chunk of queue) {
+      writeDockerExecChunkTo(terminal, sessionId, chunk);
     }
   }
 
   function markDockerExecDisconnected(sessionId) {
-    const session = $connectionsStore.get(sessionId);
-    if (!session) return;
-    connectionsStore.update(conns => {
-      const current = conns.get(sessionId);
-      if (current) {
-        current.connected = false;
-        conns.set(sessionId, current);
-      }
-      return conns;
-    });
-    terminalRefs[sessionId]?.writeln?.('\r\n[容器终端已断开]');
+    if ($connectionsStore.has(sessionId)) {
+      connectionsStore.update(conns => {
+        const current = conns.get(sessionId);
+        if (current) {
+          current.connected = false;
+          conns.set(sessionId, current);
+        }
+        return conns;
+      });
+    } else {
+      // StartDockerExec 尚未返回、页签未建：建页签时直接标记为断开
+      dockerExecClosedEarly.add(sessionId);
+    }
+    writeDockerExecChunk(sessionId, { line: '\r\n[容器终端已断开]' });
   }
 
   function subscribeToSessionClosed(sessionId, type) {

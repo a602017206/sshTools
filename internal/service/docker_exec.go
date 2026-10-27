@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -74,7 +75,11 @@ func (e *dockerExec) write(data []byte) error {
 	return err
 }
 
-func newDockerExecSessionID() string {
+// 调用方自带的 exec 会话 ID 会拼进事件名，只允许安全字符。
+var dockerExecSessionIDPattern = regexp.MustCompile(`^dexec-[A-Za-z0-9_-]{6,64}$`)
+
+// NewDockerExecSessionID 生成 exec 会话 ID（dexec- 前缀）。
+func NewDockerExecSessionID() string {
 	return "dexec-" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
 }
 
@@ -88,6 +93,12 @@ func (s *DockerService) SetDockerExecClosedHandler(fn func(execSessionID string)
 
 // StartDockerExec 在容器内启动交互 shell（/bin/sh）。输出以原始字节通过 emit 回调。
 func (s *DockerService) StartDockerExec(dockerSessionID, containerID string, cols, rows int, emit func([]byte)) (string, error) {
+	return s.StartDockerExecWithID(dockerSessionID, containerID, "", cols, rows, emit)
+}
+
+// StartDockerExecWithID 同 StartDockerExec，但使用调用方给定的 execSessionID（为空则自动生成）。
+// 调用方可在启动前先订阅以该 ID 命名的输出/结束事件，避免首包或结束事件先于订阅到达而丢失。
+func (s *DockerService) StartDockerExecWithID(dockerSessionID, containerID, execSessionID string, cols, rows int, emit func([]byte)) (string, error) {
 	sess, err := s.lookupSession(dockerSessionID)
 	if err != nil {
 		return "", err
@@ -97,6 +108,15 @@ func (s *DockerService) StartDockerExec(dockerSessionID, containerID string, col
 	}
 	if emit == nil {
 		return "", fmt.Errorf("docker: exec 输出回调不能为空")
+	}
+	execSessionID = strings.TrimSpace(execSessionID)
+	if execSessionID == "" {
+		execSessionID = NewDockerExecSessionID()
+	} else if !dockerExecSessionIDPattern.MatchString(execSessionID) {
+		return "", fmt.Errorf("docker: 非法 exec 会话 ID %q", execSessionID)
+	}
+	if _, err := s.lookupExec(execSessionID); err == nil {
+		return "", fmt.Errorf("docker: exec 会话 %q 已存在", execSessionID)
 	}
 	if cols <= 0 {
 		cols = dockerExecDefaultCols
@@ -110,7 +130,7 @@ func (s *DockerService) StartDockerExec(dockerSessionID, containerID string, col
 	s.mu.Unlock()
 
 	e := &dockerExec{
-		id:        newDockerExecSessionID(),
+		id:        execSessionID,
 		sessionID: dockerSessionID,
 		sess:      sess,
 		onClosed:  onClosed,
@@ -155,6 +175,8 @@ func (s *DockerService) StartDockerExec(dockerSessionID, containerID string, col
 	}
 
 	if err := sess.registerExec(e); err != nil {
+		// 启动失败由返回值告知调用方；不发结束事件，以免误伤同 ID 的已有 exec。
+		e.onClosed = nil
 		e.stop()
 		return "", err
 	}
@@ -221,6 +243,9 @@ func (sess *dockerSession) registerExec(e *dockerExec) error {
 	}
 	if sess.execs == nil {
 		sess.execs = make(map[string]*dockerExec)
+	}
+	if _, exists := sess.execs[e.id]; exists {
+		return fmt.Errorf("docker: exec 会话 %q 已存在", e.id)
 	}
 	sess.execs[e.id] = e
 	return nil

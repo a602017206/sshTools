@@ -136,6 +136,16 @@ test('关闭探活的资产单列状态，但已连接时仍显示已连接', ()
   assert.equal(connected[0].state, ASSET_STATE_CONNECTED);
 });
 
+test('Docker / docker-exec 会话不算作资产的 SSH 已连接会话', () => {
+  const sessions = [
+    { sessionId: 'dock-1', type: 'docker', connected: true, connection: { id: 'ssh-1' } },
+    { sessionId: 'dexec-1', type: 'docker-exec', connected: true, connection: { id: 'ssh-1' } }
+  ];
+  const cards = buildAssetCards(assets, sessions, new Map(), new Map());
+  assert.notEqual(cards[0].state, ASSET_STATE_CONNECTED);
+  assert.equal(cards[0].sessionId ?? null, null);
+});
+
 test('状态文案齐全', () => {
   assert.equal(stateLabel(ASSET_STATE_CONNECTED), '已连接');
   assert.equal(stateLabel(ASSET_STATE_ONLINE), '在线');

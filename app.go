@@ -2298,31 +2298,19 @@ func (a *App) StopDockerContainerLogs(sessionID, id string) error {
 }
 
 // StartDockerExec 在容器内启动交互式 shell；输出通过 docker:exec:{execSessionID} 事件以 base64 推送。
-func (a *App) StartDockerExec(dockerSessionID, containerID string, cols, rows int) (string, error) {
+// execSessionID 应由前端预先生成（dexec- 前缀）并在调用前订阅输出/结束事件，否则首包与结束事件可能丢失；
+// 传空串时由后端生成。
+func (a *App) StartDockerExec(dockerSessionID, containerID, execSessionID string, cols, rows int) (string, error) {
 	if a.dockerService == nil {
 		return "", errors.New("docker 服务未初始化")
 	}
-	// execSessionID 由服务端生成，emit 回调通过闭包变量获取。
-	var execSessionID string
-	var mu sync.Mutex
-	ready := make(chan struct{})
-	id, err := a.dockerService.StartDockerExec(dockerSessionID, containerID, cols, rows, func(data []byte) {
-		<-ready
-		mu.Lock()
-		eid := execSessionID
-		mu.Unlock()
-		encoded := base64.StdEncoding.EncodeToString(data)
-		runtime.EventsEmit(a.ctx, "docker:exec:"+eid, encoded)
-	})
-	if err != nil {
-		close(ready)
-		return "", err
+	id := strings.TrimSpace(execSessionID)
+	if id == "" {
+		id = service.NewDockerExecSessionID()
 	}
-	mu.Lock()
-	execSessionID = id
-	mu.Unlock()
-	close(ready)
-	return id, nil
+	return a.dockerService.StartDockerExecWithID(dockerSessionID, containerID, id, cols, rows, func(data []byte) {
+		runtime.EventsEmit(a.ctx, "docker:exec:"+id, base64.StdEncoding.EncodeToString(data))
+	})
 }
 
 // SendDockerExecData 向容器 exec 会话发送输入（UTF-8 字符串）。

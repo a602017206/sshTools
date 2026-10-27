@@ -32,6 +32,15 @@ test('isContainerRunning / visibleContainers', () => {
   assert.equal(visibleContainers(list, false).length, 2);
 });
 
+test('isContainerRunning 识别 Inspect 形态的详情（State/Status 为 running）', () => {
+  assert.equal(isContainerRunning({ ID: 'a', Name: 'web', State: 'running', Status: 'running' }), true);
+  assert.equal(isContainerRunning({ State: 'Running' }), true);
+  assert.equal(isContainerRunning({ State: 'exited', Status: 'exited' }), false);
+  assert.equal(isContainerRunning({ State: 'paused', Status: 'paused' }), false);
+  assert.equal(isContainerRunning({ State: 'restarting', Status: 'restarting' }), false);
+  assert.equal(isContainerRunning(null), false);
+});
+
 test('formatContainerCreated 与 usedCliFallback', () => {
   assert.equal(formatContainerCreated(0), '-');
   assert.match(formatContainerCreated(1700000000), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);

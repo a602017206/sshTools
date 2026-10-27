@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDockerExecTabSession } from '../src/lib/dockerExecSession.js';
+import { buildDockerExecTabSession, newDockerExecSessionId } from '../src/lib/dockerExecSession.js';
 import { isBatchableSession, sessionTabSubtitle, sessionTabTitle, viewportIsConsole } from '../src/lib/sessionTabs.js';
 import { sessionMatchesMode } from '../src/lib/workspaceTabs.js';
 import { batchCloseConfirmCopy, batchCloseNeedsConfirm, dockerExecCloseFlags } from '../src/lib/sessionTabClose.js';
@@ -42,6 +42,16 @@ test('docker-exec 不可批量下发，视口为 console，docker 模式可见',
   assert.equal(sessionMatchesMode(build(), 'docker'), true);
   assert.equal(sessionMatchesMode(build(), 'ssh'), false);
   assert.equal(sessionMatchesMode(build(), 'database'), false);
+});
+
+test('newDockerExecSessionId 符合后端 ID 格式且唯一（含无 crypto 回退）', () => {
+  const pattern = /^dexec-[A-Za-z0-9_-]{6,64}$/;
+  const a = newDockerExecSessionId();
+  const b = newDockerExecSessionId();
+  assert.match(a, pattern);
+  assert.notEqual(a, b);
+  assert.match(newDockerExecSessionId({ getRandomValues: (arr) => arr.fill(171) }), /^dexec-(ab){12}$/);
+  assert.match(newDockerExecSessionId(null), pattern);
 });
 
 test('docker-exec 关闭路径', () => {

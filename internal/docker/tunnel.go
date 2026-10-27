@@ -60,15 +60,30 @@ func (t *UnixTunnel) handle(tcpConn net.Conn) {
 	}
 	defer remote.Close()
 
+	pipeBidirectional(tcpConn, remote)
+}
+
+// pipeBidirectional 双向转发 a 与 b；任一方向结束即关闭两端，
+// 否则另一方向的 Copy 会一直阻塞（如 exec 结束后远端已关、本地仍在等读），泄漏连接与 goroutine。
+func pipeBidirectional(a, b io.ReadWriteCloser) {
+	var once sync.Once
+	closeBoth := func() {
+		once.Do(func() {
+			_ = a.Close()
+			_ = b.Close()
+		})
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(remote, tcpConn)
+		defer closeBoth()
+		_, _ = io.Copy(b, a)
 	}()
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(tcpConn, remote)
+		defer closeBoth()
+		_, _ = io.Copy(a, b)
 	}()
 	wg.Wait()
 }

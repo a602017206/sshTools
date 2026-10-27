@@ -257,6 +257,77 @@ func TestDockerExecValidation(t *testing.T) {
 	}
 }
 
+func TestDockerExecWithClientIDEmitsUnderThatID(t *testing.T) {
+	svc, sess := connectCLIDocker(t)
+	var out execCollector
+	closed := make(chan string, 4)
+	svc.SetDockerExecClosedHandler(func(id string) { closed <- id })
+
+	const clientID = "dexec-client0001"
+	id, err := svc.StartDockerExecWithID("s1", "abc", clientID, 80, 24, out.emit)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if id != clientID {
+		t.Fatalf("应使用调用方 ID，got %q", id)
+	}
+	go func() { _, _ = sess.ptys[0].fakeStream.pw.Write([]byte("$ ")) }()
+	waitFor(t, "首包", func() bool { return out.String() == "$ " })
+	if err := svc.SendDockerExecData(clientID, []byte("ls\n")); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	// 重复 ID 拒绝，且不得向已有 exec 发结束事件
+	if _, err := svc.StartDockerExecWithID("s1", "abc", clientID, 80, 24, out.emit); err == nil {
+		t.Fatal("重复 exec ID 应报错")
+	}
+	select {
+	case got := <-closed:
+		t.Fatalf("重复 ID 启动失败不应触发结束回调，got %q", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := svc.SendDockerExecData(clientID, []byte("pwd\n")); err != nil {
+		t.Fatalf("已有 exec 不应受影响: %v", err)
+	}
+
+	for _, bad := range []string{"abc", "dexec-", "dexec-a/b/c/d", "dexec-../../x", "dexec-" + strings.Repeat("a", 65)} {
+		if _, err := svc.StartDockerExecWithID("s1", "abc", bad, 80, 24, out.emit); err == nil {
+			t.Fatalf("非法 ID %q 应报错", bad)
+		}
+	}
+
+	auto, err := svc.StartDockerExecWithID("s1", "abc", "  ", 80, 24, out.emit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(auto, "dexec-") || auto == clientID {
+		t.Fatalf("空 ID 应自动生成，got %q", auto)
+	}
+}
+
+func TestDockerExecClosedAfterBufferedOutput(t *testing.T) {
+	svc, sess := connectCLIDocker(t)
+	var out execCollector
+	closedOutput := make(chan string, 1)
+	svc.SetDockerExecClosedHandler(func(string) { closedOutput <- out.String() })
+	if _, err := svc.StartDockerExecWithID("s1", "abc", "dexec-order0001", 80, 24, out.emit); err != nil {
+		t.Fatal(err)
+	}
+	pw := sess.ptys[0].fakeStream.pw
+	go func() {
+		_, _ = pw.Write([]byte("sh: not found\r\n"))
+		_ = pw.Close()
+	}()
+	select {
+	case got := <-closedOutput:
+		if got != "sh: not found\r\n" {
+			t.Fatalf("结束事件应在输出之后，结束时已输出 %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("应触发结束回调")
+	}
+}
+
 // fakeExecAPIServer 模拟 Docker Engine exec 端点：create → 201，start → 101 Upgrade 后回显。
 func fakeExecAPIServer(t *testing.T, resizeCh chan<- string, createBody chan<- string) *httptest.Server {
 	t.Helper()
