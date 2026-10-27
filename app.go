@@ -152,6 +152,11 @@ func (a *App) startup(ctx context.Context) {
 	a.settingsService = service.NewSettingsService(configManager)
 	a.devToolsService = service.NewDevToolsService()
 	a.dockerService = service.NewDockerService(a.connectionService)
+	a.dockerService.SetDockerExecClosedHandler(func(execSessionID string) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "docker:exec-closed:"+execSessionID, map[string]string{})
+		}
+	})
 
 	homeDir, homeErr := os.UserHomeDir()
 	if homeErr != nil {
@@ -2290,4 +2295,56 @@ func (a *App) StopDockerContainerLogs(sessionID, id string) error {
 		return errors.New("docker 服务未初始化")
 	}
 	return a.dockerService.StopDockerContainerLogs(sessionID, id)
+}
+
+// StartDockerExec 在容器内启动交互式 shell；输出通过 docker:exec:{execSessionID} 事件以 base64 推送。
+func (a *App) StartDockerExec(dockerSessionID, containerID string, cols, rows int) (string, error) {
+	if a.dockerService == nil {
+		return "", errors.New("docker 服务未初始化")
+	}
+	// execSessionID 由服务端生成，emit 回调通过闭包变量获取。
+	var execSessionID string
+	var mu sync.Mutex
+	ready := make(chan struct{})
+	id, err := a.dockerService.StartDockerExec(dockerSessionID, containerID, cols, rows, func(data []byte) {
+		<-ready
+		mu.Lock()
+		eid := execSessionID
+		mu.Unlock()
+		encoded := base64.StdEncoding.EncodeToString(data)
+		runtime.EventsEmit(a.ctx, "docker:exec:"+eid, encoded)
+	})
+	if err != nil {
+		close(ready)
+		return "", err
+	}
+	mu.Lock()
+	execSessionID = id
+	mu.Unlock()
+	close(ready)
+	return id, nil
+}
+
+// SendDockerExecData 向容器 exec 会话发送输入（UTF-8 字符串）。
+func (a *App) SendDockerExecData(execSessionID, data string) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.SendDockerExecData(execSessionID, []byte(data))
+}
+
+// ResizeDockerExec 调整容器 exec 终端大小。
+func (a *App) ResizeDockerExec(execSessionID string, cols, rows int) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.ResizeDockerExec(execSessionID, cols, rows)
+}
+
+// CloseDockerExec 关闭容器 exec 会话。
+func (a *App) CloseDockerExec(execSessionID string) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.CloseDockerExec(execSessionID)
 }

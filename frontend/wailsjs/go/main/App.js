@@ -50,6 +50,10 @@ export function CloseDocker(arg1) {
   return window['go']['main']['App']['CloseDocker'](arg1);
 }
 
+export function CloseDockerExec(arg1) {
+  return window['go']['main']['App']['CloseDockerExec'](arg1);
+}
+
 export function CloseNativeDatabase(arg1) {
   return window['go']['main']['App']['CloseNativeDatabase'](arg1);
 }
@@ -458,6 +462,10 @@ export function RenameFile(arg1, arg2, arg3) {
   return window['go']['main']['App']['RenameFile'](arg1, arg2, arg3);
 }
 
+export function ResizeDockerExec(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResizeDockerExec'](arg1, arg2, arg3);
+}
+
 export function ResizeLocalShell(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeLocalShell'](arg1, arg2, arg3);
 }
@@ -534,6 +542,10 @@ export function SelectUploadFiles() {
   return window['go']['main']['App']['SelectUploadFiles']();
 }
 
+export function SendDockerExecData(arg1, arg2) {
+  return window['go']['main']['App']['SendDockerExecData'](arg1, arg2);
+}
+
 export function SendLocalShellData(arg1, arg2) {
   return window['go']['main']['App']['SendLocalShellData'](arg1, arg2);
 }
@@ -596,6 +608,10 @@ export function StartDockerContainer(arg1, arg2) {
 
 export function StartDockerContainerLogs(arg1, arg2, arg3) {
   return window['go']['main']['App']['StartDockerContainerLogs'](arg1, arg2, arg3);
+}
+
+export function StartDockerExec(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['StartDockerExec'](arg1, arg2, arg3, arg4);
 }
 
 export function StartSQLFile(arg1, arg2, arg3, arg4) {

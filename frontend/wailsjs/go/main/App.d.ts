@@ -31,6 +31,8 @@ export function CloseDatabase(arg1:string):Promise<void>;
 
 export function CloseDocker(arg1:string):Promise<void>;
 
+export function CloseDockerExec(arg1:string):Promise<void>;
+
 export function CloseNativeDatabase(arg1:string):Promise<void>;
 
 export function CloseSSH(arg1:string):Promise<void>;
@@ -235,6 +237,8 @@ export function RemoveJDBCDriver(arg1:string,arg2:string):Promise<void>;
 
 export function RenameFile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function ResizeDockerExec(arg1:string,arg2:number,arg3:number):Promise<void>;
+
 export function ResizeLocalShell(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
@@ -273,6 +277,8 @@ export function SelectUploadDirectory():Promise<string>;
 
 export function SelectUploadFiles():Promise<Array<string>>;
 
+export function SendDockerExecData(arg1:string,arg2:string):Promise<void>;
+
 export function SendLocalShellData(arg1:string,arg2:string):Promise<void>;
 
 export function SendLocalShellDataBinary(arg1:string,arg2:string):Promise<void>;
@@ -304,6 +310,8 @@ export function ShowQuestionDialog(arg1:string,arg2:string):Promise<boolean>;
 export function StartDockerContainer(arg1:string,arg2:string):Promise<void>;
 
 export function StartDockerContainerLogs(arg1:string,arg2:string,arg3:number):Promise<void>;
+
+export function StartDockerExec(arg1:string,arg2:string,arg3:number,arg4:number):Promise<string>;
 
 export function StartSQLFile(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
