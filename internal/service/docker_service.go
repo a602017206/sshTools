@@ -113,10 +113,16 @@ type dockerSession struct {
 	followMu      sync.Mutex
 	follows       map[string]*dockerFollow
 	followsClosed bool
+
+	// 交互 exec；close() 时全部停止。
+	execMu      sync.Mutex
+	execs       map[string]*dockerExec
+	execsClosed bool
 }
 
 func (s *dockerSession) close() error {
 	s.stopAllFollows()
+	s.stopAllExecs()
 	var first error
 	keep := func(err error) {
 		if err != nil && first == nil {
@@ -141,6 +147,8 @@ type DockerService struct {
 	newSSH   sshFactory
 	mu       sync.Mutex
 	sessions map[string]*dockerSession
+	// exec 结束回调（可选），见 SetDockerExecClosedHandler。
+	execClosed func(execSessionID string)
 }
 
 // NewDockerService creates a DockerService. assets may be nil when only local/tcp

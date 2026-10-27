@@ -46,6 +46,7 @@ type fakeDockerSSH struct {
 	closed    int
 	streamErr error
 	streams   []*fakeStream
+	ptys      []*fakePTYStream
 }
 
 // fakeStream 是可由测试推送数据的可取消管道。
@@ -121,6 +122,7 @@ func (f *fakeDockerSSH) StartPTYCommand(cmd string, cols, rows int) (ssh.Interac
 	}
 	st := &fakePTYStream{fakeStream: newFakeStream(), cols: cols, rows: rows}
 	f.streams = append(f.streams, st.fakeStream)
+	f.ptys = append(f.ptys, st)
 	return st, nil
 }
 
