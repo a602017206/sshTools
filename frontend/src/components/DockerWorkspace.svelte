@@ -26,6 +26,8 @@
   export let onStatus = () => {};
   /** 打开/关闭详情时回调 (containerId, detail|null) */
   export let onSelect = () => {};
+  /** 在容器内打开 Exec 终端页签：({ containerId, containerName }) => void */
+  export let onExec = (payload) => {};
 
   let status = 'idle'; // idle | connecting | connected | error
   let errorMessage = '';
@@ -240,6 +242,8 @@
       removeTarget = container;
       removeForce = false;
       showRemoveConfirm = true;
+    } else if (actionId === 'exec') {
+      onExec({ containerId: containerKey(container), containerName: containerLabel(container) });
     } else {
       runAction(actionId, container);
     }
@@ -399,6 +403,10 @@
           detail={selectedDetail}
           {detailError}
           onClose={closeDetail}
+          onExec={() => onExec({
+            containerId: selectedContainerId,
+            containerName: containerField(selectedDetail, 'Name') || String(selectedContainerId).slice(0, 12)
+          })}
         />
       {/key}
     </div>

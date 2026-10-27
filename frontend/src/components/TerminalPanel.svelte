@@ -14,7 +14,8 @@
     listBatchTargets,
     sessionAccentColor,
     sessionTabSubtitle,
-    sessionTabTitle
+    sessionTabTitle,
+    viewportIsConsole as isConsoleSession
   } from '../lib/sessionTabs.js';
   import InputDialog from './ui/InputDialog.svelte';
   import { onMount, onDestroy, tick } from 'svelte';
@@ -27,12 +28,14 @@
     resolveDatabaseSessionId
   } from '../lib/databaseSessionClose.js';
   import { resolveMode, sessionMatchesMode } from '../lib/workspaceTabs.js';
+  import { buildDockerExecTabSession } from '../lib/dockerExecSession.js';
   import { copilotStore } from '../stores/copilot.js';
   import {
     batchCloseConfirmCopy,
     batchCloseNeedsConfirm,
     sessionIdsToClose,
     sessionTabCloseMenuFlags,
+    dockerExecCloseFlags,
   } from '../lib/sessionTabClose.js';
   import { portalToBody, resolveContextMenuPoint } from '../lib/contextMenu.js';
   import { applyCharsetToSessionId, applyCharsetToSessionMap, normalizeTerminalCharset } from '../lib/terminalCharset.js';
@@ -44,6 +47,7 @@
   let visibleSessions = [];
   let sessionUnsubscribers = new Map();
   let sessionCloseUnsubscribers = new Map();
+  const dockerExecPending = new Map();
   let osc7PendingBuffers = new Map();
   let handleDatabaseTableSelectEvent = null;
   let handleDatabaseTableStructureEvent = null;
@@ -98,14 +102,19 @@
   $: sessionsList = $connectionsStore ? Array.from($connectionsStore.values()) : [];
   $: visibleSessions = sessionsList.filter((session) => sessionMatchesMode(session, mode));
   $: tabOrdinalMap = decorateSessionTabs(visibleSessions);
+  function tabSizeKey(session) {
+    // docker-exec 按容器分组，避免与父 Docker 连接页签混算序号
+    if (session?.type === 'docker-exec') return `docker-exec:${session.containerId || session.sessionId}`;
+    return session?.connection?.id || session?.sessionId;
+  }
   $: tabSizeMap = visibleSessions.reduce((map, session) => {
-    const key = session.connection?.id || session.sessionId;
+    const key = tabSizeKey(session);
     map.set(key, (map.get(key) || 0) + 1);
     return map;
   }, new Map());
   $: batchTargets = listBatchTargets(visibleSessions);
   $: activeVisibleSession = visibleSessions.find((session) => session.sessionId === $activeSessionIdStore) || null;
-  $: viewportIsConsole = !activeVisibleSession || (activeVisibleSession.type !== 'database' && activeVisibleSession.type !== 'docker');
+  $: viewportIsConsole = isConsoleSession(activeVisibleSession);
   $: visibleSessionIds = visibleSessions.map((session) => session.sessionId);
   $: tabCloseMenuFlags = sessionTabCloseMenuFlags(visibleSessionIds, tabContextSessionId);
   $: closeConfirmCopy = batchCloseConfirmCopy(pendingCloseIds, visibleSessions);
@@ -209,6 +218,64 @@
       return conns;
     });
     activeSessionIdStore.set(sessionId);
+  }
+
+  let dockerExecError = '';
+  let dockerExecErrorTimer = null;
+  let dockerExecStarting = false;
+
+  function showDockerExecError(message) {
+    dockerExecError = message;
+    if (dockerExecErrorTimer) clearTimeout(dockerExecErrorTimer);
+    dockerExecErrorTimer = setTimeout(() => { dockerExecError = ''; }, 6000);
+  }
+
+  /** 在容器内打开 Exec 终端页签；失败只提示，不建页签。 */
+  async function openDockerExecSession(parentDockerSessionId, { containerId, containerName } = {}) {
+    if (!parentDockerSessionId || !containerId || dockerExecStarting) return;
+    const { StartDockerExec } = window.wailsBindings || {};
+    if (typeof StartDockerExec !== 'function') {
+      showDockerExecError('Docker Exec 功能不可用');
+      return;
+    }
+    dockerExecStarting = true;
+    dockerExecError = '';
+    try {
+      const execSessionId = await StartDockerExec(parentDockerSessionId, containerId, 80, 24);
+      if (!execSessionId) throw new Error('未返回 Exec 会话 ID');
+      const parent = $connectionsStore.get(parentDockerSessionId);
+      const session = buildDockerExecTabSession({
+        execSessionId,
+        parentDockerSessionId,
+        containerId,
+        containerName,
+        connection: parent?.connection
+      });
+      session.createdAt = Date.now();
+      session.lastActivity = Date.now();
+      subscribeToDockerExecOutput(execSessionId);
+      connectionsStore.update(conns => {
+        conns.set(execSessionId, session);
+        return conns;
+      });
+      activeSessionIdStore.set(execSessionId);
+      await tick();
+      setTimeout(() => {
+        const terminal = terminalRefs[execSessionId];
+        if (!terminal) return;
+        terminal.focus();
+        const size = terminal.getSize?.();
+        const { ResizeDockerExec } = window.wailsBindings || {};
+        if (size && typeof ResizeDockerExec === 'function') {
+          ResizeDockerExec(execSessionId, size.cols, size.rows).catch(console.error);
+        }
+      }, 50);
+    } catch (error) {
+      console.error('Failed to start docker exec:', error);
+      showDockerExecError(`打开容器终端失败：${error?.message || error}`);
+    } finally {
+      dockerExecStarting = false;
+    }
   }
 
   function handleDockerStatus(sessionId, connected) {
@@ -640,6 +707,8 @@
 
     // 释放终端引用
     delete terminalRefs[sessionId];
+    dockerExecPending.delete(sessionId);
+    const execFlags = dockerExecCloseFlags(session);
 
     if (closeBackend && (isDatabaseListPanel || isNativeDatabasePanel)) {
       const { CloseDatabase, CloseNativeDatabase } = window.wailsBindings || {};
@@ -652,6 +721,15 @@
         }
       }
       updateAssetDbStateBySession(sessionId, false);
+    } else if (closeBackend && execFlags.isDockerExec) {
+      const closeExec = (window.wailsBindings || {})[execFlags.closeBinding];
+      if (typeof closeExec === 'function') {
+        try {
+          await closeExec(sessionId);
+        } catch (error) {
+          console.error('Failed to close docker exec session:', error);
+        }
+      }
     } else if (closeBackend && session?.type === 'docker') {
       const { CloseDocker } = window.wailsBindings || {};
       if (typeof CloseDocker === 'function') {
@@ -661,7 +739,7 @@
           console.error('Failed to close docker session:', error);
         }
       }
-    } else if (closeBackend && session?.type !== 'docker' && !isDatabaseTablePanel && !isDatabaseQueryPanel && !isDatabaseDesignerPanel) {
+    } else if (closeBackend && !execFlags.isDockerExec && session?.type !== 'docker' && !isDatabaseTablePanel && !isDatabaseQueryPanel && !isDatabaseDesignerPanel) {
       const { CloseSSH } = window.wailsBindings || {};
       if (typeof CloseSSH === 'function') {
         try {
@@ -727,9 +805,10 @@
         
         // 同步终端尺寸与后端
         const size = terminal.getSize();
-        const { ResizeSSH } = window.wailsBindings || {};
-        if (typeof ResizeSSH === 'function') {
-          ResizeSSH(sessionId, size.cols, size.rows).catch(console.error);
+        const { ResizeSSH, ResizeDockerExec } = window.wailsBindings || {};
+        const resize = $connectionsStore.get(sessionId)?.type === 'docker-exec' ? ResizeDockerExec : ResizeSSH;
+        if (typeof resize === 'function') {
+          resize(sessionId, size.cols, size.rows).catch(console.error);
         }
       }
     }, 50);
@@ -1171,9 +1250,15 @@
     }
 
     const session = $connectionsStore.get(sessionId);
-    const { SendSSHData, SendLocalShellData } = window.wailsBindings || {};
+    const { SendSSHData, SendLocalShellData, SendDockerExecData } = window.wailsBindings || {};
 
-    if (session && session.type === 'local') {
+    if (session && session.type === 'docker-exec') {
+      if (typeof SendDockerExecData === 'function') {
+        SendDockerExecData(sessionId, data).catch(error => {
+          console.error('Failed to send docker exec data:', error);
+        });
+      }
+    } else if (session && session.type === 'local') {
       if (typeof SendLocalShellData === 'function') {
         SendLocalShellData(sessionId, data).catch(error => {
           console.error('Failed to send local shell data:', error);
@@ -1206,6 +1291,10 @@
     }
 
     const session = $connectionsStore.get(sessionId);
+    // Docker Exec 不支持 ZMODEM，避免误发到 SSH 通道
+    if (session?.type === 'docker-exec') {
+      return;
+    }
     const {
       SendSSHData,
       SendSSHDataBinary,
@@ -1247,9 +1336,15 @@
     }
 
     const session = $connectionsStore.get(sessionId);
-    const { ResizeSSH, ResizeLocalShell } = window.wailsBindings || {};
+    const { ResizeSSH, ResizeLocalShell, ResizeDockerExec } = window.wailsBindings || {};
 
-    if (session && session.type === 'local') {
+    if (session && session.type === 'docker-exec') {
+      if (typeof ResizeDockerExec === 'function') {
+        ResizeDockerExec(sessionId, cols, rows).catch(error => {
+          console.error('Failed to resize docker exec terminal:', error);
+        });
+      }
+    } else if (session && session.type === 'local') {
       if (typeof ResizeLocalShell === 'function') {
         ResizeLocalShell(sessionId, cols, rows).catch(error => {
           console.error('Failed to resize local terminal:', error);
@@ -1285,6 +1380,69 @@
     });
     sessionUnsubscribers.set(sessionId, unsubscribe);
     subscribeToSessionClosed(sessionId, 'ssh');
+  }
+
+  /** 订阅 Docker Exec 输出（base64，与 ssh:output 相同）；结束事件只标记断开，保留页签供查看输出。 */
+  function subscribeToDockerExecOutput(sessionId) {
+    const unsubscribe = EventsOn(`docker:exec:${sessionId}`, (encodedData) => {
+      const octets = decodeBase64Output(encodedData);
+      const terminal = terminalRefs[sessionId];
+      if (terminal) {
+        rememberTerminalOutput(sessionId, octets);
+        terminal.write(octets);
+      } else {
+        // Terminal 尚未挂载：先缓存，挂载后冲刷
+        const queue = dockerExecPending.get(sessionId) || [];
+        queue.push(octets);
+        dockerExecPending.set(sessionId, queue);
+        flushDockerExecPending(sessionId);
+      }
+    });
+    sessionUnsubscribers.set(sessionId, unsubscribe);
+    const closeUnsubscribe = EventsOn(`docker:exec-closed:${sessionId}`, () => {
+      markDockerExecDisconnected(sessionId);
+    });
+    sessionCloseUnsubscribers.set(sessionId, closeUnsubscribe);
+  }
+
+  function decodeBase64Output(encodedData) {
+    const decodedData = atob(encodedData);
+    const octets = new Uint8Array(decodedData.length);
+    for (let i = 0; i < decodedData.length; i++) {
+      octets[i] = decodedData.charCodeAt(i);
+    }
+    return octets;
+  }
+
+  async function flushDockerExecPending(sessionId, attempt = 0) {
+    await tick();
+    const terminal = terminalRefs[sessionId];
+    if (!terminal) {
+      if (attempt < 20 && dockerExecPending.has(sessionId)) {
+        setTimeout(() => flushDockerExecPending(sessionId, attempt + 1), 50);
+      }
+      return;
+    }
+    const queue = dockerExecPending.get(sessionId) || [];
+    dockerExecPending.delete(sessionId);
+    for (const octets of queue) {
+      rememberTerminalOutput(sessionId, octets);
+      terminal.write(octets);
+    }
+  }
+
+  function markDockerExecDisconnected(sessionId) {
+    const session = $connectionsStore.get(sessionId);
+    if (!session) return;
+    connectionsStore.update(conns => {
+      const current = conns.get(sessionId);
+      if (current) {
+        current.connected = false;
+        conns.set(sessionId, current);
+      }
+      return conns;
+    });
+    terminalRefs[sessionId]?.writeln?.('\r\n[容器终端已断开]');
   }
 
   function subscribeToSessionClosed(sessionId, type) {
@@ -1454,7 +1612,7 @@
             />
           {:else}
             <div class="flex-1 min-w-0 flex flex-col leading-tight">
-              <span class="text-xs font-medium truncate">{sessionTabTitle(session, tabOrdinalMap.get(session.sessionId) || 1, tabSizeMap.get(session.connection?.id || session.sessionId) || 1)}</span>
+              <span class="text-xs font-medium truncate">{sessionTabTitle(session, tabOrdinalMap.get(session.sessionId) || 1, tabSizeMap.get(tabSizeKey(session)) || 1)}</span>
               <span class="text-[10px] ops-muted truncate">{sessionTabSubtitle(session)}</span>
             </div>
           {/if}
@@ -1494,6 +1652,10 @@
     </button>
     {/if}
   </div>
+
+  {#if dockerExecError}
+    <div class="px-3 py-1.5 text-xs border-b" role="alert" style="color: var(--danger, #ef4444); border-color: var(--glass-border);">{dockerExecError}</div>
+  {/if}
 
   <!-- 终端内容：保留全部会话挂载，仅按当前活动标签显示 -->
   {#if sessionsList.length > 0}
@@ -1548,17 +1710,18 @@
                 sessionId={session.sessionId}
                 connection={session.connection}
                 onStatus={(ok) => handleDockerStatus(session.sessionId, ok)}
+                onExec={(payload) => openDockerExecSession(session.sessionId, payload)}
               />
             {:else}
               <Terminal
                 bind:this={terminalRefs[session.sessionId]}
                 sessionId={session.sessionId}
-                connectionId={session.connection?.id || null}
-                commandSuggestEnabled={commandSuggestEnabled}
+                connectionId={session.type === 'docker-exec' ? null : (session.connection?.id || null)}
+                commandSuggestEnabled={commandSuggestEnabled && session.type !== 'docker-exec'}
                 commandSuggestLimit={commandSuggestLimit}
                 commandSuggestTabAccept={commandSuggestTabAccept}
                 encoding={normalizeTerminalCharset(session.connection?.metadata?.encoding || session.connection?.encoding)}
-                encodingEnabled={session.type !== 'local' && session.type !== 'database'}
+                encodingEnabled={session.type !== 'local' && session.type !== 'database' && session.type !== 'docker-exec'}
                 onEncodingChange={(charset) => handleLiveCharsetChange(session.sessionId, charset)}
                 onData={handleTerminalData}
                 onResize={handleTerminalResize}

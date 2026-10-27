@@ -20,6 +20,8 @@
   export let detail = null;
   export let detailError = '';
   export let onClose = () => {};
+  /** 打开 Exec 终端页签 */
+  export let onExec = () => {};
 
   let activeTab = 'overview'; // overview | logs
   let tail = DEFAULT_LOG_TAIL;
@@ -227,6 +229,13 @@
       <span class="docker-detail-name" title={title}>{title}</span>
       <span class="docker-detail-id">{shortId}</span>
     </div>
+    <button
+      type="button"
+      class="docker-detail-exec"
+      title={running ? '在容器内打开终端' : '仅运行中的容器可 Exec'}
+      disabled={!running}
+      on:click={onExec}
+    >Exec</button>
     <button type="button" class="docker-detail-close" title="关闭详情" aria-label="关闭详情" on:click={onClose}>✕</button>
   </header>
 
@@ -383,6 +392,29 @@
     font-size: 10px;
     color: var(--text-secondary);
     font-family: var(--terminal-font-family);
+  }
+
+  .docker-detail-exec {
+    appearance: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+  }
+
+  .docker-detail-exec:hover:not(:disabled) {
+    background: var(--glass-bg-hover, rgba(127, 127, 127, 0.12));
+  }
+
+  .docker-detail-exec:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .docker-detail-close {
