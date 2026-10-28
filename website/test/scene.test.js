@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapPointerToWorld, parseCssColor, shouldStartScene } from '../assets/js/scene.js';
+import {
+  mapPointerToWorld,
+  parseCssColor,
+  shouldStartScene,
+  stepParticles,
+} from '../assets/js/scene.js';
 
 describe('parseCssColor', () => {
   it('separates the RGB and alpha portions of 8-digit hex colors', () => {
@@ -66,5 +71,48 @@ describe('mapPointerToWorld', () => {
 
     assert.ok(Math.abs(point.x - visibleHeight) < 1e-12);
     assert.ok(Math.abs(point.y - visibleHeight / 2) < 1e-12);
+  });
+});
+
+describe('stepParticles', () => {
+  it('keeps particles inside the viewport over many frames', () => {
+    const count = 120;
+    const bounds = { x: 8, y: 4.5 };
+    const positions = new Float32Array(count * 3);
+    const velocities = new Float32Array(count * 2);
+    const baseVelocities = new Float32Array(count * 2);
+    let seed = 42;
+    const random = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    };
+
+    for (let index = 0; index < count; index += 1) {
+      const positionOffset = index * 3;
+      const velocityOffset = index * 2;
+      positions[positionOffset] = (random() * 2 - 1) * bounds.x;
+      positions[positionOffset + 1] = (random() * 2 - 1) * bounds.y;
+      baseVelocities[velocityOffset] = (random() * 2 - 1) * 0.02;
+      baseVelocities[velocityOffset + 1] = (random() * 2 - 1) * 0.02;
+      velocities[velocityOffset] = baseVelocities[velocityOffset];
+      velocities[velocityOffset + 1] = baseVelocities[velocityOffset + 1];
+    }
+
+    for (let frame = 0; frame < 5000; frame += 1) {
+      stepParticles({
+        positions,
+        velocities,
+        baseVelocities,
+        count,
+        bounds,
+        pointer: { active: false },
+      });
+
+      for (let index = 0; index < count; index += 1) {
+        const positionOffset = index * 3;
+        assert.ok(Math.abs(positions[positionOffset]) <= bounds.x);
+        assert.ok(Math.abs(positions[positionOffset + 1]) <= bounds.y);
+      }
+    }
   });
 });

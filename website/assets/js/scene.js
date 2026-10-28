@@ -23,6 +23,72 @@ export function parseCssColor(value) {
   };
 }
 
+/**
+ * Advance particle positions one frame. Clamps into bounds and turns both
+ * current and base velocities inward on bounce so drift never escapes.
+ */
+export function stepParticles({
+  positions,
+  velocities,
+  baseVelocities,
+  count,
+  bounds,
+  pointer = { active: false },
+}) {
+  for (let index = 0; index < count; index += 1) {
+    const offset = index * 3;
+    const velocityOffset = index * 2;
+    let vx = velocities[velocityOffset];
+    let vy = velocities[velocityOffset + 1];
+
+    if (pointer.active) {
+      const dx = pointer.worldX - positions[offset];
+      const dy = pointer.worldY - positions[offset + 1];
+      const distanceSquared = dx * dx + dy * dy;
+      if (distanceSquared < 16 && distanceSquared > 0.01) {
+        const force = Math.min(0.003, 0.02 / distanceSquared);
+        vx += dx * force;
+        vy += dy * force;
+      }
+    }
+
+    vx += (baseVelocities[velocityOffset] - vx) * 0.006;
+    vy += (baseVelocities[velocityOffset + 1] - vy) * 0.006;
+    vx *= 0.995;
+    vy *= 0.995;
+    vx = Math.max(-0.025, Math.min(0.025, vx));
+    vy = Math.max(-0.025, Math.min(0.025, vy));
+
+    let x = positions[offset] + vx;
+    let y = positions[offset + 1] + vy;
+
+    if (x > bounds.x) {
+      x = bounds.x;
+      vx = -Math.abs(vx) || -Math.abs(baseVelocities[velocityOffset]) || -0.003;
+      baseVelocities[velocityOffset] = -Math.abs(baseVelocities[velocityOffset]) || -0.003;
+    } else if (x < -bounds.x) {
+      x = -bounds.x;
+      vx = Math.abs(vx) || Math.abs(baseVelocities[velocityOffset]) || 0.003;
+      baseVelocities[velocityOffset] = Math.abs(baseVelocities[velocityOffset]) || 0.003;
+    }
+
+    if (y > bounds.y) {
+      y = bounds.y;
+      vy = -Math.abs(vy) || -Math.abs(baseVelocities[velocityOffset + 1]) || -0.003;
+      baseVelocities[velocityOffset + 1] = -Math.abs(baseVelocities[velocityOffset + 1]) || -0.003;
+    } else if (y < -bounds.y) {
+      y = -bounds.y;
+      vy = Math.abs(vy) || Math.abs(baseVelocities[velocityOffset + 1]) || 0.003;
+      baseVelocities[velocityOffset + 1] = Math.abs(baseVelocities[velocityOffset + 1]) || 0.003;
+    }
+
+    velocities[velocityOffset] = vx;
+    velocities[velocityOffset + 1] = vy;
+    positions[offset] = x;
+    positions[offset + 1] = y;
+  }
+}
+
 export function mapPointerToWorld({ clientX, clientY, viewport, fov, cameraZ }) {
   const width = Math.max(1, viewport?.width || 1);
   const height = Math.max(1, viewport?.height || 1);
@@ -91,25 +157,37 @@ export async function mountScene(target, options = {}) {
   const particles = new THREE.Points(particleGeometry, particleMaterial);
   const lines = new THREE.LineSegments(lineGeometry, lineMaterial);
 
-  for (let index = 0; index < count; index += 1) {
-    const offset = index * 3;
-    const velocityOffset = index * 2;
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 0.003 + Math.random() * 0.005;
-    positions[offset] = (Math.random() - 0.5) * bounds.x * 2;
-    positions[offset + 1] = (Math.random() - 0.5) * bounds.y * 2;
-    positions[offset + 2] = (Math.random() - 0.5) * 2;
-    baseVelocities[velocityOffset] = Math.cos(angle) * speed;
-    baseVelocities[velocityOffset + 1] = Math.sin(angle) * speed;
-    velocities[velocityOffset] = baseVelocities[velocityOffset];
-    velocities[velocityOffset + 1] = baseVelocities[velocityOffset + 1];
-  }
-
   particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
   lineGeometry.setDrawRange(0, 0);
   scene.add(particles, lines);
   camera.position.z = 16;
+
+  function scatterParticles() {
+    for (let index = 0; index < count; index += 1) {
+      const offset = index * 3;
+      const velocityOffset = index * 2;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.003 + Math.random() * 0.005;
+      positions[offset] = (Math.random() - 0.5) * bounds.x * 2;
+      positions[offset + 1] = (Math.random() - 0.5) * bounds.y * 2;
+      positions[offset + 2] = (Math.random() - 0.5) * 2;
+      baseVelocities[velocityOffset] = Math.cos(angle) * speed;
+      baseVelocities[velocityOffset + 1] = Math.sin(angle) * speed;
+      velocities[velocityOffset] = baseVelocities[velocityOffset];
+      velocities[velocityOffset + 1] = baseVelocities[velocityOffset + 1];
+    }
+    particleGeometry.attributes.position.needsUpdate = true;
+  }
+
+  function clampParticlesToBounds() {
+    for (let index = 0; index < count; index += 1) {
+      const offset = index * 3;
+      positions[offset] = Math.max(-bounds.x, Math.min(bounds.x, positions[offset]));
+      positions[offset + 1] = Math.max(-bounds.y, Math.min(bounds.y, positions[offset + 1]));
+    }
+    particleGeometry.attributes.position.needsUpdate = true;
+  }
 
   function resize() {
     const { width, height } = canvas.getBoundingClientRect();
@@ -121,6 +199,7 @@ export async function mountScene(target, options = {}) {
     renderer.setSize(safeWidth, safeHeight, false);
     bounds.y = Math.tan((camera.fov * Math.PI) / 360) * camera.position.z;
     bounds.x = bounds.y * camera.aspect;
+    clampParticlesToBounds();
   }
 
   function rebuildLines() {
@@ -147,34 +226,14 @@ export async function mountScene(target, options = {}) {
   }
 
   function updateParticles() {
-    for (let index = 0; index < count; index += 1) {
-      const offset = index * 3;
-      const velocityOffset = index * 2;
-      let { x: vx, y: vy } = { x: velocities[velocityOffset], y: velocities[velocityOffset + 1] };
-
-      if (pointer.active) {
-        const dx = pointer.worldX - positions[offset];
-        const dy = pointer.worldY - positions[offset + 1];
-        const distanceSquared = dx * dx + dy * dy;
-        if (distanceSquared < 16 && distanceSquared > 0.01) {
-          const force = Math.min(0.003, 0.02 / distanceSquared);
-          vx += dx * force;
-          vy += dy * force;
-        }
-      }
-
-      vx += (baseVelocities[velocityOffset] - vx) * 0.006;
-      vy += (baseVelocities[velocityOffset + 1] - vy) * 0.006;
-      vx *= 0.995;
-      vy *= 0.995;
-      velocities[velocityOffset] = Math.max(-0.025, Math.min(0.025, vx));
-      velocities[velocityOffset + 1] = Math.max(-0.025, Math.min(0.025, vy));
-      positions[offset] += velocities[velocityOffset];
-      positions[offset + 1] += velocities[velocityOffset + 1];
-
-      if (Math.abs(positions[offset]) > bounds.x) velocities[velocityOffset] *= -1;
-      if (Math.abs(positions[offset + 1]) > bounds.y) velocities[velocityOffset + 1] *= -1;
-    }
+    stepParticles({
+      positions,
+      velocities,
+      baseVelocities,
+      count,
+      bounds,
+      pointer,
+    });
     particleGeometry.attributes.position.needsUpdate = true;
   }
 
@@ -244,6 +303,7 @@ export async function mountScene(target, options = {}) {
     renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
     setPalette(palette);
     resize();
+    scatterParticles();
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('resize', resize, { passive: true });
     document.addEventListener('visibilitychange', onVisibilityChange);
