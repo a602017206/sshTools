@@ -7,10 +7,24 @@ import {
   ACCENT_TOKENS,
   THEME_IDS,
 } from './theme.js';
+import {
+  CURSOR_STYLES,
+  applyCursorStyle,
+  cursorLabel,
+  readStoredCursor,
+} from './cursor.js';
 import { applyI18n, readStoredLang, setStoredLang, MESSAGES, t } from './i18n.js';
 
 function swatchStyle(color) {
   return `--dot-color:${color}`;
+}
+
+function syncCursorControls(root, cursorId) {
+  root.querySelectorAll('[data-set-cursor]').forEach((btn) => {
+    const active = btn.getAttribute('data-set-cursor') === cursorId;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
 }
 
 function syncThemeControls(root, appearance) {
@@ -43,6 +57,16 @@ function syncThemeControls(root, appearance) {
   root.querySelectorAll('[data-theme-pane]').forEach((pane) => {
     pane.hidden = pane.getAttribute('data-theme-pane') !== appearance.mode;
   });
+}
+
+function cursorButtons(lang, group) {
+  return CURSOR_STYLES
+    .filter((style) => style.group === group)
+    .map((style) => {
+      const label = cursorLabel(style, lang);
+      return `<button type="button" class="cursor-pick" data-set-cursor="${style.id}" aria-label="${label}" title="${label}" aria-pressed="false"><span>${style.glyph}</span></button>`;
+    })
+    .join('');
 }
 
 function buildThemePanel(lang) {
@@ -106,10 +130,50 @@ function buildThemePanel(lang) {
       <div class="theme-panel__label" data-i18n="theme.accent">${t(MESSAGES, lang, 'theme.accent')}</div>
       <div class="theme-swatches">${accents}</div>
     </div>
+    <div class="theme-panel__cursor">
+      <div class="theme-panel__label" data-i18n="theme.cursor">${t(MESSAGES, lang, 'theme.cursor')}</div>
+      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.basic">${t(MESSAGES, lang, 'theme.cursor.basic')}</div>
+      <div class="cursor-picks">${cursorButtons(lang, 'basic')}</div>
+      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.pet">${t(MESSAGES, lang, 'theme.cursor.pet')}</div>
+      <div class="cursor-picks">${cursorButtons(lang, 'pet')}</div>
+      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.zodiac">${t(MESSAGES, lang, 'theme.cursor.zodiac')}</div>
+      <div class="cursor-picks">${cursorButtons(lang, 'zodiac')}</div>
+    </div>
   `;
 
   panel.append(toggle, pop);
   return panel;
+}
+
+function refreshThemePanelLabels(lang) {
+  document.querySelectorAll('[data-theme-toggle]').forEach((el) => {
+    el.textContent = t(MESSAGES, lang, 'theme.open');
+  });
+  document.querySelectorAll('[data-theme-mode]').forEach((el) => {
+    const mode = el.getAttribute('data-theme-mode');
+    el.textContent = t(MESSAGES, lang, `theme.mode.${mode}`);
+  });
+  [
+    'theme.presets',
+    'theme.bg',
+    'theme.fg',
+    'theme.accent',
+    'theme.cursor',
+    'theme.cursor.basic',
+    'theme.cursor.pet',
+    'theme.cursor.zodiac',
+  ].forEach((key) => {
+    document.querySelectorAll(`[data-i18n="${key}"]`).forEach((el) => {
+      el.textContent = t(MESSAGES, lang, key);
+    });
+  });
+  document.querySelectorAll('[data-set-cursor]').forEach((btn) => {
+    const style = CURSOR_STYLES.find((item) => item.id === btn.getAttribute('data-set-cursor'));
+    if (!style) return;
+    const label = cursorLabel(style, lang);
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+  });
 }
 
 export function initChrome({ sceneRef, sceneApi } = {}) {
@@ -117,11 +181,11 @@ export function initChrome({ sceneRef, sceneApi } = {}) {
   let appearance = applyAppearance(readThemeState(), {
     onPalette: (palette) => resolvedSceneRef.api?.setPalette?.(palette),
   });
+  let cursorId = applyCursorStyle(readStoredCursor()).id;
   let lang = readStoredLang();
   applyI18n(document, MESSAGES, lang);
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
 
-  // Replace legacy theme-dots with expandable theme panel
   document.querySelectorAll('.theme-dots').forEach((legacy) => {
     const panel = buildThemePanel(lang);
     legacy.replaceWith(panel);
@@ -135,6 +199,7 @@ export function initChrome({ sceneRef, sceneApi } = {}) {
   };
 
   syncThemeControls(document, appearance);
+  syncCursorControls(document, cursorId);
 
   document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
     btn.addEventListener('click', (event) => {
@@ -188,31 +253,19 @@ export function initChrome({ sceneRef, sceneApi } = {}) {
     });
   });
 
+  document.querySelectorAll('[data-set-cursor]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      cursorId = applyCursorStyle(btn.getAttribute('data-set-cursor')).id;
+      syncCursorControls(document, cursorId);
+    });
+  });
+
   document.querySelectorAll('[data-set-lang]').forEach((btn) => {
     btn.addEventListener('click', () => {
       lang = setStoredLang(btn.getAttribute('data-set-lang'));
       applyI18n(document, MESSAGES, lang);
       document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
-      // rebuild labels that aren't data-i18n inside theme panel
-      document.querySelectorAll('[data-theme-toggle]').forEach((el) => {
-        el.textContent = t(MESSAGES, lang, 'theme.open');
-      });
-      document.querySelectorAll('[data-theme-mode]').forEach((el) => {
-        const mode = el.getAttribute('data-theme-mode');
-        el.textContent = t(MESSAGES, lang, `theme.mode.${mode}`);
-      });
-      document.querySelectorAll('[data-i18n="theme.presets"]').forEach((el) => {
-        el.textContent = t(MESSAGES, lang, 'theme.presets');
-      });
-      document.querySelectorAll('[data-i18n="theme.bg"]').forEach((el) => {
-        el.textContent = t(MESSAGES, lang, 'theme.bg');
-      });
-      document.querySelectorAll('[data-i18n="theme.fg"]').forEach((el) => {
-        el.textContent = t(MESSAGES, lang, 'theme.fg');
-      });
-      document.querySelectorAll('[data-i18n="theme.accent"]').forEach((el) => {
-        el.textContent = t(MESSAGES, lang, 'theme.accent');
-      });
+      refreshThemePanelLabels(lang);
     });
   });
 
@@ -221,5 +274,12 @@ export function initChrome({ sceneRef, sceneApi } = {}) {
     if (link.getAttribute('data-nav') === page) link.setAttribute('aria-current', 'page');
   });
 
-  return { theme: appearance.preset, appearance, lang, THEME_IDS, sceneRef: resolvedSceneRef };
+  return {
+    theme: appearance.preset,
+    appearance,
+    cursor: cursorId,
+    lang,
+    THEME_IDS,
+    sceneRef: resolvedSceneRef,
+  };
 }

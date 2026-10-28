@@ -55,6 +55,7 @@ describe('initChrome', () => {
         '[data-set-bg]': [],
         '[data-set-fg]': [],
         '[data-set-accent]': [],
+        '[data-set-cursor]': [],
         '[data-theme-mode]': [],
         '[data-theme-pane]': [],
         '[data-theme-toggle]': [],
@@ -66,6 +67,10 @@ describe('initChrome', () => {
         '[data-i18n="theme.bg"]': [],
         '[data-i18n="theme.fg"]': [],
         '[data-i18n="theme.accent"]': [],
+        '[data-i18n="theme.cursor"]': [],
+        '[data-i18n="theme.cursor.basic"]': [],
+        '[data-i18n="theme.cursor.pet"]': [],
+        '[data-i18n="theme.cursor.zodiac"]': [],
       }[selector] || []),
     };
     const palettes = [];
