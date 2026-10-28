@@ -252,9 +252,25 @@ button { cursor: pointer; }
 
 .hero {
   width: min(1120px, calc(100% - 3rem));
-  padding: clamp(5rem, 12vw, 9rem) 0 clamp(3.5rem, 8vw, 6.5rem);
+  padding: clamp(4rem, 10vw, 7.5rem) 0 clamp(3rem, 7vw, 5.5rem);
   margin: 0 auto;
   text-align: center;
+}
+
+.hero-stage {
+  display: grid;
+  gap: 2rem;
+  align-items: center;
+}
+
+@media (min-width: 960px) {
+  .hero-stage {
+    grid-template-columns: 1.05fr .95fr;
+    text-align: left;
+  }
+  .hero-stage .hero-actions { justify-content: flex-start; }
+  .hero-stage .hero-copy h1,
+  .hero-stage .hero-copy p { margin-left: 0; margin-right: 0; }
 }
 
 .eyebrow {
@@ -502,6 +518,217 @@ button { cursor: pointer; }
   transform: translateY(0);
 }
 
+.terminal-panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  box-shadow: 0 1.4rem 3rem var(--shadow), 0 0 40px color-mix(in srgb, var(--accent) 12%, transparent);
+  backdrop-filter: blur(16px);
+  text-align: left;
+}
+
+.terminal-panel__chrome {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .75rem;
+}
+
+.terminal-panel__dot {
+  width: .55rem;
+  height: .55rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--glow);
+  opacity: .85;
+}
+.terminal-panel__dot:nth-child(2) { opacity: .55; }
+.terminal-panel__dot:nth-child(3) { opacity: .35; }
+
+.terminal-panel__body {
+  min-height: 9.5rem;
+  margin: 0;
+  padding: 1.1rem 1.15rem 1.35rem;
+  color: var(--fg);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .92rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.terminal-panel__cursor {
+  display: inline-block;
+  width: .55ch;
+  margin-left: .1ch;
+  color: var(--accent);
+  animation: blink 1s steps(1) infinite;
+}
+
+.marquee {
+  position: relative;
+  overflow: hidden;
+  margin: 0 auto 1rem;
+  width: min(1120px, calc(100% - 3rem));
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.marquee__track {
+  display: flex;
+  width: max-content;
+  gap: 2rem;
+  animation: marquee-scroll 28s linear infinite;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .82rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.marquee__track span {
+  white-space: nowrap;
+}
+
+.marquee__track span::after {
+  content: "◆";
+  margin-left: 2rem;
+  color: var(--accent);
+  text-shadow: 0 0 10px var(--glow);
+}
+
+.carousel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  box-shadow: 0 1.2rem 2.8rem var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
+.carousel__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.35rem 0;
+}
+
+.carousel__hint {
+  color: var(--muted);
+  font-size: .85rem;
+}
+
+.carousel__viewport {
+  position: relative;
+  min-height: 15rem;
+  padding: 1.25rem 1.35rem 1.5rem;
+}
+
+.carousel__slide {
+  position: absolute;
+  inset: 1.25rem 1.35rem 1.5rem;
+  display: grid;
+  gap: .85rem;
+  align-content: center;
+  opacity: 0;
+  transform: translateX(28px) scale(.98);
+  pointer-events: none;
+  transition: opacity .45s ease, transform .45s ease;
+}
+
+.carousel__slide.is-active {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+
+.carousel__kicker {
+  color: var(--accent);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .78rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px var(--glow);
+}
+
+.carousel__slide h3 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  letter-spacing: -.04em;
+}
+
+.carousel__slide p {
+  margin: 0;
+  max-width: 42rem;
+  color: var(--muted);
+  font-size: 1.02rem;
+}
+
+.carousel__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1.15rem 1.15rem;
+}
+
+.carousel__nav {
+  display: flex;
+  gap: .55rem;
+}
+
+.carousel__dots {
+  display: flex;
+  gap: .45rem;
+}
+
+.carousel__dots button {
+  width: .55rem;
+  height: .55rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  transition: width .2s ease, background .2s ease, box-shadow .2s ease;
+}
+
+.carousel__dots button.is-active {
+  width: 1.35rem;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--glow);
+}
+
+.cursor-glow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 280px;
+  height: 280px;
+  margin: -140px 0 0 -140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--glow), transparent 68%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+  mix-blend-mode: screen;
+}
+
+.cursor-glow.is-on { opacity: .55; }
+
+[data-theme="paper"] .cursor-glow {
+  mix-blend-mode: multiply;
+  opacity: 0;
+}
+[data-theme="paper"] .cursor-glow.is-on { opacity: .28; }
+
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 @keyframes blob-drift {
@@ -512,6 +739,16 @@ button { cursor: pointer; }
 @keyframes pulse-dot {
   0%, 100% { opacity: .55; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.25); }
+}
+
+@keyframes blink {
+  0%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
 @media (max-width: 760px) {
@@ -542,10 +779,16 @@ button { cursor: pointer; }
   .platform-chip,
   .button,
   .ambient__blob,
-  .platform-chip::before {
+  .platform-chip::before,
+  .marquee__track,
+  .terminal-panel__cursor,
+  .carousel__slide {
     animation: none !important;
     transition: none !important;
     transform: none !important;
   }
+  .cursor-glow { display: none; }
+  .carousel__slide { position: relative; inset: auto; opacity: 1; }
+  .carousel__viewport { display: grid; gap: 1rem; min-height: 0; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }

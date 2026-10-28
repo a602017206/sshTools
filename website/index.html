@@ -39,15 +39,36 @@
       </div>
     </header>
     <main>
-      <section class="hero reveal">
-        <span class="eyebrow">operations workspace</span>
-        <h1 data-i18n="brand">AHaSSHTools</h1>
-        <p data-i18n="tagline">跨平台运维客户端：SSH、文件、监控、数据与 AI</p>
-        <div class="hero-actions">
-          <a class="button" href="features.html" data-i18n="home.ctaFeatures">查看功能</a>
-          <a class="button button--primary" href="download.html" data-i18n="home.ctaDownload">立即下载</a>
+      <section class="hero">
+        <div class="hero-stage">
+          <div class="hero-copy reveal">
+            <span class="eyebrow">operations workspace</span>
+            <h1 data-i18n="brand">AHaSSHTools</h1>
+            <p data-i18n="tagline">跨平台运维客户端：SSH、文件、监控、数据与 AI</p>
+            <div class="hero-actions">
+              <a class="button" href="features.html" data-i18n="home.ctaFeatures">查看功能</a>
+              <a class="button button--primary" href="download.html" data-i18n="home.ctaDownload">立即下载</a>
+            </div>
+          </div>
+          <aside class="terminal-panel reveal" aria-label="会话预演">
+            <div class="terminal-panel__chrome">
+              <span class="terminal-panel__dot"></span>
+              <span class="terminal-panel__dot"></span>
+              <span class="terminal-panel__dot"></span>
+              <span data-i18n="home.terminalTitle">会话预演</span>
+            </div>
+            <pre class="terminal-panel__body"><span data-typewriter></span><span class="terminal-panel__cursor">▍</span></pre>
+          </aside>
         </div>
       </section>
+
+      <div class="marquee reveal" aria-hidden="true">
+        <div class="marquee__track">
+          <span>SSH</span><span>SFTP</span><span>Monitor</span><span>MySQL</span><span>PostgreSQL</span><span>Redis</span><span>Elasticsearch</span><span>Kafka</span><span>Copilot</span><span>Android</span><span>iOS</span><span>macOS</span><span>Windows</span>
+          <span>SSH</span><span>SFTP</span><span>Monitor</span><span>MySQL</span><span>PostgreSQL</span><span>Redis</span><span>Elasticsearch</span><span>Kafka</span><span>Copilot</span><span>Android</span><span>iOS</span><span>macOS</span><span>Windows</span>
+        </div>
+      </div>
+
       <section class="section">
         <div class="section-heading reveal"><h2 data-i18n="home.capabilitiesTitle">一套客户端，覆盖日常运维链路</h2></div>
         <div class="cap-grid">
@@ -59,6 +80,52 @@
           <article class="cap-card reveal" data-fx-tilt><div class="cap-card__icon">06</div><h3 data-i18n="cap.mobile.title">桌面与移动端</h3><p data-i18n="cap.mobile.desc">桌面端与 Android、iOS 共用 Go 核心，让工具随运维现场同行。</p></article>
         </div>
       </section>
+
+      <section class="section reveal">
+        <div class="carousel" data-carousel>
+          <div class="carousel__header">
+            <div>
+              <h2 data-i18n="home.showcaseTitle">场景速览</h2>
+              <p class="carousel__hint" data-i18n="home.showcaseHint">自动轮播 · 悬停可暂停</p>
+            </div>
+          </div>
+          <div class="carousel__viewport">
+            <article class="carousel__slide is-active" data-carousel-slide>
+              <div class="carousel__kicker" data-i18n="slide.ssh.kicker">终端</div>
+              <h3 data-i18n="slide.ssh.title">多机会话，一眼切换</h3>
+              <p data-i18n="slide.ssh.body">标签页、批量执行与会话日志，让多机运维保持同一节奏。</p>
+            </article>
+            <article class="carousel__slide" data-carousel-slide>
+              <div class="carousel__kicker" data-i18n="slide.files.kicker">文件</div>
+              <h3 data-i18n="slide.files.title">SFTP 与远程编辑同屏</h3>
+              <p data-i18n="slide.files.body">上传下载带进度，远程文本可在线改完直接保存。</p>
+            </article>
+            <article class="carousel__slide" data-carousel-slide>
+              <div class="carousel__kicker" data-i18n="slide.data.kicker">数据</div>
+              <h3 data-i18n="slide.data.title">库表 · 缓存 · 搜索 · 消息</h3>
+              <p data-i18n="slide.data.body">关系库与中间件入口收拢到同一工作台，减少工具来回跳。</p>
+            </article>
+            <article class="carousel__slide" data-carousel-slide>
+              <div class="carousel__kicker" data-i18n="slide.ai.kicker">AI</div>
+              <h3 data-i18n="slide.ai.title">带着上下文排查</h3>
+              <p data-i18n="slide.ai.body">结合当前会话与对象上下文辅助分析，变更仍需你确认。</p>
+            </article>
+          </div>
+          <div class="carousel__controls">
+            <div class="carousel__nav">
+              <button class="button" type="button" data-carousel-prev data-i18n="carousel.prev">上一张</button>
+              <button class="button button--primary" type="button" data-carousel-next data-i18n="carousel.next">下一张</button>
+            </div>
+            <div class="carousel__dots" aria-label="轮播进度">
+              <button type="button" data-carousel-dot aria-label="1"></button>
+              <button type="button" data-carousel-dot aria-label="2"></button>
+              <button type="button" data-carousel-dot aria-label="3"></button>
+              <button type="button" data-carousel-dot aria-label="4"></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="section">
         <div class="section-heading reveal"><h2 data-i18n="home.platformsTitle">面向桌面与移动运维现场</h2></div>
         <div class="platform-row reveal">
@@ -75,12 +142,37 @@
   <script type="module">
     import { initChrome } from './assets/js/nav.js';
     import { initFx } from './assets/js/fx.js';
+    import { initCarousel } from './assets/js/carousel.js';
+    import { initTypewriter } from './assets/js/typewriter.js';
     import { shouldStartScene, mountScene } from './assets/js/scene.js';
     import { THEME_PALETTES, readStoredTheme } from './assets/js/theme.js';
+    import { readStoredLang } from './assets/js/i18n.js';
 
     const sceneRef = { api: null };
     initChrome({ sceneRef });
     initFx();
+    initCarousel(document.querySelector('[data-carousel]'));
+
+    const lang = readStoredLang();
+    const typeLines = lang === 'en'
+      ? [
+          '$ ssh ops@edge-01',
+          'connected · latency 18ms',
+          '$ sftp put ./release.tgz /opt/app/',
+          'transfer 100% · 42 MB/s',
+          '$ monitor --live cpu mem disk',
+          'cpu 23% · mem 61% · disk 44%',
+        ]
+      : [
+          '$ ssh ops@edge-01',
+          '已连接 · 延迟 18ms',
+          '$ sftp put ./release.tgz /opt/app/',
+          '传输完成 100% · 42 MB/s',
+          '$ monitor --live cpu mem disk',
+          'cpu 23% · mem 61% · disk 44%',
+        ];
+    initTypewriter(document.querySelector('[data-typewriter]'), typeLines);
+
     const canvas = document.getElementById('bg-canvas');
     const webglAvailable = (() => {
       try {

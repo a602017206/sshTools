@@ -66,6 +66,29 @@ export function initFx({ root = document, matchMedia = globalThis.matchMedia } =
     });
   }
 
+  // Soft page cursor glow
+  let glow = root.querySelector('.cursor-glow');
+  if (!glow && root.body) {
+    glow = root.createElement?.('div') || document.createElement('div');
+    glow.className = 'cursor-glow';
+    glow.setAttribute('aria-hidden', 'true');
+    (root.body || root).appendChild(glow);
+  }
+  if (glow) {
+    const onPointer = (event) => {
+      glow.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0)`;
+      glow.classList.add('is-on');
+    };
+    const onLeave = () => glow.classList.remove('is-on');
+    window.addEventListener('pointermove', onPointer, { passive: true });
+    window.addEventListener('pointerleave', onLeave);
+    cleanups.push(() => {
+      window.removeEventListener('pointermove', onPointer);
+      window.removeEventListener('pointerleave', onLeave);
+      glow.remove();
+    });
+  }
+
   return {
     destroy() {
       cleanups.forEach((fn) => fn());
