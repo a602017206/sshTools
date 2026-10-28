@@ -12,6 +12,17 @@ export function shouldStartScene({ matchMedia, webglAvailable }) {
   return Boolean(webglAvailable) && !reducedMotion;
 }
 
+export function parseCssColor(value) {
+  const color = String(value ?? '');
+  const match = /^#([0-9a-f]{6})([0-9a-f]{2})$/i.exec(color);
+  if (!match) return { color, opacity: 1 };
+
+  return {
+    color: `#${match[1]}`,
+    opacity: Number.parseInt(match[2], 16) / 255,
+  };
+}
+
 function detectWebGL() {
   try {
     const canvas = document.createElement('canvas');
@@ -56,8 +67,13 @@ export async function mountScene(target, options = {}) {
   const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
   const particleGeometry = new THREE.BufferGeometry();
   const lineGeometry = new THREE.BufferGeometry();
+  const initialLineColor = parseCssColor(palette.line);
   const particleMaterial = new THREE.PointsMaterial({ color: palette.particle, size: 0.07, transparent: true, opacity: 0.85 });
-  const lineMaterial = new THREE.LineBasicMaterial({ color: palette.line, transparent: true, opacity: 0.45 });
+  const lineMaterial = new THREE.LineBasicMaterial({
+    color: initialLineColor.color,
+    transparent: initialLineColor.opacity < 1,
+    opacity: initialLineColor.opacity,
+  });
   const particles = new THREE.Points(particleGeometry, particleMaterial);
   const lines = new THREE.LineSegments(lineGeometry, lineMaterial);
 
@@ -156,8 +172,11 @@ export async function mountScene(target, options = {}) {
 
   function setPalette(nextPalette) {
     palette = { ...palette, ...nextPalette };
+    const lineColor = parseCssColor(palette.line);
     particleMaterial.color.set(palette.particle);
-    lineMaterial.color.set(palette.line);
+    lineMaterial.color.set(lineColor.color);
+    lineMaterial.opacity = lineColor.opacity;
+    lineMaterial.transparent = lineColor.opacity < 1;
     renderer.setClearColor(palette.bg, 0);
   }
 
@@ -199,7 +218,8 @@ export async function mountScene(target, options = {}) {
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('resize', resize, { passive: true });
     document.addEventListener('visibilitychange', onVisibilityChange);
-    animationFrame = requestAnimationFrame(render);
+    if (document.visibilityState === 'hidden') pause();
+    else animationFrame = requestAnimationFrame(render);
 
     return { setPalette, destroy, pause, resume };
   } catch (error) {
