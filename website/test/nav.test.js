@@ -9,12 +9,16 @@ afterEach(() => {
   globalThis.localStorage = originalStorage;
 });
 
-function button(value) {
+function button(attrValue) {
   const handlers = {};
+  const attrs = {};
   return {
-    getAttribute: () => value,
+    getAttribute: (name) => (name ? attrValue : attrValue),
+    setAttribute: (key, value) => { attrs[key] = value; },
+    classList: { toggle: () => {} },
     addEventListener: (event, handler) => { handlers[event] = handler; },
-    click: () => handlers.click(),
+    click: () => handlers.click?.(),
+    attrs,
   };
 }
 
@@ -29,35 +33,57 @@ describe('initChrome', () => {
     const translated = { getAttribute: () => 'nav.home', textContent: '' };
     const root = {
       setAttribute: (key, value) => { root[key] = value; },
+      style: { setProperty: () => {} },
     };
+    const listeners = [];
     globalThis.localStorage = {
-      getItem: (key) => key === 'sshtools-site-theme' ? 'graphite' : 'zh',
+      getItem: (key) => {
+        if (key === 'sshtools-site-theme') return 'graphite';
+        if (key === 'sshtools-site-lang') return 'zh';
+        return null;
+      },
       setItem: () => {},
     };
     globalThis.document = {
       body: { dataset: { page: 'features' } },
       documentElement: root,
+      addEventListener: (...args) => { listeners.push(args); },
       querySelectorAll: (selector) => ({
+        '.theme-dots': [],
         '[data-set-theme]': [themeButton],
         '[data-set-lang]': [langButton],
+        '[data-set-bg]': [],
+        '[data-set-fg]': [],
+        '[data-set-accent]': [],
+        '[data-theme-mode]': [],
+        '[data-theme-pane]': [],
+        '[data-theme-toggle]': [],
+        '.theme-panel__pop': [],
         '[data-nav]': [nav],
         '[data-i18n]': [translated],
         '[data-i18n-html]': [],
+        '[data-i18n="theme.presets"]': [],
+        '[data-i18n="theme.bg"]': [],
+        '[data-i18n="theme.fg"]': [],
+        '[data-i18n="theme.accent"]': [],
       }[selector] || []),
     };
     const palettes = [];
-    const { initChrome } = await import('../assets/js/nav.js');
+    const { initChrome } = await import('../assets/js/nav.js?theme-panel');
 
     const result = initChrome({ sceneApi: { setPalette: (palette) => palettes.push(palette) } });
     themeButton.click();
     langButton.click();
 
     assert.equal(result.theme, 'graphite');
+    assert.equal(result.appearance.mode, 'preset');
     assert.equal(result.lang, 'zh');
     assert.equal(root['data-theme'], 'amber');
+    assert.equal(root['data-theme-mode'], 'preset');
     assert.equal(root.lang, 'en');
     assert.equal(nav['aria-current'], 'page');
     assert.equal(translated.textContent, 'Home');
     assert.equal(palettes.length, 2);
+    assert.equal(listeners.length, 1);
   });
 });
