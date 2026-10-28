@@ -12,6 +12,12 @@
 </head>
 <body data-page="home">
   <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  <div class="ambient" aria-hidden="true">
+    <div class="ambient__blob ambient__blob--a"></div>
+    <div class="ambient__blob ambient__blob--b"></div>
+    <div class="ambient__blob ambient__blob--c"></div>
+    <div class="ambient__grid"></div>
+  </div>
   <div class="page">
     <header class="site-header">
       <a class="brand" href="index.html"><img src="assets/img/appicon.png" alt=""><span data-i18n="brand">AHaSSHTools</span></a>
@@ -33,7 +39,7 @@
       </div>
     </header>
     <main>
-      <section class="hero">
+      <section class="hero reveal">
         <span class="eyebrow">operations workspace</span>
         <h1 data-i18n="brand">AHaSSHTools</h1>
         <p data-i18n="tagline">跨平台运维客户端：SSH、文件、监控、数据与 AI</p>
@@ -43,19 +49,24 @@
         </div>
       </section>
       <section class="section">
-        <div class="section-heading"><h2 data-i18n="home.capabilitiesTitle">一套客户端，覆盖日常运维链路</h2></div>
+        <div class="section-heading reveal"><h2 data-i18n="home.capabilitiesTitle">一套客户端，覆盖日常运维链路</h2></div>
         <div class="cap-grid">
-          <article class="cap-card"><div class="cap-card__icon">01</div><h3 data-i18n="cap.ssh.title">SSH 与终端</h3><p data-i18n="cap.ssh.desc">多标签 SSH、本地 Shell、密钥认证与会话日志，集中处理主机资产。</p></article>
-          <article class="cap-card"><div class="cap-card__icon">02</div><h3 data-i18n="cap.sftp.title">SFTP 文件管理</h3><p data-i18n="cap.sftp.desc">浏览、上传、下载、编辑远程文件，并跟踪每一项传输进度。</p></article>
-          <article class="cap-card"><div class="cap-card__icon">03</div><h3 data-i18n="cap.monitor.title">系统监控</h3><p data-i18n="cap.monitor.desc">按会话查看 CPU、内存、磁盘、网络和主机信息，按需实时刷新。</p></article>
-          <article class="cap-card"><div class="cap-card__icon">04</div><h3 data-i18n="cap.data.title">数据服务</h3><p data-i18n="cap.data.desc">连接关系库、缓存、搜索和消息服务，在同一工作台完成浏览与查询。</p></article>
-          <article class="cap-card"><div class="cap-card__icon">05</div><h3 data-i18n="cap.ai.title">AI 助手</h3><p data-i18n="cap.ai.desc">结合当前 SSH 和数据上下文辅助排查；变更操作始终需要确认。</p></article>
-          <article class="cap-card"><div class="cap-card__icon">06</div><h3 data-i18n="cap.mobile.title">桌面与移动端</h3><p data-i18n="cap.mobile.desc">桌面端与 Android、iOS 共用 Go 核心，让工具随运维现场同行。</p></article>
+          <article class="cap-card reveal" data-fx-tilt><div class="cap-card__icon">01</div><h3 data-i18n="cap.ssh.title">SSH 与终端</h3><p data-i18n="cap.ssh.desc">多标签 SSH、本地 Shell、密钥认证与会话日志，集中处理主机资产。</p></article>
+          <article class="cap-card reveal" data-fx-tilt><div class="cap-card__icon">02</div><h3 data-i18n="cap.sftp.title">SFTP 文件管理</h3><p data-i18n="cap.sftp.desc">浏览、上传、下载、编辑远程文件，并跟踪每一项传输进度。</p></article>
+          <article class="cap-card reveal" data-fx-tilt><div class="cap-card__icon">03</div><h3 data-i18n="cap.monitor.title">系统监控</h3><p data-i18n="cap.monitor.desc">按会话查看 CPU、内存、磁盘、网络和主机信息，按需实时刷新。</p></article>
+          <article class="cap-card reveal" data-fx-tilt><div class="cap-card__icon">04</div><h3 data-i18n="cap.data.title">数据服务</h3><p data-i18n="cap.data.desc">连接关系库、缓存、搜索和消息服务，在同一工作台完成浏览与查询。</p></article>
+          <article class="cap-card reveal" data-fx-tilt><div class="cap-card__icon">05</div><h3 data-i18n="cap.ai.title">AI 助手</h3><p data-i18n="cap.ai.desc">结合当前 SSH 和数据上下文辅助排查；变更操作始终需要确认。</p></article>
+          <article class="cap-card reveal" data-fx-tilt><div class="cap-card__icon">06</div><h3 data-i18n="cap.mobile.title">桌面与移动端</h3><p data-i18n="cap.mobile.desc">桌面端与 Android、iOS 共用 Go 核心，让工具随运维现场同行。</p></article>
         </div>
       </section>
       <section class="section">
-        <div class="section-heading"><h2 data-i18n="home.platformsTitle">面向桌面与移动运维现场</h2></div>
-        <p>Windows · macOS · Android · iOS</p>
+        <div class="section-heading reveal"><h2 data-i18n="home.platformsTitle">面向桌面与移动运维现场</h2></div>
+        <div class="platform-row reveal">
+          <span class="platform-chip">Windows</span>
+          <span class="platform-chip">macOS</span>
+          <span class="platform-chip">Android</span>
+          <span class="platform-chip">iOS</span>
+        </div>
       </section>
     </main>
     <footer class="site-footer">© AHaSSHTools · <a href="https://github.com/a602017206/sshTools">GitHub</a></footer>
@@ -63,11 +74,13 @@
   <!-- three@0.170.0 via jsDelivr inside scene.js -->
   <script type="module">
     import { initChrome } from './assets/js/nav.js';
+    import { initFx } from './assets/js/fx.js';
     import { shouldStartScene, mountScene } from './assets/js/scene.js';
     import { THEME_PALETTES, readStoredTheme } from './assets/js/theme.js';
 
     const sceneRef = { api: null };
     initChrome({ sceneRef });
+    initFx();
     const canvas = document.getElementById('bg-canvas');
     const webglAvailable = (() => {
       try {
