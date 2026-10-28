@@ -28,7 +28,7 @@
       <div class="flex-1 overflow-y-auto p-4 space-y-3">
         {#each $activeTransfers as transfer (transfer.id)}
           <div class="rounded-xl border p-3" style="background: var(--glass-bg); border-color: var(--glass-border);">
-            <div class="flex items-center justify-between mb-2"><div class="flex-1 min-w-0"><div class="text-sm font-medium truncate" title={transfer.filename}>{transfer.filename}</div><div class="text-xs ops-muted mt-0.5">{formatFileSize(transfer.bytesSent)} / {formatFileSize(transfer.totalBytes)} {#if transfer.speed}• {formatSpeed(transfer.speed)}{/if}</div></div><button on:click={async () => { await CancelTransfer(transfer.id); uploadStore.cancelTransfer(transfer.id); }} class="p-1.5 rounded text-red-500" title="取消上传">×</button></div>
+            <div class="flex items-center justify-between mb-2"><div class="flex-1 min-w-0"><div class="text-sm font-medium truncate" title={transfer.filename}>{transfer.filename}</div><div class="text-xs ops-muted mt-0.5">{formatFileSize(transfer.bytesSent)} / {formatFileSize(transfer.totalBytes)} {#if transfer.speed}• {formatSpeed(transfer.speed)}{/if}</div></div><button on:click={async () => { await CancelTransfer(transfer.id); uploadStore.cancelTransfer(transfer.id); }} class="p-1.5 rounded text-red-500" title="取消传输">×</button></div>
             <div class="h-2 rounded-full overflow-hidden" style="background: color-mix(in srgb, var(--glass-bg) 60%, #94a3b8);"><div class="h-full transition-all duration-300" style={`width: ${Math.min(100, Math.max(0, getTransferPercentage(transfer)))}%; background: var(--ops-signal);`}></div></div>
           </div>
         {/each}

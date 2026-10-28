@@ -51,6 +51,7 @@
     isValidOctalMode,
   } from '../lib/fileManagerContextMenu.js';
   import { clearWindowSelection, getViewportMenuPosition, viewSize } from '../lib/contextMenu.js';
+  import { shouldApplyTransferProgress } from '../lib/transferProgress.js';
 
   // Svelte action to focus element on mount
   function focus(node) {
@@ -835,13 +836,16 @@
     }
   }
 
-  // Transfer progress subscription
+  // Transfer progress subscription（上传/下载共用；kind 仅作方向标记）
   function subscribeToTransfer(transferID, kind) {
     const eventName = `sftp:progress:${transferID}`;
     const unsubscriber = EventsOn(eventName, (progress) => {
-      if (kind === 'upload') {
-        applyUploadProgress({ ...progress, transfer_id: progress?.transfer_id || transferID });
-      }
+      if (!shouldApplyTransferProgress(kind)) return;
+      applyUploadProgress({
+        ...progress,
+        transfer_id: progress?.transfer_id || transferID,
+        direction: kind || 'upload',
+      });
     });
 
     progressUnsubscribers.push(unsubscriber);
