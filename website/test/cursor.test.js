@@ -2,30 +2,38 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CURSOR_STYLES,
+  CURSOR_SVG_PATHS,
   CURSOR_STORAGE_KEY,
   normalizeCursorId,
   getCursorStyle,
+  cursorSvgMarkup,
   readStoredCursor,
   applyCursorStyle,
   cursorLabel,
 } from '../assets/js/cursor.js';
 
 describe('cursor catalog', () => {
-  it('includes basic FX, pets, and all twelve zodiac animals', () => {
+  it('includes neon SVG shapes for basic, pets, and twelve zodiac animals', () => {
     const groups = Object.fromEntries(['basic', 'pet', 'zodiac'].map((g) => [g, CURSOR_STYLES.filter((s) => s.group === g)]));
     assert.ok(groups.basic.length >= 4);
     assert.ok(groups.pet.some((s) => s.id === 'cat'));
     assert.equal(groups.zodiac.length, 12);
-    assert.ok(groups.zodiac.some((s) => s.id === 'dragon'));
-    assert.ok(groups.zodiac.some((s) => s.id === 'dog'));
+    for (const style of CURSOR_STYLES) {
+      assert.ok(CURSOR_SVG_PATHS[style.id], `missing svg for ${style.id}`);
+      assert.equal(Object.prototype.hasOwnProperty.call(style, 'glyph'), false);
+    }
   });
 });
 
-describe('normalizeCursorId / getCursorStyle', () => {
-  it('normalizes unknown ids to cat', () => {
+describe('normalizeCursorId / svg markup', () => {
+  it('normalizes unknown ids to cat and renders line-art svg', () => {
     assert.equal(normalizeCursorId('cat'), 'cat');
     assert.equal(normalizeCursorId('nope'), 'cat');
-    assert.equal(getCursorStyle('tiger').glyph, '🐯');
+    const svg = cursorSvgMarkup('tiger');
+    assert.match(svg, /<svg/);
+    assert.match(svg, /stroke="currentColor"/);
+    assert.doesNotMatch(svg, /🐱|🐯|emoji/i);
+    assert.ok(getCursorStyle('tiger').trail === 'outline');
   });
 });
 

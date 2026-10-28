@@ -5,6 +5,7 @@
 
 import {
   applyCursorStyle,
+  cursorSvgMarkup,
   getCursorStyle,
   readStoredCursor,
 } from './cursor.js';
@@ -35,7 +36,7 @@ export function spawnBurst(root, x, y, {
   count = 8,
   className = 'cursor-spark',
   ttlMs = 520,
-  glyph = '',
+  html = '',
 } = {}) {
   if (!root?.appendChild) return [];
   const nodes = [];
@@ -43,7 +44,7 @@ export function spawnBurst(root, x, y, {
     const el = (root.ownerDocument || document).createElement('span');
     el.className = className;
     el.setAttribute('aria-hidden', 'true');
-    if (glyph) el.textContent = glyph;
+    if (html) el.innerHTML = html;
     const angle = (Math.PI * 2 * i) / count + Math.random() * 0.45;
     const dist = 22 + Math.random() * 48;
     el.style.left = `${x}px`;
@@ -87,22 +88,13 @@ function ensureAmbientFluff(root) {
 }
 
 function renderCursorMarkup(style) {
-  if (style.id === 'ring') {
-    return '<span class="site-cursor__ring"></span><span class="site-cursor__dot"></span>';
-  }
-  if (style.id === 'spark') {
-    return '<span class="site-cursor__star">✦</span><span class="site-cursor__aura"></span>';
-  }
-  if (style.id === 'comet') {
-    return '<span class="site-cursor__comet-core"></span><span class="site-cursor__comet-tail"></span>';
-  }
-  return `<span class="site-cursor__glyph">${style.glyph}</span><span class="site-cursor__aura"></span>`;
+  return `${cursorSvgMarkup(style.id, { className: 'site-cursor__svg' })}<span class="site-cursor__aura"></span>`;
 }
 
 function trailCountFor(style) {
   if (style.trail === 'comet') return 12;
   if (style.trail === 'spark') return 9;
-  if (style.trail === 'glyphs') return 6;
+  if (style.trail === 'outline') return 5;
   return 7;
 }
 
@@ -112,14 +104,14 @@ function rebuildTrail(trailLayer, style, doc) {
   const count = trailCountFor(style);
   return Array.from({ length: count }, (_, i) => {
     const node = doc.createElement('span');
-    if (style.trail === 'glyphs') {
-      node.className = 'cursor-trail__glyph';
-      node.textContent = style.glyph;
+    if (style.trail === 'outline') {
+      node.className = 'cursor-trail__outline';
+      node.innerHTML = cursorSvgMarkup(style.id, { className: 'cursor-trail__svg' });
     } else if (style.trail === 'comet') {
       node.className = 'cursor-trail__comet';
     } else if (style.trail === 'spark') {
       node.className = 'cursor-trail__spark';
-      node.textContent = '✧';
+      node.innerHTML = cursorSvgMarkup('spark', { className: 'cursor-trail__svg' });
     } else {
       node.className = 'cursor-trail__dot';
     }
@@ -213,8 +205,10 @@ function initThemedCursor(root, cleanups) {
       if (now - lastSparkAt > 48) {
         lastSparkAt = now;
         const flake = doc.createElement('span');
-        flake.className = style.id === 'heart' ? 'cursor-flake cursor-flake--heart' : 'cursor-flake';
-        flake.textContent = style.id === 'heart' ? '💕' : '✧';
+        flake.className = 'cursor-flake';
+        flake.innerHTML = cursorSvgMarkup(style.id === 'heart' ? 'heart' : 'spark', {
+          className: 'cursor-flake__svg',
+        });
         flake.style.left = `${curX + (Math.random() * 18 - 9)}px`;
         flake.style.top = `${curY + (Math.random() * 18 - 9)}px`;
         (root.body || root).appendChild(flake);
@@ -244,21 +238,16 @@ function initThemedCursor(root, cleanups) {
 
   const onDown = (event) => {
     cursor.classList.add('is-press');
-    const burstClass = style.burst === 'heart'
-      ? 'cursor-spark cursor-spark--heart'
-      : style.burst === 'emoji'
-        ? 'cursor-spark cursor-spark--emoji'
-        : 'cursor-spark';
-    const glyph = style.burst === 'heart'
-      ? '💖'
-      : style.burst === 'emoji'
-        ? style.glyph
-        : '';
+    const useOutline = style.burst === 'outline' || style.burst === 'heart';
+    const burstClass = useOutline ? 'cursor-spark cursor-spark--outline' : 'cursor-spark';
+    const html = useOutline
+      ? cursorSvgMarkup(style.burst === 'heart' ? 'heart' : style.id, { className: 'cursor-spark__svg' })
+      : '';
     spawnBurst(root.body || root, event.clientX, event.clientY, {
-      count: style.burst === 'emoji' ? 8 : 12,
+      count: useOutline ? 7 : 12,
       className: burstClass,
       ttlMs: 680,
-      glyph,
+      html,
     });
     const ripple = doc.createElement('span');
     ripple.className = 'cursor-ripple';

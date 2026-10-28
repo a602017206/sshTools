@@ -11,6 +11,7 @@ import {
   CURSOR_STYLES,
   applyCursorStyle,
   cursorLabel,
+  cursorSvgMarkup,
   readStoredCursor,
 } from './cursor.js';
 import { applyI18n, readStoredLang, setStoredLang, MESSAGES, t } from './i18n.js';
@@ -64,7 +65,7 @@ function cursorButtons(lang, group) {
     .filter((style) => style.group === group)
     .map((style) => {
       const label = cursorLabel(style, lang);
-      return `<button type="button" class="cursor-pick" data-set-cursor="${style.id}" aria-label="${label}" title="${label}" aria-pressed="false"><span>${style.glyph}</span></button>`;
+      return `<button type="button" class="cursor-pick" data-set-cursor="${style.id}" aria-label="${label}" title="${label}" aria-pressed="false">${cursorSvgMarkup(style.id, { className: 'cursor-pick__svg' })}</button>`;
     })
     .join('');
 }
