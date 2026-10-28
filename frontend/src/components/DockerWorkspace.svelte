@@ -2,6 +2,14 @@
   import { onMount } from 'svelte';
   import ConfirmDialog from './ui/ConfirmDialog.svelte';
   import DockerContainerDetail from './DockerContainerDetail.svelte';
+  import DockerResourceDetail from './DockerResourceDetail.svelte';
+  import {
+    DOCKER_RESOURCE_TABS,
+    formatDockerSize,
+    imageDisplayTags,
+    removeResourceConfirmCopy,
+    resourceRowKey
+  } from '../lib/dockerResources.js';
   import { portalToBody, resolveContextMenuPoint } from '../lib/contextMenu.js';
   import {
     actionSuccessLabel,
@@ -47,6 +55,20 @@
   export let selectedContainerId = '';
   export let selectedDetail = null;
   let detailError = '';
+
+  // 资源 Tab：containers | images | networks | volumes
+  let resourceKind = 'containers';
+  let resourceRows = [];
+  let resourceToken = 0; // 使过期的列表结果失效
+  let inspectToken = 0; // 使过期的 Inspect 结果失效
+  let selectedResourceKey = '';
+  let selectedResourceRow = null;
+  let selectedResourceDetail = null;
+  let resourceDetailError = '';
+  let resRemoveTarget = null; // { kind, row }
+  let resRemoveForce = false;
+  let showResRemoveConfirm = false;
+  let resBusyKey = '';
 
   // 详情侧栏宽度（仅会话内记忆，不落盘）
   let detailWidth = DEFAULT_DOCKER_DETAIL_WIDTH;
@@ -111,7 +133,161 @@
     }
   }
 
+  const LIST_METHODS = {
+    images: 'ListDockerImages',
+    networks: 'ListDockerNetworks',
+    volumes: 'ListDockerVolumes'
+  };
+  const INSPECT_METHODS = {
+    images: 'InspectDockerImage',
+    networks: 'InspectDockerNetwork',
+    volumes: 'InspectDockerVolume'
+  };
+  const REMOVE_METHODS = {
+    images: 'RemoveDockerImage',
+    networks: 'RemoveDockerNetwork',
+    volumes: 'RemoveDockerVolume'
+  };
+
+  /** 刷新当前 Tab 的列表。 */
   async function refresh() {
+    if (resourceKind === 'containers') return refreshContainers();
+    return refreshResources();
+  }
+
+  async function refreshResources() {
+    const kind = resourceKind;
+    const list = bindings()[LIST_METHODS[kind]];
+    if (!connected || typeof list !== 'function') return;
+    const token = ++resourceToken;
+    loading = true;
+    try {
+      const result = await list(sessionId);
+      if (destroyed || token !== resourceToken) return;
+      resourceRows = Array.isArray(result) ? result : [];
+      errorMessage = '';
+    } catch (error) {
+      if (destroyed || token !== resourceToken) return;
+      errorMessage = errText(error);
+    } finally {
+      if (token === resourceToken) loading = false;
+    }
+  }
+
+  function clearResourceSelection() {
+    inspectToken += 1; // 丢弃进行中的 Inspect
+    selectedResourceKey = '';
+    selectedResourceRow = null;
+    selectedResourceDetail = null;
+    resourceDetailError = '';
+  }
+
+  async function switchTab(kind) {
+    if (kind === resourceKind) return;
+    closeMenu();
+    closeDetail();
+    clearResourceSelection();
+    resourceToken += 1; // 丢弃上一个 Tab 进行中的列表请求
+    resourceKind = kind;
+    resourceRows = [];
+    errorMessage = '';
+    actionNotice = '';
+    loading = false;
+    if (connected) await refresh();
+  }
+
+  function resourceId(kind, row) {
+    return kind === 'volumes' ? String(row?.Name ?? '') : String(row?.ID ?? '');
+  }
+
+  function resourceLabel(kind, row) {
+    if (!row) return '';
+    if (kind === 'images') {
+      const tags = imageDisplayTags(row);
+      return tags !== '<none>' ? tags : String(row.ID ?? '').slice(0, 12);
+    }
+    if (kind === 'networks') return row.Name || String(row.ID ?? '').slice(0, 12);
+    return row.Name || '';
+  }
+
+  async function openResourceDetail(row) {
+    const kind = resourceKind;
+    const key = resourceRowKey(kind, row);
+    const id = resourceId(kind, row);
+    if (!key || !id) return;
+    const token = ++inspectToken;
+    selectedResourceKey = key;
+    selectedResourceRow = row;
+    selectedResourceDetail = null;
+    resourceDetailError = '';
+    const inspect = bindings()[INSPECT_METHODS[kind]];
+    if (typeof inspect !== 'function') {
+      selectedResourceDetail = row;
+      return;
+    }
+    try {
+      const detail = await inspect(sessionId, id);
+      if (destroyed || token !== inspectToken || selectedResourceKey !== key) return;
+      selectedResourceDetail = detail || row;
+    } catch (error) {
+      if (destroyed || token !== inspectToken || selectedResourceKey !== key) return;
+      // Inspect 失败：退回列表行字段，并提示原因
+      selectedResourceDetail = row;
+      resourceDetailError = errText(error);
+    }
+  }
+
+  function closeResourceDetail() {
+    clearResourceSelection();
+  }
+
+  function askRemoveResource(row) {
+    resRemoveTarget = { kind: resourceKind, row };
+    resRemoveForce = false;
+    showResRemoveConfirm = true;
+  }
+
+  function cancelResourceRemove() {
+    showResRemoveConfirm = false;
+    resRemoveTarget = null;
+    resRemoveForce = false;
+  }
+
+  async function confirmResourceRemove() {
+    const target = resRemoveTarget;
+    const force = resRemoveForce;
+    showResRemoveConfirm = false;
+    resRemoveTarget = null;
+    resRemoveForce = false;
+    if (!target) return;
+    const { kind, row } = target;
+    const remove = bindings()[REMOVE_METHODS[kind]];
+    const id = resourceId(kind, row);
+    if (!id || typeof remove !== 'function') {
+      errorMessage = 'Docker 操作功能不可用';
+      return;
+    }
+    const key = resourceRowKey(kind, row);
+    resBusyKey = key;
+    errorMessage = '';
+    try {
+      if (kind === 'images') await remove(sessionId, id, force);
+      else await remove(sessionId, id);
+      if (destroyed) return;
+      if (kind === resourceKind) {
+        if (selectedResourceKey === key) clearResourceSelection();
+        flashNotice(`${resourceLabel(kind, row)} 已删除`);
+        await refreshResources();
+      }
+    } catch (error) {
+      if (destroyed) return;
+      errorMessage = errText(error);
+    } finally {
+      resBusyKey = '';
+    }
+  }
+
+  async function refreshContainers() {
     const { ListDockerContainers } = bindings();
     if (!connected || typeof ListDockerContainers !== 'function') return;
     loading = true;
@@ -264,6 +440,12 @@
     if (target) await runAction('remove', target, force);
   }
 
+  $: resourceTabLabel = DOCKER_RESOURCE_TABS.find((tab) => tab.id === resourceKind)?.label || '';
+  $: resRemoveCopy = removeResourceConfirmCopy(
+    resRemoveTarget?.kind || 'images',
+    resRemoveTarget ? resourceLabel(resRemoveTarget.kind, resRemoveTarget.row) : '',
+    resRemoveForce
+  );
   $: menuItems = menu ? containerActionMenu(menu.container) : [];
   $: removeCopy = removeConfirmCopy(removeTarget ? containerLabel(removeTarget) : '', removeForce);
 
@@ -294,10 +476,12 @@
       {/if}
     </div>
     <div class="docker-actions">
-      <label class="docker-filter">
-        <input type="checkbox" bind:checked={onlyRunning} />
-        仅运行中
-      </label>
+      {#if resourceKind === 'containers'}
+        <label class="docker-filter">
+          <input type="checkbox" bind:checked={onlyRunning} />
+          仅运行中
+        </label>
+      {/if}
       <button
         type="button"
         class="docker-btn"
@@ -307,6 +491,19 @@
         {connected ? (loading ? '刷新中…' : '刷新') : '重新连接'}
       </button>
     </div>
+  </div>
+
+  <div class="docker-resource-tabs" role="tablist" aria-label="Docker 资源">
+    {#each DOCKER_RESOURCE_TABS as tab (tab.id)}
+      <button
+        type="button"
+        role="tab"
+        class="docker-resource-tab"
+        class:is-active={resourceKind === tab.id}
+        aria-selected={resourceKind === tab.id}
+        on:click={() => switchTab(tab.id)}
+      >{tab.label}</button>
+    {/each}
   </div>
 
   <div class="docker-main" bind:this={dockerMainEl}>
@@ -322,6 +519,69 @@
         <h2>未连接到 Docker</h2>
         <p class="detail">{errorMessage}</p>
       </div>
+    {:else if resourceKind !== 'containers'}
+      {#if errorMessage}<div class="docker-banner docker-error">{errorMessage}</div>{/if}
+      {#if actionNotice}<div class="docker-banner docker-notice" role="status">{actionNotice}</div>{/if}
+      {#if resourceRows.length === 0}
+        <div class="docker-empty" role="status">
+          <p class="kicker">{resourceTabLabel}</p>
+          <h2>{loading ? '加载中…' : `没有${resourceTabLabel}`}</h2>
+          {#if !loading}<p class="detail">该 Docker 引擎上还没有{resourceTabLabel}。</p>{/if}
+        </div>
+      {:else}
+        <div class="docker-table-wrap">
+          <table class="docker-table">
+            <thead>
+              <tr>
+                {#if resourceKind === 'images'}
+                  <th>标签</th><th>ID</th><th>大小</th><th>创建时间</th>
+                {:else if resourceKind === 'networks'}
+                  <th>名称</th><th>ID</th><th>驱动</th><th>范围</th>
+                {:else}
+                  <th>名称</th><th>驱动</th><th>挂载点</th><th>创建时间</th>
+                {/if}
+                <th class="docker-col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each resourceRows as row (resourceRowKey(resourceKind, row))}
+                <tr
+                  class:docker-row--selected={selectedResourceKey !== '' && selectedResourceKey === resourceRowKey(resourceKind, row)}
+                  class:docker-row--busy={resBusyKey !== '' && resBusyKey === resourceRowKey(resourceKind, row)}
+                  on:click={() => openResourceDetail(row)}
+                >
+                  {#if resourceKind === 'images'}
+                    <td class="docker-cell-name" title={imageDisplayTags(row)}>{imageDisplayTags(row)}</td>
+                    <td class="docker-mono">{String(row.ID ?? '').replace(/^sha256:/, '').slice(0, 12) || '-'}</td>
+                    <td>{formatDockerSize(row.Size)}</td>
+                    <td>{formatContainerCreated(row.Created)}</td>
+                  {:else if resourceKind === 'networks'}
+                    <td class="docker-cell-name">{row.Name || '-'}</td>
+                    <td class="docker-mono">{String(row.ID ?? '').slice(0, 12) || '-'}</td>
+                    <td>{row.Driver || '-'}</td>
+                    <td>{row.Scope || '-'}</td>
+                  {:else}
+                    <td class="docker-cell-name">{row.Name || '-'}</td>
+                    <td>{row.Driver || '-'}</td>
+                    <td class="docker-mono" title={row.Mountpoint || ''}>{row.Mountpoint || '-'}</td>
+                    <td>{formatContainerCreated(row.Created)}</td>
+                  {/if}
+                  <td class="docker-col-actions">
+                    <button
+                      type="button"
+                      class="docker-res-delete"
+                      title="删除"
+                      aria-label="删除"
+                      disabled={resBusyKey !== '' && resBusyKey === resourceRowKey(resourceKind, row)}
+                      on:click|stopPropagation={() => askRemoveResource(row)}
+                    >删除</button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
     {:else if rows.length === 0}
       <div class="docker-empty" role="status">
         <p class="kicker">容器</p>
@@ -383,7 +643,29 @@
       </div>
     {/if}
   </div>
-  {#if connected && selectedContainerId}
+  {#if connected && resourceKind !== 'containers' && selectedResourceKey}
+    <div
+      class="docker-detail-shell"
+      style={`width: ${detailWidth}px;`}
+    >
+      <div
+        class="docker-detail-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整详情栏宽度"
+        on:pointerdown={startDetailResize}
+      ></div>
+      {#key selectedResourceKey}
+        <DockerResourceDetail
+          kind={resourceKind}
+          title={resourceLabel(resourceKind, selectedResourceRow)}
+          detail={selectedResourceDetail}
+          detailError={resourceDetailError}
+          onClose={closeResourceDetail}
+        />
+      {/key}
+    </div>
+  {:else if connected && resourceKind === 'containers' && selectedContainerId}
     <!-- key：切换容器时销毁旧侧栏（onDestroy 内 StopLogs），再挂载新的 -->
     <div
       class="docker-detail-shell"
@@ -447,6 +729,24 @@
     <input type="checkbox" bind:checked={removeForce} />
     强制删除（容器运行中也会被终止）
   </label>
+</ConfirmDialog>
+
+<ConfirmDialog
+  bind:isOpen={showResRemoveConfirm}
+  title={resRemoveCopy.title}
+  message={resRemoveCopy.message}
+  type="danger"
+  confirmText={resRemoveCopy.confirmLabel}
+  cancelText={resRemoveCopy.cancelLabel}
+  onConfirm={confirmResourceRemove}
+  onCancel={cancelResourceRemove}
+>
+  {#if resRemoveTarget?.kind === 'images'}
+    <label class="docker-force">
+      <input type="checkbox" bind:checked={resRemoveForce} />
+      强制删除（镜像被引用时也尝试删除）
+    </label>
+  {/if}
 </ConfirmDialog>
 
 <style>
@@ -544,6 +844,62 @@
   .docker-btn:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
+  }
+
+  .docker-resource-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px 14px 0;
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  .docker-resource-tab {
+    appearance: none;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+  }
+
+  .docker-resource-tab:hover {
+    color: var(--text-primary);
+  }
+
+  .docker-resource-tab.is-active {
+    color: var(--ops-signal);
+    border-bottom-color: var(--ops-signal);
+  }
+
+  .docker-resource-tab:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+
+  .docker-res-delete {
+    appearance: none;
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ops-alert);
+  }
+
+  .docker-res-delete:hover:not(:disabled) {
+    border-color: var(--glass-border);
+    background: var(--glass-bg);
+  }
+
+  .docker-res-delete:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
   }
 
   .docker-main {
@@ -708,7 +1064,7 @@
   }
 
   .docker-col-actions {
-    width: 48px;
+    width: 56px;
     text-align: center !important;
   }
 
