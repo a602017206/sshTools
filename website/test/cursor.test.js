@@ -22,9 +22,9 @@ describe('cursor catalog', () => {
 });
 
 describe('normalizeCursorId / getCursorStyle', () => {
-  it('normalizes unknown ids to ring', () => {
+  it('normalizes unknown ids to cat', () => {
     assert.equal(normalizeCursorId('cat'), 'cat');
-    assert.equal(normalizeCursorId('nope'), 'ring');
+    assert.equal(normalizeCursorId('nope'), 'cat');
     assert.equal(getCursorStyle('tiger').glyph, '🐯');
   });
 });
@@ -37,7 +37,7 @@ describe('storage + apply', () => {
       setItem: (k, v) => { values[k] = String(v); },
     };
     const root = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } };
-    assert.equal(readStoredCursor(storage), 'ring');
+    assert.equal(readStoredCursor(storage), 'cat');
     const style = applyCursorStyle('dragon', { documentElement: root, storage });
     assert.equal(style.id, 'dragon');
     assert.equal(values[CURSOR_STORAGE_KEY], 'dragon');

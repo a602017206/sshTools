@@ -34,7 +34,7 @@ export const CURSOR_STYLES = [
 export const CURSOR_STYLE_MAP = Object.fromEntries(CURSOR_STYLES.map((s) => [s.id, s]));
 
 export function normalizeCursorId(id) {
-  return Object.prototype.hasOwnProperty.call(CURSOR_STYLE_MAP, id) ? id : 'ring';
+  return Object.prototype.hasOwnProperty.call(CURSOR_STYLE_MAP, id) ? id : 'cat';
 }
 
 export function getCursorStyle(id) {

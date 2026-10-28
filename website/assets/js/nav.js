@@ -112,6 +112,15 @@ function buildThemePanel(lang) {
 
   pop.innerHTML = `
     <div class="theme-panel__modes" role="group" aria-label="${t(MESSAGES, lang, 'theme.mode')}">${modes}</div>
+    <div class="theme-panel__cursor">
+      <div class="theme-panel__label" data-i18n="theme.cursor">${t(MESSAGES, lang, 'theme.cursor')}</div>
+      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.basic">${t(MESSAGES, lang, 'theme.cursor.basic')}</div>
+      <div class="cursor-picks">${cursorButtons(lang, 'basic')}</div>
+      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.pet">${t(MESSAGES, lang, 'theme.cursor.pet')}</div>
+      <div class="cursor-picks">${cursorButtons(lang, 'pet')}</div>
+      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.zodiac">${t(MESSAGES, lang, 'theme.cursor.zodiac')}</div>
+      <div class="cursor-picks">${cursorButtons(lang, 'zodiac')}</div>
+    </div>
     <div class="theme-panel__pane" data-theme-pane="preset">
       <div class="theme-panel__label" data-i18n="theme.presets">${t(MESSAGES, lang, 'theme.presets')}</div>
       <div class="theme-swatches">${presets}</div>
@@ -129,15 +138,6 @@ function buildThemePanel(lang) {
       <div class="theme-swatches">${fgs}</div>
       <div class="theme-panel__label" data-i18n="theme.accent">${t(MESSAGES, lang, 'theme.accent')}</div>
       <div class="theme-swatches">${accents}</div>
-    </div>
-    <div class="theme-panel__cursor">
-      <div class="theme-panel__label" data-i18n="theme.cursor">${t(MESSAGES, lang, 'theme.cursor')}</div>
-      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.basic">${t(MESSAGES, lang, 'theme.cursor.basic')}</div>
-      <div class="cursor-picks">${cursorButtons(lang, 'basic')}</div>
-      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.pet">${t(MESSAGES, lang, 'theme.cursor.pet')}</div>
-      <div class="cursor-picks">${cursorButtons(lang, 'pet')}</div>
-      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.zodiac">${t(MESSAGES, lang, 'theme.cursor.zodiac')}</div>
-      <div class="cursor-picks">${cursorButtons(lang, 'zodiac')}</div>
     </div>
   `;
 
