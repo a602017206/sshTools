@@ -73,6 +73,26 @@ func TestParseDockerImagesJSONLines(t *testing.T) {
 	}
 }
 
+func TestParseDockerImagesMergesTagsByID(t *testing.T) {
+	out := `{"ID":"abc123","Repository":"nginx","Tag":"latest","Size":"187MB"}` + "\n" +
+		`{"ID":"abc123","Repository":"nginx","Tag":"1.25","Size":"187MB"}` + "\n" +
+		`{"ID":"abc123","Repository":"nginx","Tag":"latest","Size":"187MB"}` + "\n" +
+		`{"ID":"def456","Repository":"redis","Tag":"7","Size":"100MB"}`
+	imgs, err := docker.ParseDockerImagesJSONLines(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(imgs) != 2 {
+		t.Fatalf("len=%d: %+v", len(imgs), imgs)
+	}
+	if imgs[0].ID != "abc123" || len(imgs[0].Tags) != 2 || imgs[0].Tags[0] != "nginx:latest" || imgs[0].Tags[1] != "nginx:1.25" {
+		t.Fatalf("merged tags: %+v", imgs[0])
+	}
+	if imgs[1].ID != "def456" || len(imgs[1].Tags) != 1 {
+		t.Fatalf("img1: %+v", imgs[1])
+	}
+}
+
 func TestParseDockerImagesSizeFallback(t *testing.T) {
 	imgs, err := docker.ParseDockerImagesJSONLines(`{"ID":"a","Repository":"r","Tag":"t","Size":"weird"}` + "\n" + `{"ID":"b","Repository":"r","Tag":"t","Size":"512kB"}`)
 	if err != nil {

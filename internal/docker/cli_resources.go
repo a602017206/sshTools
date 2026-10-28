@@ -77,6 +77,7 @@ type dockerImageLine struct {
 func ParseDockerImagesJSONLines(stdout string) ([]ImageSummary, error) {
 	lines := jsonObjectLines(stdout)
 	out := make([]ImageSummary, 0, len(lines))
+	indexByID := make(map[string]int, len(lines))
 	for _, line := range lines {
 		var raw dockerImageLine
 		if err := json.Unmarshal([]byte(line), &raw); err != nil {
@@ -97,6 +98,18 @@ func ParseDockerImagesJSONLines(stdout string) ([]ImageSummary, error) {
 				created = ts.Unix()
 			}
 		}
+		// docker images prints one row per tag; merge rows sharing an image ID.
+		if idx, ok := indexByID[raw.ID]; ok && raw.ID != "" {
+			for _, t := range tags {
+				if !containsString(out[idx].Tags, t) {
+					out[idx].Tags = append(out[idx].Tags, t)
+				}
+			}
+			continue
+		}
+		if raw.ID != "" {
+			indexByID[raw.ID] = len(out)
+		}
 		out = append(out, ImageSummary{
 			ID:      raw.ID,
 			Tags:    tags,
@@ -106,6 +119,15 @@ func ParseDockerImagesJSONLines(stdout string) ([]ImageSummary, error) {
 		})
 	}
 	return out, nil
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // parseHumanSize roughly converts docker's human readable sizes (e.g. "187MB",
