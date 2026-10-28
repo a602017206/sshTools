@@ -346,6 +346,18 @@ export function InspectDockerContainer(arg1, arg2) {
   return window['go']['main']['App']['InspectDockerContainer'](arg1, arg2);
 }
 
+export function InspectDockerImage(arg1, arg2) {
+  return window['go']['main']['App']['InspectDockerImage'](arg1, arg2);
+}
+
+export function InspectDockerNetwork(arg1, arg2) {
+  return window['go']['main']['App']['InspectDockerNetwork'](arg1, arg2);
+}
+
+export function InspectDockerVolume(arg1, arg2) {
+  return window['go']['main']['App']['InspectDockerVolume'](arg1, arg2);
+}
+
 export function InstallJDBCDriver(arg1, arg2) {
   return window['go']['main']['App']['InstallJDBCDriver'](arg1, arg2);
 }
@@ -388,6 +400,18 @@ export function ListDatabases(arg1) {
 
 export function ListDockerContainers(arg1, arg2) {
   return window['go']['main']['App']['ListDockerContainers'](arg1, arg2);
+}
+
+export function ListDockerImages(arg1) {
+  return window['go']['main']['App']['ListDockerImages'](arg1);
+}
+
+export function ListDockerNetworks(arg1) {
+  return window['go']['main']['App']['ListDockerNetworks'](arg1);
+}
+
+export function ListDockerVolumes(arg1) {
+  return window['go']['main']['App']['ListDockerVolumes'](arg1);
 }
 
 export function ListFiles(arg1, arg2) {
@@ -452,6 +476,18 @@ export function RemoveConnection(arg1) {
 
 export function RemoveDockerContainer(arg1, arg2, arg3) {
   return window['go']['main']['App']['RemoveDockerContainer'](arg1, arg2, arg3);
+}
+
+export function RemoveDockerImage(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoveDockerImage'](arg1, arg2, arg3);
+}
+
+export function RemoveDockerNetwork(arg1, arg2) {
+  return window['go']['main']['App']['RemoveDockerNetwork'](arg1, arg2);
+}
+
+export function RemoveDockerVolume(arg1, arg2) {
+  return window['go']['main']['App']['RemoveDockerVolume'](arg1, arg2);
 }
 
 export function RemoveJDBCDriver(arg1, arg2) {

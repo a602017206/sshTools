@@ -179,6 +179,12 @@ export function ImportJDBCRuntimeArchive(arg1:string):Promise<service.JDBCRuntim
 
 export function InspectDockerContainer(arg1:string,arg2:string):Promise<docker.ContainerDetail>;
 
+export function InspectDockerImage(arg1:string,arg2:string):Promise<docker.ImageDetail>;
+
+export function InspectDockerNetwork(arg1:string,arg2:string):Promise<docker.NetworkDetail>;
+
+export function InspectDockerVolume(arg1:string,arg2:string):Promise<docker.VolumeDetail>;
+
 export function InstallJDBCDriver(arg1:string,arg2:string):Promise<void>;
 
 export function InstallJDBCManagedRuntime():Promise<service.JDBCRuntimeActivationResult>;
@@ -200,6 +206,12 @@ export function ListDatabaseTablesInSchema(arg1:string,arg2:string,arg3:string):
 export function ListDatabases(arg1:string):Promise<Array<string>>;
 
 export function ListDockerContainers(arg1:string,arg2:boolean):Promise<Array<docker.ContainerSummary>>;
+
+export function ListDockerImages(arg1:string):Promise<Array<docker.ImageSummary>>;
+
+export function ListDockerNetworks(arg1:string):Promise<Array<docker.NetworkSummary>>;
+
+export function ListDockerVolumes(arg1:string):Promise<Array<docker.VolumeSummary>>;
 
 export function ListFiles(arg1:string,arg2:string):Promise<Array<ssh.FileInfo>>;
 
@@ -232,6 +244,12 @@ export function RecordCommand(arg1:string,arg2:string):Promise<void>;
 export function RemoveConnection(arg1:string):Promise<void>;
 
 export function RemoveDockerContainer(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function RemoveDockerImage(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function RemoveDockerNetwork(arg1:string,arg2:string):Promise<void>;
+
+export function RemoveDockerVolume(arg1:string,arg2:string):Promise<void>;
 
 export function RemoveJDBCDriver(arg1:string,arg2:string):Promise<void>;
 

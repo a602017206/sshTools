@@ -628,6 +628,146 @@ export namespace docker {
 	        this.via = source["via"];
 	    }
 	}
+	export class ImageDetail {
+	    ID: string;
+	    Tags: string[];
+	    Size: number;
+	    Created: number;
+	    via?: string;
+	    Architecture: string;
+	    Os: string;
+	    Author: string;
+	    Comment: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImageDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.Tags = source["Tags"];
+	        this.Size = source["Size"];
+	        this.Created = source["Created"];
+	        this.via = source["via"];
+	        this.Architecture = source["Architecture"];
+	        this.Os = source["Os"];
+	        this.Author = source["Author"];
+	        this.Comment = source["Comment"];
+	    }
+	}
+	export class ImageSummary {
+	    ID: string;
+	    Tags: string[];
+	    Size: number;
+	    Created: number;
+	    via?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImageSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.Tags = source["Tags"];
+	        this.Size = source["Size"];
+	        this.Created = source["Created"];
+	        this.via = source["via"];
+	    }
+	}
+	export class NetworkDetail {
+	    ID: string;
+	    Name: string;
+	    Driver: string;
+	    Scope: string;
+	    via?: string;
+	    Internal: boolean;
+	    Attachable: boolean;
+	    Ingress: boolean;
+	    IPAM: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NetworkDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.Name = source["Name"];
+	        this.Driver = source["Driver"];
+	        this.Scope = source["Scope"];
+	        this.via = source["via"];
+	        this.Internal = source["Internal"];
+	        this.Attachable = source["Attachable"];
+	        this.Ingress = source["Ingress"];
+	        this.IPAM = source["IPAM"];
+	    }
+	}
+	export class NetworkSummary {
+	    ID: string;
+	    Name: string;
+	    Driver: string;
+	    Scope: string;
+	    via?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NetworkSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.Name = source["Name"];
+	        this.Driver = source["Driver"];
+	        this.Scope = source["Scope"];
+	        this.via = source["via"];
+	    }
+	}
+	export class VolumeDetail {
+	    Name: string;
+	    Driver: string;
+	    Mountpoint: string;
+	    Created: number;
+	    via?: string;
+	    Labels: Record<string, string>;
+	    Scope: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new VolumeDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Name = source["Name"];
+	        this.Driver = source["Driver"];
+	        this.Mountpoint = source["Mountpoint"];
+	        this.Created = source["Created"];
+	        this.via = source["via"];
+	        this.Labels = source["Labels"];
+	        this.Scope = source["Scope"];
+	    }
+	}
+	export class VolumeSummary {
+	    Name: string;
+	    Driver: string;
+	    Mountpoint: string;
+	    Created: number;
+	    via?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new VolumeSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Name = source["Name"];
+	        this.Driver = source["Driver"];
+	        this.Mountpoint = source["Mountpoint"];
+	        this.Created = source["Created"];
+	        this.via = source["via"];
+	    }
+	}
 
 }
 

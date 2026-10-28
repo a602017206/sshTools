@@ -2270,6 +2270,78 @@ func (a *App) InspectDockerContainer(sessionID, id string) (docker.ContainerDeta
 	return a.dockerService.InspectDockerContainer(sessionID, id)
 }
 
+// ListDockerImages 列出镜像。
+func (a *App) ListDockerImages(sessionID string) ([]docker.ImageSummary, error) {
+	if a.dockerService == nil {
+		return nil, errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.ListDockerImages(sessionID)
+}
+
+// InspectDockerImage 返回镜像详情。
+func (a *App) InspectDockerImage(sessionID, id string) (docker.ImageDetail, error) {
+	if a.dockerService == nil {
+		return docker.ImageDetail{}, errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.InspectDockerImage(sessionID, id)
+}
+
+// RemoveDockerImage 删除镜像；force 为 true 时强制删除。
+func (a *App) RemoveDockerImage(sessionID, id string, force bool) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.RemoveDockerImage(sessionID, id, force)
+}
+
+// ListDockerNetworks 列出网络。
+func (a *App) ListDockerNetworks(sessionID string) ([]docker.NetworkSummary, error) {
+	if a.dockerService == nil {
+		return nil, errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.ListDockerNetworks(sessionID)
+}
+
+// InspectDockerNetwork 返回网络详情。
+func (a *App) InspectDockerNetwork(sessionID, id string) (docker.NetworkDetail, error) {
+	if a.dockerService == nil {
+		return docker.NetworkDetail{}, errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.InspectDockerNetwork(sessionID, id)
+}
+
+// RemoveDockerNetwork 删除网络。
+func (a *App) RemoveDockerNetwork(sessionID, id string) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.RemoveDockerNetwork(sessionID, id)
+}
+
+// ListDockerVolumes 列出数据卷。
+func (a *App) ListDockerVolumes(sessionID string) ([]docker.VolumeSummary, error) {
+	if a.dockerService == nil {
+		return nil, errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.ListDockerVolumes(sessionID)
+}
+
+// InspectDockerVolume 返回数据卷详情。
+func (a *App) InspectDockerVolume(sessionID, name string) (docker.VolumeDetail, error) {
+	if a.dockerService == nil {
+		return docker.VolumeDetail{}, errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.InspectDockerVolume(sessionID, name)
+}
+
+// RemoveDockerVolume 删除数据卷。
+func (a *App) RemoveDockerVolume(sessionID, name string) error {
+	if a.dockerService == nil {
+		return errors.New("docker 服务未初始化")
+	}
+	return a.dockerService.RemoveDockerVolume(sessionID, name)
+}
+
 // GetDockerContainerLogs 一次性获取容器日志（最后 tail 行，<=0 为全部）。
 func (a *App) GetDockerContainerLogs(sessionID, id string, tail int) (string, error) {
 	if a.dockerService == nil {
