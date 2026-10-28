@@ -61,7 +61,7 @@ body {
   overflow-x: hidden;
   background: var(--bg);
   color: var(--fg);
-  font-family: "IBM Plex Sans", "Noto Sans SC", system-ui, sans-serif;
+  font-family: "Source Sans 3", "Noto Sans SC", system-ui, sans-serif;
   line-height: 1.5;
 }
 
@@ -250,8 +250,16 @@ button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 @media (max-width: 760px) {
-  .site-header { width: min(100% - 2rem, 1120px); }
-  .site-nav { display: none; }
+  .site-header { width: min(100% - 2rem, 1120px); flex-wrap: wrap; gap: .75rem; }
+  .site-nav {
+    order: 3;
+    width: 100%;
+    padding-bottom: .25rem;
+    overflow-x: auto;
+    font-size: .82rem;
+    white-space: nowrap;
+  }
+  .header-actions { margin-left: auto; }
   .hero, .section, .site-footer { width: min(100% - 2rem, 1120px); }
   .cap-grid, .shot-strip { grid-template-columns: 1fr; }
   .cap-card { min-height: auto; }

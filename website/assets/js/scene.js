@@ -23,6 +23,19 @@ export function parseCssColor(value) {
   };
 }
 
+export function mapPointerToWorld({ clientX, clientY, viewport, fov, cameraZ }) {
+  const width = Math.max(1, viewport?.width || 1);
+  const height = Math.max(1, viewport?.height || 1);
+  const normalizedX = ((clientX - (viewport?.left || 0)) / width) * 2 - 1;
+  const normalizedY = 1 - ((clientY - (viewport?.top || 0)) / height) * 2;
+  const visibleHeight = 2 * Math.tan((fov * Math.PI) / 360) * cameraZ;
+
+  return {
+    x: normalizedX * (visibleHeight * width / height) / 2,
+    y: normalizedY * visibleHeight / 2,
+  };
+}
+
 function detectWebGL() {
   try {
     const canvas = document.createElement('canvas');
@@ -59,8 +72,9 @@ export async function mountScene(target, options = {}) {
   const count = density === 'light' ? 50 : 120;
   const positions = new Float32Array(count * 3);
   const velocities = new Float32Array(count * 2);
+  const baseVelocities = new Float32Array(count * 2);
   const linePositions = new Float32Array(MAX_EDGES * 6);
-  const pointer = { x: 0, y: 0, active: false };
+  const pointer = { worldX: 0, worldY: 0, active: false };
   const bounds = { x: 10, y: 6 };
 
   const scene = new THREE.Scene();
@@ -79,11 +93,16 @@ export async function mountScene(target, options = {}) {
 
   for (let index = 0; index < count; index += 1) {
     const offset = index * 3;
+    const velocityOffset = index * 2;
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.003 + Math.random() * 0.005;
     positions[offset] = (Math.random() - 0.5) * bounds.x * 2;
     positions[offset + 1] = (Math.random() - 0.5) * bounds.y * 2;
     positions[offset + 2] = (Math.random() - 0.5) * 2;
-    velocities[index * 2] = (Math.random() - 0.5) * 0.012;
-    velocities[index * 2 + 1] = (Math.random() - 0.5) * 0.012;
+    baseVelocities[velocityOffset] = Math.cos(angle) * speed;
+    baseVelocities[velocityOffset + 1] = Math.sin(angle) * speed;
+    velocities[velocityOffset] = baseVelocities[velocityOffset];
+    velocities[velocityOffset + 1] = baseVelocities[velocityOffset + 1];
   }
 
   particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -100,7 +119,8 @@ export async function mountScene(target, options = {}) {
     camera.updateProjectionMatrix();
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(safeWidth, safeHeight, false);
-    bounds.x = 10 * camera.aspect;
+    bounds.y = Math.tan((camera.fov * Math.PI) / 360) * camera.position.z;
+    bounds.x = bounds.y * camera.aspect;
   }
 
   function rebuildLines() {
@@ -133,8 +153,8 @@ export async function mountScene(target, options = {}) {
       let { x: vx, y: vy } = { x: velocities[velocityOffset], y: velocities[velocityOffset + 1] };
 
       if (pointer.active) {
-        const dx = pointer.x * bounds.x - positions[offset];
-        const dy = pointer.y * bounds.y - positions[offset + 1];
+        const dx = pointer.worldX - positions[offset];
+        const dy = pointer.worldY - positions[offset + 1];
         const distanceSquared = dx * dx + dy * dy;
         if (distanceSquared < 16 && distanceSquared > 0.01) {
           const force = Math.min(0.003, 0.02 / distanceSquared);
@@ -143,6 +163,8 @@ export async function mountScene(target, options = {}) {
         }
       }
 
+      vx += (baseVelocities[velocityOffset] - vx) * 0.006;
+      vy += (baseVelocities[velocityOffset + 1] - vy) * 0.006;
       vx *= 0.995;
       vy *= 0.995;
       velocities[velocityOffset] = Math.max(-0.025, Math.min(0.025, vx));
@@ -165,8 +187,15 @@ export async function mountScene(target, options = {}) {
   }
 
   function onPointerMove(event) {
-    pointer.x = event.clientX / window.innerWidth * 2 - 1;
-    pointer.y = -(event.clientY / window.innerHeight * 2 - 1);
+    const mapped = mapPointerToWorld({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      viewport: canvas.getBoundingClientRect(),
+      fov: camera.fov,
+      cameraZ: camera.position.z,
+    });
+    pointer.worldX = mapped.x;
+    pointer.worldY = mapped.y;
     pointer.active = true;
   }
 

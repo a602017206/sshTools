@@ -9,6 +9,8 @@
 - 新增 `.github/workflows/gh-pages.yml`，使用官方 `configure-pages` / `upload-pages-artifact` / `deploy-pages` 流程部署 `website/` 静态目录。
 - 在根目录 `README.md` 增加宣传站链接。
 - 同步本特性相关设计、计划与实现说明文档（`docs/designs/`、`docs/plans/`、`docs/superpowers/`、`docs/changes/process/`）。
+- 终审修复：场景粒子恢复基础漂移并按透视视锥映射指针；页面框架先初始化、Three.js 后台加载；主题字体、移动端导航和功能成熟度标签同步调整。
+- 将三张产品截图缩放为最长边 1000px，以降低 Pages 首次加载体积。
 - **未修改** `release.yml`、`mobile.yml` 及现有发布/移动端 CI。
 
 ## 修改文件
@@ -23,6 +25,9 @@
 | `docs/plans/2026-10-28-marketing-website-gh-pages.md` | 实现计划（与 superpowers 副本同步） |
 | `docs/superpowers/plans/2026-10-28-marketing-website-gh-pages.md` | Superpowers 计划源 |
 | `docs/superpowers/specs/2026-10-28-marketing-website-gh-pages-design.md` | Superpowers 规格 |
+| `website/assets/js/scene.js`、`website/assets/js/nav.js` | 场景动画与延迟加载后的主题同步 |
+| `website/{index,features,download}.html`、`website/assets/css/site.css` | 非阻塞字体、页面初始化、导航和成熟度展示 |
+| `website/assets/img/shot-*.png` | 缩放后的产品截图 |
 
 ## 验证
 
@@ -32,6 +37,7 @@
 
 ## 剩余风险
 
-- Pages 源未设为 GitHub Actions 时，workflow 可能无法发布或 URL 不可用。
+- Pages 源未设为 GitHub Actions 时，workflow 可能无法发布或 URL 不可用；发布前仍需按 **Settings → Pages → Build and deployment → Source** 核对为 **GitHub Actions**。
 - 站点使用仓库子路径 `/sshTools/`；若 Pages 自定义域名或 base path 变更，需同步调整 `website` 内相对路径与链接。
 - `master` 分支命名与默认分支不一致时，需调整 workflow 的 `branches` 触发条件。
+- PNG 已缩放但仍约 736–784KB/张，保留无损 PNG 的截图清晰度；后续若页面性能指标要求更严，可评估受控量化压缩或响应式图片。

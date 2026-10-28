@@ -6,7 +6,7 @@
   <title>下载 · AHaSSHTools</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body data-page="download">
@@ -43,9 +43,9 @@
   </div>
   <script type="module">
     import { initChrome } from './assets/js/nav.js'; import { shouldStartScene, mountScene } from './assets/js/scene.js'; import { THEME_PALETTES, readStoredTheme } from './assets/js/theme.js';
-    let sceneApi; const canvas = document.getElementById('bg-canvas'); const webglAvailable = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch { return false; } })();
-    if (canvas && shouldStartScene({ matchMedia: window.matchMedia.bind(window), webglAvailable })) { try { sceneApi = await mountScene(canvas, { density: 'light', palette: THEME_PALETTES[readStoredTheme()] }); } catch (error) { console.warn('scene disabled', error); } }
-    initChrome({ sceneApi });
+    const sceneRef = { api: null }; initChrome({ sceneRef });
+    const canvas = document.getElementById('bg-canvas'); const webglAvailable = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch { return false; } })();
+    if (canvas && shouldStartScene({ matchMedia: window.matchMedia.bind(window), webglAvailable })) { try { sceneRef.api = await mountScene(canvas, { density: 'light', palette: THEME_PALETTES[readStoredTheme()] }); sceneRef.api?.setPalette(THEME_PALETTES[readStoredTheme()]); } catch (error) { console.warn('scene disabled', error); } }
   </script>
 </body>
 </html>

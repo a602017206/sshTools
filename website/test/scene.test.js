@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCssColor, shouldStartScene } from '../assets/js/scene.js';
+import { mapPointerToWorld, parseCssColor, shouldStartScene } from '../assets/js/scene.js';
 
 describe('parseCssColor', () => {
   it('separates the RGB and alpha portions of 8-digit hex colors', () => {
@@ -47,5 +47,24 @@ describe('shouldStartScene', () => {
       }),
       true,
     );
+  });
+});
+
+describe('mapPointerToWorld', () => {
+  const viewport = { left: 100, top: 50, width: 800, height: 400 };
+
+  it('maps the center of the canvas to the origin', () => {
+    assert.deepEqual(
+      mapPointerToWorld({ clientX: 500, clientY: 250, viewport, fov: 60, cameraZ: 10 }),
+      { x: 0, y: 0 },
+    );
+  });
+
+  it('uses perspective frustum dimensions to map canvas edges', () => {
+    const point = mapPointerToWorld({ clientX: 900, clientY: 50, viewport, fov: 60, cameraZ: 10 });
+    const visibleHeight = 2 * Math.tan(Math.PI / 6) * 10;
+
+    assert.ok(Math.abs(point.x - visibleHeight) < 1e-12);
+    assert.ok(Math.abs(point.y - visibleHeight / 2) < 1e-12);
   });
 });

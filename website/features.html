@@ -6,7 +6,7 @@
   <title>功能 · AHaSSHTools</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body data-page="features">
@@ -24,20 +24,20 @@
       <section class="section"><div class="cap-grid">
         <article class="cap-card"><span class="eyebrow" data-i18n="maturity.full">完整</span><h2 data-i18n="features.ssh.title">SSH 与终端</h2><p data-i18n="features.ssh.body">多标签会话、密码与 SSH 密钥认证、终端编码、主题、会话日志和常用命令提示。</p></article>
         <article class="cap-card"><span class="eyebrow" data-i18n="maturity.full">完整</span><h2 data-i18n="features.sftp.title">文件管理（SFTP）</h2><p data-i18n="features.sftp.body">目录浏览、收藏路径、上传下载、冲突处理和远程文本编辑，日常文件操作不用离开工作台。</p></article>
-        <article class="cap-card"><span class="eyebrow" data-i18n="maturity.ready">可用</span><h2 data-i18n="features.monitor.title">系统监控</h2><p data-i18n="features.monitor.body">查看 CPU、内存、磁盘、网络与主机信息；每个会话独立开启实时采集。</p></article>
+        <article class="cap-card"><span class="eyebrow" data-i18n="maturity.full">完整</span><h2 data-i18n="features.monitor.title">系统监控</h2><p data-i18n="features.monitor.body">查看 CPU、内存、磁盘、网络与主机信息；每个会话独立开启实时采集。</p></article>
         <article class="cap-card"><span class="eyebrow" data-i18n="maturity.ready">可用</span><h2 data-i18n="features.data.title">数据服务</h2><p data-i18n="features.data.body">通过 JDBC 与原生客户端连接关系库、缓存、搜索和消息系统，支持对象浏览与查询。</p></article>
-        <article class="cap-card"><span class="eyebrow" data-i18n="maturity.early">雏形</span><h2 data-i18n="features.ai.title">AI 助手（Copilot）</h2><p data-i18n="features.ai.body">接入 DeepSeek、OpenAI、Ollama 或自定义服务商，基于当前上下文辅助只读查询和确认后的变更。</p></article>
+        <article class="cap-card"><span class="eyebrow" data-i18n="maturity.ready">可用</span><h2 data-i18n="features.ai.title">AI 助手（Copilot）</h2><p data-i18n="features.ai.body">接入 DeepSeek、OpenAI、Ollama 或自定义服务商，基于当前上下文辅助只读查询和确认后的变更。</p></article>
         <article class="cap-card"><span class="eyebrow" data-i18n="maturity.ready">可用</span><h2 data-i18n="features.mobile.title">跨平台客户端</h2><p data-i18n="features.mobile.body">桌面端基于 Go、Wails 和 Svelte；Android 与 iOS 使用同一 Go 后端能力。</p></article>
-        <article class="cap-card"><span class="eyebrow" data-i18n="maturity.ready">可用</span><h2 data-i18n="features.devtools.title">本地开发工具</h2><p data-i18n="features.devtools.body">内置 JSON、Base64、URL 编解码、哈希、AES、SM4、时间戳与 UUID 工具。</p></article>
+        <article class="cap-card"><span class="eyebrow" data-i18n="maturity.full">完整</span><h2 data-i18n="features.devtools.title">本地开发工具</h2><p data-i18n="features.devtools.body">内置 JSON、Base64、URL 编解码、哈希、AES、SM4、时间戳与 UUID 工具。</p></article>
       </div></section>
     </main>
     <footer class="site-footer">© AHaSSHTools · <a href="https://github.com/a602017206/sshTools">GitHub</a></footer>
   </div>
   <script type="module">
     import { initChrome } from './assets/js/nav.js'; import { shouldStartScene, mountScene } from './assets/js/scene.js'; import { THEME_PALETTES, readStoredTheme } from './assets/js/theme.js';
-    let sceneApi; const canvas = document.getElementById('bg-canvas'); const webglAvailable = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch { return false; } })();
-    if (canvas && shouldStartScene({ matchMedia: window.matchMedia.bind(window), webglAvailable })) { try { sceneApi = await mountScene(canvas, { density: 'light', palette: THEME_PALETTES[readStoredTheme()] }); } catch (error) { console.warn('scene disabled', error); } }
-    initChrome({ sceneApi });
+    const sceneRef = { api: null }; initChrome({ sceneRef });
+    const canvas = document.getElementById('bg-canvas'); const webglAvailable = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch { return false; } })();
+    if (canvas && shouldStartScene({ matchMedia: window.matchMedia.bind(window), webglAvailable })) { try { sceneRef.api = await mountScene(canvas, { density: 'light', palette: THEME_PALETTES[readStoredTheme()] }); sceneRef.api?.setPalette(THEME_PALETTES[readStoredTheme()]); } catch (error) { console.warn('scene disabled', error); } }
   </script>
 </body>
 </html>

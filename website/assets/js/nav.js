@@ -1,9 +1,10 @@
 import { applyTheme, readStoredTheme, THEME_IDS } from './theme.js';
 import { applyI18n, readStoredLang, setStoredLang, MESSAGES } from './i18n.js';
 
-export function initChrome({ sceneApi } = {}) {
+export function initChrome({ sceneRef, sceneApi } = {}) {
+  const resolvedSceneRef = sceneRef || { api: sceneApi || null };
   const theme = applyTheme(readStoredTheme(), {
-    onPalette: (palette) => sceneApi?.setPalette?.(palette),
+    onPalette: (palette) => resolvedSceneRef.api?.setPalette?.(palette),
   });
   let lang = readStoredLang();
   applyI18n(document, MESSAGES, lang);
@@ -12,7 +13,7 @@ export function initChrome({ sceneApi } = {}) {
   document.querySelectorAll('[data-set-theme]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-set-theme');
-      applyTheme(id, { onPalette: (palette) => sceneApi?.setPalette?.(palette) });
+      applyTheme(id, { onPalette: (palette) => resolvedSceneRef.api?.setPalette?.(palette) });
     });
   });
 
@@ -29,5 +30,5 @@ export function initChrome({ sceneApi } = {}) {
     if (link.getAttribute('data-nav') === page) link.setAttribute('aria-current', 'page');
   });
 
-  return { theme, lang, THEME_IDS };
+  return { theme, lang, THEME_IDS, sceneRef: resolvedSceneRef };
 }
