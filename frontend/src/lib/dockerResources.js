@@ -42,6 +42,39 @@ export function imageDisplayTags(image) {
   return tags.length ? tags.join(', ') : '<none>';
 }
 
+function formatSearchCreated(seconds) {
+  const value = Number(seconds);
+  if (!value || value <= 0) return '-';
+  const d = new Date(value * 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function shortId(id) {
+  return String(id ?? '').replace(/^sha256:/, '').slice(0, 12);
+}
+
+export function resourceSearchText(kind, row) {
+  if (!row) return '';
+  switch (kind) {
+    case 'images':
+      return [imageDisplayTags(row), shortId(row.ID), formatDockerSize(row.Size), formatSearchCreated(row.Created)].join(' ');
+    case 'networks':
+      return [row.Name, shortId(row.ID), row.Driver, row.Scope].map((x) => String(x ?? '')).join(' ');
+    case 'volumes':
+      return [row.Name, row.Driver, row.Mountpoint, formatSearchCreated(row.Created)].map((x) => String(x ?? '')).join(' ');
+    default:
+      return '';
+  }
+}
+
+export function filterResourceRows(kind, rows, query) {
+  const q = String(query ?? '').trim().toLowerCase();
+  const list = rows || [];
+  if (!q) return list;
+  return list.filter((row) => resourceSearchText(kind, row).toLowerCase().includes(q));
+}
+
 /** 列表行 key：images ID|首个标签；networks ID|Name；volumes Name；其余用 ID。 */
 export function resourceRowKey(kind, row) {
   if (!row) return '';

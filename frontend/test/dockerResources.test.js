@@ -3,11 +3,13 @@ import test from 'node:test';
 
 import {
   DOCKER_RESOURCE_TABS,
+  filterResourceRows,
   formatDockerSize,
   imageDisplayTags,
   removeResourceConfirmCopy,
   resourceDetailFields,
   resourceRowKey,
+  resourceSearchText,
 } from '../src/lib/dockerResources.js';
 
 test('资源标签页顺序与中文文案', () => {
@@ -102,4 +104,17 @@ test('resourceDetailFields 为各类型生成侧栏字段并跳过空值', () =>
 
   assert.deepEqual(resourceDetailFields('images', null), []);
   assert.deepEqual(resourceDetailFields('unknown', { ID: 'x' }), []);
+});
+
+test('filterResourceRows 各类型可见列子串匹配', () => {
+  assert.equal(filterResourceRows('images', [{ ID: 'sha256:abcdef0123456789', Tags: ['nginx:latest'], Size: 1024, Created: 1700000000 }], '').length, 1);
+  assert.deepEqual(
+    filterResourceRows('images', [{ ID: 'sha256:abcdef0123456789', Tags: ['nginx:latest'], Size: 1024, Created: 0 }], 'NGINX').map((r) => r.Tags[0]),
+    ['nginx:latest']
+  );
+  assert.equal(filterResourceRows('images', [{ ID: 'sha256:abcdef0123456789', Tags: [], Size: 2048, Created: 0 }], '2.0 KB').length, 1);
+  assert.equal(filterResourceRows('networks', [{ ID: 'netid1234567', Name: 'bridge', Driver: 'bridge', Scope: 'local' }], 'LOCAL').length, 1);
+  assert.equal(filterResourceRows('volumes', [{ Name: 'data', Driver: 'local', Mountpoint: '/var/lib/docker/volumes/data', Created: 0 }], 'mountpoint-miss').length, 0);
+  assert.equal(filterResourceRows('volumes', [{ Name: 'data', Driver: 'local', Mountpoint: '/var/lib/docker/volumes/data', Created: 0 }], 'volumes/data').length, 1);
+  assert.ok(resourceSearchText('networks', { ID: 'x', Name: 'bridge', Driver: 'bridge', Scope: 'local' }).includes('bridge'));
 });
