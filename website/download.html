@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>下载 · AHaSSHTools</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body data-page="download">
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  <div class="page">
+    <header class="site-header">
+      <a class="brand" href="index.html"><img src="assets/img/appicon.png" alt=""><span data-i18n="brand">AHaSSHTools</span></a>
+      <nav class="site-nav" aria-label="主导航"><a href="index.html" data-nav="home" data-i18n="nav.home">首页</a><a href="features.html" data-nav="features" data-i18n="nav.features">功能</a><a href="download.html" data-nav="download" data-i18n="nav.download">下载</a><a href="https://github.com/a602017206/sshTools" data-i18n="nav.github">GitHub</a></nav>
+      <div class="header-actions"><div class="theme-dots" aria-label="主题"><button type="button" data-set-theme="graphite" aria-label="Graphite" style="--dot-color:#2dd4bf"></button><button type="button" data-set-theme="amber" aria-label="Amber" style="--dot-color:#f59e0b"></button><button type="button" data-set-theme="aurora" aria-label="Aurora" style="--dot-color:#38bdf8"></button><button type="button" data-set-theme="paper" aria-label="Paper" style="--dot-color:#f4f7f6"></button></div><button class="button" type="button" data-set-lang="zh">中</button><button class="button" type="button" data-set-lang="en">EN</button></div>
+    </header>
+    <main>
+      <section class="hero"><span class="eyebrow">latest release</span><h1 data-i18n="download.title">下载 AHaSSHTools</h1></section>
+      <section class="section">
+        <table>
+          <thead><tr><th>Platform</th><th>Package</th></tr></thead>
+          <tbody>
+            <tr><td data-i18n="download.platform.windows">Windows</td><td><a href="https://github.com/a602017206/sshTools/releases/latest/download/AHaSSHTools.exe">AHaSSHTools.exe</a></td></tr>
+            <tr><td data-i18n="download.platform.macosArm">macOS（Apple Silicon）</td><td><a href="https://github.com/a602017206/sshTools/releases/latest/download/AHaSSHTools-macos-arm64.zip">AHaSSHTools-macos-arm64.zip</a></td></tr>
+            <tr><td data-i18n="download.platform.macosIntel">macOS（Intel）</td><td><a href="https://github.com/a602017206/sshTools/releases/latest/download/AHaSSHTools-macos-amd64.zip">AHaSSHTools-macos-amd64.zip</a></td></tr>
+            <tr><td data-i18n="download.platform.androidArm64">Android（ARM64，主流真机）</td><td><a href="https://github.com/a602017206/sshTools/releases/latest/download/AHaSSHTools-android-arm64-v8a.apk">AHaSSHTools-android-arm64-v8a.apk</a></td></tr>
+            <tr><td data-i18n="download.platform.androidArmv7">Android（ARMv7）</td><td><a href="https://github.com/a602017206/sshTools/releases/latest/download/AHaSSHTools-android-armeabi-v7a.apk">AHaSSHTools-android-armeabi-v7a.apk</a></td></tr>
+            <tr><td data-i18n="download.platform.androidX64">Android（x86_64）</td><td><a href="https://github.com/a602017206/sshTools/releases/latest/download/AHaSSHTools-android-x86_64.apk">AHaSSHTools-android-x86_64.apk</a></td></tr>
+            <tr><td data-i18n="download.platform.ios">iOS（未签名 IPA）</td><td><a href="https://github.com/a602017206/sshTools/releases/latest/download/AHaSSHTools-ios-unsigned.ipa">AHaSSHTools-ios-unsigned.ipa</a></td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="section">
+        <article class="cap-card"><p data-i18n-html="download.noteMac">若 macOS 提示应用无法打开，请执行 <code>xattr -cr AHaSSHTools.app</code> 后重新打开。</p></article>
+        <article class="cap-card"><p data-i18n="download.noteAndroid">Android 下载 APK 后可直接安装；大多数真机请选择 ARM64 包。</p></article>
+        <article class="cap-card"><p data-i18n="download.noteIos">iOS 提供未签名 IPA，需使用 AltStore、Sideloadly 等工具配合 Apple ID 自签侧载。</p></article>
+      </section>
+    </main>
+    <footer class="site-footer">© AHaSSHTools · <a href="https://github.com/a602017206/sshTools">GitHub</a></footer>
+  </div>
+  <script type="module">
+    import { initChrome } from './assets/js/nav.js'; import { shouldStartScene, mountScene } from './assets/js/scene.js'; import { THEME_PALETTES, readStoredTheme } from './assets/js/theme.js';
+    let sceneApi; const canvas = document.getElementById('bg-canvas'); const webglAvailable = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch { return false; } })();
+    if (canvas && shouldStartScene({ matchMedia: window.matchMedia.bind(window), webglAvailable })) { try { sceneApi = await mountScene(canvas, { density: 'light', palette: THEME_PALETTES[readStoredTheme()] }); } catch (error) { console.warn('scene disabled', error); } }
+    initChrome({ sceneApi });
+  </script>
+</body>
+</html>

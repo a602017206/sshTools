@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AHaSSHTools：跨平台运维客户端">
+  <title>AHaSSHTools</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body data-page="home">
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  <div class="page">
+    <header class="site-header">
+      <a class="brand" href="index.html"><img src="assets/img/appicon.png" alt=""><span data-i18n="brand">AHaSSHTools</span></a>
+      <nav class="site-nav" aria-label="主导航">
+        <a href="index.html" data-nav="home" data-i18n="nav.home">首页</a>
+        <a href="features.html" data-nav="features" data-i18n="nav.features">功能</a>
+        <a href="download.html" data-nav="download" data-i18n="nav.download">下载</a>
+        <a href="https://github.com/a602017206/sshTools" data-i18n="nav.github">GitHub</a>
+      </nav>
+      <div class="header-actions">
+        <div class="theme-dots" aria-label="主题">
+          <button type="button" data-set-theme="graphite" aria-label="Graphite" style="--dot-color:#2dd4bf"></button>
+          <button type="button" data-set-theme="amber" aria-label="Amber" style="--dot-color:#f59e0b"></button>
+          <button type="button" data-set-theme="aurora" aria-label="Aurora" style="--dot-color:#38bdf8"></button>
+          <button type="button" data-set-theme="paper" aria-label="Paper" style="--dot-color:#f4f7f6"></button>
+        </div>
+        <button class="button" type="button" data-set-lang="zh">中</button>
+        <button class="button" type="button" data-set-lang="en">EN</button>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="eyebrow">operations workspace</span>
+        <h1 data-i18n="brand">AHaSSHTools</h1>
+        <p data-i18n="tagline">跨平台运维客户端：SSH、文件、监控、数据与 AI</p>
+        <div class="hero-actions">
+          <a class="button" href="features.html" data-i18n="home.ctaFeatures">查看功能</a>
+          <a class="button button--primary" href="download.html" data-i18n="home.ctaDownload">立即下载</a>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-heading"><h2 data-i18n="home.capabilitiesTitle">一套客户端，覆盖日常运维链路</h2></div>
+        <div class="cap-grid">
+          <article class="cap-card"><div class="cap-card__icon">01</div><h3 data-i18n="cap.ssh.title">SSH 与终端</h3><p data-i18n="cap.ssh.desc">多标签 SSH、本地 Shell、密钥认证与会话日志，集中处理主机资产。</p></article>
+          <article class="cap-card"><div class="cap-card__icon">02</div><h3 data-i18n="cap.sftp.title">SFTP 文件管理</h3><p data-i18n="cap.sftp.desc">浏览、上传、下载、编辑远程文件，并跟踪每一项传输进度。</p></article>
+          <article class="cap-card"><div class="cap-card__icon">03</div><h3 data-i18n="cap.monitor.title">系统监控</h3><p data-i18n="cap.monitor.desc">按会话查看 CPU、内存、磁盘、网络和主机信息，按需实时刷新。</p></article>
+          <article class="cap-card"><div class="cap-card__icon">04</div><h3 data-i18n="cap.data.title">数据服务</h3><p data-i18n="cap.data.desc">连接关系库、缓存、搜索和消息服务，在同一工作台完成浏览与查询。</p></article>
+          <article class="cap-card"><div class="cap-card__icon">05</div><h3 data-i18n="cap.ai.title">AI 助手</h3><p data-i18n="cap.ai.desc">结合当前 SSH 和数据上下文辅助排查；变更操作始终需要确认。</p></article>
+          <article class="cap-card"><div class="cap-card__icon">06</div><h3 data-i18n="cap.mobile.title">桌面与移动端</h3><p data-i18n="cap.mobile.desc">桌面端与 Android、iOS 共用 Go 核心，让工具随运维现场同行。</p></article>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-heading"><h2 data-i18n="home.platformsTitle">面向桌面与移动运维现场</h2></div>
+        <p>Windows · macOS · Android · iOS</p>
+      </section>
+      <section class="section" aria-label="产品截图">
+        <div class="shot-strip">
+          <img src="assets/img/shot-ssh-dark.png" alt="SSH terminal">
+          <img src="assets/img/shot-ssh-light.png" alt="SSH terminal light theme">
+          <img src="assets/img/shot-db-dark.png" alt="Database workspace">
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">© AHaSSHTools · <a href="https://github.com/a602017206/sshTools">GitHub</a></footer>
+  </div>
+  <!-- three@0.170.0 via jsDelivr inside scene.js -->
+  <script type="module">
+    import { initChrome } from './assets/js/nav.js';
+    import { shouldStartScene, mountScene } from './assets/js/scene.js';
+    import { THEME_PALETTES, readStoredTheme } from './assets/js/theme.js';
+
+    let sceneApi;
+    const canvas = document.getElementById('bg-canvas');
+    const webglAvailable = (() => {
+      try {
+        const c = document.createElement('canvas');
+        return !!(c.getContext('webgl') || c.getContext('experimental-webgl'));
+      } catch { return false; }
+    })();
+    if (canvas && shouldStartScene({ matchMedia: window.matchMedia.bind(window), webglAvailable })) {
+      try {
+        sceneApi = await mountScene(canvas, {
+          density: 'full',
+          palette: THEME_PALETTES[readStoredTheme()],
+          getPalette: () => THEME_PALETTES[readStoredTheme()],
+        });
+      } catch (error) {
+        console.warn('scene disabled', error);
+        sceneApi = null;
+      }
+    }
+    initChrome({ sceneApi });
+  </script>
+</body>
+</html>
