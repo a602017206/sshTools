@@ -5,6 +5,7 @@
   import DockerResourceDetail from './DockerResourceDetail.svelte';
   import {
     DOCKER_RESOURCE_TABS,
+    filterResourceRows,
     formatDockerSize,
     imageDisplayTags,
     removeResourceConfirmCopy,
@@ -20,6 +21,7 @@
   import {
     containerField,
     dockerTransportLabel,
+    filterContainersByQuery,
     formatContainerCreated,
     isContainerRunning,
     usedCliFallback,
@@ -59,6 +61,7 @@
   // 资源 Tab：containers | images | networks | volumes
   let resourceKind = 'containers';
   let resourceRows = [];
+  let searchQueries = { containers: '', images: '', networks: '', volumes: '' };
   let resourceToken = 0; // 使过期的列表结果失效
   let inspectToken = 0; // 使过期的 Inspect 结果失效
   let selectedResourceKey = '';
@@ -96,7 +99,16 @@
   }
 
   $: transportLabel = dockerTransportLabel(connection);
-  $: rows = visibleContainers(containers, onlyRunning);
+  $: searchQuery = searchQueries[resourceKind] ?? '';
+  $: rows = filterContainersByQuery(
+    visibleContainers(containers, onlyRunning),
+    searchQueries.containers ?? ''
+  );
+  $: visibleResourceRows = filterResourceRows(
+    resourceKind,
+    resourceRows,
+    searchQueries[resourceKind] ?? ''
+  );
   $: cliFallback = usedCliFallback(containers);
   $: connected = status === 'connected';
 
@@ -482,6 +494,22 @@
           仅运行中
         </label>
       {/if}
+      <input
+        type="search"
+        class="docker-search"
+        placeholder={resourceKind === 'containers'
+          ? '搜索容器…'
+          : resourceKind === 'images'
+            ? '搜索镜像…'
+            : resourceKind === 'networks'
+              ? '搜索网络…'
+              : '搜索卷…'}
+        value={searchQuery}
+        disabled={!connected}
+        on:input={(event) => {
+          searchQueries = { ...searchQueries, [resourceKind]: event.currentTarget.value };
+        }}
+      />
       <button
         type="button"
         class="docker-btn"
@@ -528,6 +556,12 @@
           <h2>{loading ? '加载中…' : `没有${resourceTabLabel}`}</h2>
           {#if !loading}<p class="detail">该 Docker 引擎上还没有{resourceTabLabel}。</p>{/if}
         </div>
+      {:else if visibleResourceRows.length === 0 && searchQuery.trim()}
+        <div class="docker-empty" role="status">
+          <p class="kicker">{resourceTabLabel}</p>
+          <h2>没有匹配的{resourceTabLabel}</h2>
+          <p class="detail">试试其他关键词。</p>
+        </div>
       {:else}
         <div class="docker-table-wrap">
           <table class="docker-table">
@@ -544,7 +578,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each resourceRows as row (resourceRowKey(resourceKind, row))}
+              {#each visibleResourceRows as row (resourceRowKey(resourceKind, row))}
                 <tr
                   class:docker-row--selected={selectedResourceKey !== '' && selectedResourceKey === resourceRowKey(resourceKind, row)}
                   class:docker-row--busy={resBusyKey !== '' && resBusyKey === resourceRowKey(resourceKind, row)}
@@ -585,9 +619,23 @@
     {:else if rows.length === 0}
       <div class="docker-empty" role="status">
         <p class="kicker">容器</p>
-        <h2>{containers.length === 0 ? '没有容器' : '没有运行中的容器'}</h2>
+        <h2>
+          {containers.length === 0
+            ? '没有容器'
+            : searchQueries.containers.trim()
+              ? '没有匹配的容器'
+              : onlyRunning
+                ? '没有运行中的容器'
+                : '没有容器'}
+        </h2>
         <p class="detail">
-          {containers.length === 0 ? '该 Docker 引擎上还没有容器。' : '取消「仅运行中」可查看已停止的容器。'}
+          {containers.length === 0
+            ? '该 Docker 引擎上还没有容器。'
+            : searchQueries.containers.trim()
+              ? '试试其他关键词。'
+              : onlyRunning
+                ? '取消「仅运行中」可查看已停止的容器。'
+                : '该 Docker 引擎上还没有容器。'}
         </p>
         {#if errorMessage}<p class="detail docker-error">{errorMessage}</p>{/if}
       </div>
@@ -813,6 +861,33 @@
     font-size: 12px;
     color: var(--text-secondary);
     cursor: pointer;
+  }
+
+  .docker-search {
+    appearance: none;
+    width: 180px;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: var(--glass-bg);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+  }
+
+  .docker-search::placeholder {
+    color: var(--text-secondary);
+  }
+
+  .docker-search:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .docker-search:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   .docker-btn {
