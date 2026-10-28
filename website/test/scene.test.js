@@ -59,10 +59,11 @@ describe('mapPointerToWorld', () => {
   const viewport = { left: 100, top: 50, width: 800, height: 400 };
 
   it('maps the center of the canvas to the origin', () => {
-    assert.deepEqual(
-      mapPointerToWorld({ clientX: 500, clientY: 250, viewport, fov: 60, cameraZ: 10 }),
-      { x: 0, y: 0 },
-    );
+    const point = mapPointerToWorld({ clientX: 500, clientY: 250, viewport, fov: 60, cameraZ: 10 });
+    assert.equal(point.x, 0);
+    assert.equal(point.y, 0);
+    assert.equal(point.ndcX, 0);
+    assert.equal(point.ndcY, 0);
   });
 
   it('uses perspective frustum dimensions to map canvas edges', () => {
@@ -71,6 +72,8 @@ describe('mapPointerToWorld', () => {
 
     assert.ok(Math.abs(point.x - visibleHeight) < 1e-12);
     assert.ok(Math.abs(point.y - visibleHeight / 2) < 1e-12);
+    assert.equal(point.ndcX, 1);
+    assert.equal(point.ndcY, 1);
   });
 });
 
@@ -98,6 +101,15 @@ describe('stepParticles', () => {
       velocities[velocityOffset + 1] = baseVelocities[velocityOffset + 1];
     }
 
+    const zVelocities = new Float32Array(count);
+    const baseZVelocities = new Float32Array(count);
+    bounds.z = 6;
+    for (let index = 0; index < count; index += 1) {
+      positions[index * 3 + 2] = (random() * 2 - 1) * bounds.z;
+      baseZVelocities[index] = (random() * 2 - 1) * 0.015;
+      zVelocities[index] = baseZVelocities[index];
+    }
+
     for (let frame = 0; frame < 5000; frame += 1) {
       stepParticles({
         positions,
@@ -106,12 +118,15 @@ describe('stepParticles', () => {
         count,
         bounds,
         pointer: { active: false },
+        zVelocities,
+        baseZVelocities,
       });
 
       for (let index = 0; index < count; index += 1) {
         const positionOffset = index * 3;
         assert.ok(Math.abs(positions[positionOffset]) <= bounds.x);
         assert.ok(Math.abs(positions[positionOffset + 1]) <= bounds.y);
+        assert.ok(Math.abs(positions[positionOffset + 2]) <= bounds.z);
       }
     }
   });
