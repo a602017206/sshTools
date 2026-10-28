@@ -11,7 +11,7 @@ Phase 3 Task 4：`internal/docker` 已提供镜像、网络、卷的 API 与 CLI
 - list/inspect 使用 `dockerOpTimeout`，remove 使用 `dockerLifecycleTimeout`。
 - 入参校验：镜像引用允许 `:` `/` `@`；网络/卷名称非空、不以 `-` 开头、仅 `[A-Za-z0-9_.-]`。
 - `RemoveDockerVolume` 始终 `force=false`。
-- 不涉及 `app.go` 绑定与前端。
+- 本任务当时不涉及 `app.go` 绑定与前端（后续已接线，见 impl 文档）。
 
 ## 修改文件
 
@@ -25,4 +25,5 @@ Phase 3 Task 4：`internal/docker` 已提供镜像、网络、卷的 API 与 CLI
 ## 剩余风险
 
 - 校验较严格：含空格或特殊字符的卷/网络名称（Docker 本身通常也不允许）会被拒绝。
-- `app.go` 尚未导出这些方法，需后续任务接线。
+- 【已被取代】原记录“`app.go` 尚未导出这些方法”已过时：后续提交 `19087d7` 已在 `app.go` 导出并重新生成 `frontend/wailsjs` 绑定，整体实现见 `2026-10-27-docker-resources-impl.md`。
+- CLI 路径镜像列表现按 ID 合并 tag（见 impl 文档），服务层返回的 `ImageSummary.Tags` 与 API 路径语义一致。
