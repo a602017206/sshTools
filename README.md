@@ -7,6 +7,10 @@
 
 跨平台运维客户端（桌面 + Android / iOS）：SSH 终端、SFTP、关系库 / 缓存 / 搜索 / 消息队列，以及 AI 助手与本地开发工具。桌面端基于 **Go + Wails + Svelte** 构建，移动端由同一 Go 后端驱动（Flutter 界面）。
 
+## 宣传网站
+
+产品介绍站（GitHub Pages）：https://a602017206.github.io/sshTools/
+
 ## 下载
 
 | 平台 | 安装包 | 最新版下载量 |
