@@ -63,3 +63,23 @@ export function clampDockerDetailWidth(width, mainWidth) {
   }
   return next;
 }
+
+export function containerSearchText(container) {
+  if (!container) return '';
+  const parts = [
+    containerField(container, 'Name'),
+    containerField(container, 'Image'),
+    containerField(container, 'Status'),
+    containerField(container, 'Ports'),
+    containerField(container, 'ID'),
+    formatContainerCreated(containerField(container, 'Created')),
+  ];
+  return parts.map((p) => String(p ?? '')).join(' ');
+}
+
+export function filterContainersByQuery(list, query) {
+  const q = String(query ?? '').trim().toLowerCase();
+  const rows = list || [];
+  if (!q) return rows;
+  return rows.filter((c) => containerSearchText(c).toLowerCase().includes(q));
+}

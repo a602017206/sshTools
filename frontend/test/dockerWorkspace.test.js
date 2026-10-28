@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clampDockerDetailWidth,
+  containerSearchText,
   DEFAULT_DOCKER_DETAIL_WIDTH,
   dockerTransportLabel,
   dockerTransportOf,
+  filterContainersByQuery,
   formatContainerCreated,
   isContainerRunning,
   MAX_DOCKER_DETAIL_WIDTH,
@@ -68,4 +70,32 @@ test('clampDockerDetailWidth 受主区 55% 约束', () => {
   // mainWidth 无效时仅硬限
   assert.equal(clampDockerDetailWidth(600, 0), 600);
   assert.equal(clampDockerDetailWidth(600, Number.NaN), 600);
+});
+
+test('filterContainersByQuery 空串不过滤；大小写不敏感子串', () => {
+  const list = [
+    { ID: 'abc123def456', Name: 'web', Image: 'nginx:latest', Status: 'Up 1h', Ports: '80:80/tcp', Created: 1700000000 },
+    { ID: 'fff111aaa222', Name: 'db', Image: 'postgres:15', Status: 'Exited (0)', Ports: '', Created: 0 },
+  ];
+  assert.equal(filterContainersByQuery(list, '').length, 2);
+  assert.equal(filterContainersByQuery(list, '  ').length, 2);
+  assert.deepEqual(filterContainersByQuery(list, 'NGINX').map((c) => c.Name), ['web']);
+  assert.deepEqual(filterContainersByQuery(list, 'exited').map((c) => c.Name), ['db']);
+  assert.deepEqual(filterContainersByQuery(list, '80:80').map((c) => c.Name), ['web']);
+  assert.deepEqual(filterContainersByQuery(list, 'abc123').map((c) => c.Name), ['web']);
+  // Created 展示串可命中（与 formatContainerCreated 一致）
+  const created = formatContainerCreated(1700000000);
+  assert.deepEqual(filterContainersByQuery(list, created.slice(0, 10)).map((c) => c.Name), ['web']);
+  assert.equal(filterContainersByQuery(list, 'no-such').length, 0);
+  assert.ok(containerSearchText(list[0]).toLowerCase().includes('nginx'));
+});
+
+test('visibleContainers + filterContainersByQuery 组合：仅运行中再搜索', () => {
+  const list = [
+    { ID: 'a', Name: 'web', Status: 'Up 1h', Image: 'nginx' },
+    { ID: 'b', Name: 'web-old', Status: 'Exited (0)', Image: 'nginx' },
+  ];
+  const running = visibleContainers(list, true);
+  assert.deepEqual(filterContainersByQuery(running, 'nginx').map((c) => c.ID), ['a']);
+  assert.deepEqual(filterContainersByQuery(running, 'web-old').map((c) => c.ID), []);
 });
