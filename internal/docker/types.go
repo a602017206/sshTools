@@ -57,3 +57,35 @@ type ImageDetail struct {
 	Author       string
 	Comment      string
 }
+
+type NetworkSummary struct {
+	ID     string
+	Name   string
+	Driver string
+	Scope  string
+	// Via 标识数据来源；经远程 docker CLI 回退列出时为 "cli"，API 模式为空。
+	Via string `json:"via,omitempty"`
+}
+
+type NetworkDetail struct {
+	NetworkSummary
+	Internal   bool
+	Attachable bool
+	Ingress    bool
+	IPAM       string
+}
+
+type VolumeSummary struct {
+	Name       string
+	Driver     string
+	Mountpoint string
+	Created    int64
+	// Via 标识数据来源；经远程 docker CLI 回退列出时为 "cli"，API 模式为空。
+	Via string `json:"via,omitempty"`
+}
+
+type VolumeDetail struct {
+	VolumeSummary
+	Labels map[string]string
+	Scope  string
+}
