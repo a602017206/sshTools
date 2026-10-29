@@ -60,9 +60,8 @@ function syncThemeControls(root, appearance) {
   });
 }
 
-function cursorButtons(lang, group) {
+function cursorButtons(lang) {
   return CURSOR_STYLES
-    .filter((style) => style.group === group)
     .map((style) => {
       const label = cursorLabel(style, lang);
       return `<button type="button" class="cursor-pick" data-set-cursor="${style.id}" aria-label="${label}" title="${label}" aria-pressed="false">${cursorSvgMarkup(style.id, { className: 'cursor-pick__svg' })}</button>`;
@@ -115,12 +114,7 @@ function buildThemePanel(lang) {
     <div class="theme-panel__modes" role="group" aria-label="${t(MESSAGES, lang, 'theme.mode')}">${modes}</div>
     <div class="theme-panel__cursor">
       <div class="theme-panel__label" data-i18n="theme.cursor">${t(MESSAGES, lang, 'theme.cursor')}</div>
-      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.basic">${t(MESSAGES, lang, 'theme.cursor.basic')}</div>
-      <div class="cursor-picks">${cursorButtons(lang, 'basic')}</div>
-      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.pet">${t(MESSAGES, lang, 'theme.cursor.pet')}</div>
-      <div class="cursor-picks">${cursorButtons(lang, 'pet')}</div>
-      <div class="theme-panel__label theme-panel__label--sub" data-i18n="theme.cursor.zodiac">${t(MESSAGES, lang, 'theme.cursor.zodiac')}</div>
-      <div class="cursor-picks">${cursorButtons(lang, 'zodiac')}</div>
+      <div class="cursor-picks">${cursorButtons(lang)}</div>
     </div>
     <div class="theme-panel__pane" data-theme-pane="preset">
       <div class="theme-panel__label" data-i18n="theme.presets">${t(MESSAGES, lang, 'theme.presets')}</div>
@@ -160,9 +154,6 @@ function refreshThemePanelLabels(lang) {
     'theme.fg',
     'theme.accent',
     'theme.cursor',
-    'theme.cursor.basic',
-    'theme.cursor.pet',
-    'theme.cursor.zodiac',
   ].forEach((key) => {
     document.querySelectorAll(`[data-i18n="${key}"]`).forEach((el) => {
       el.textContent = t(MESSAGES, lang, key);

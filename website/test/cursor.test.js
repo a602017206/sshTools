@@ -13,27 +13,23 @@ import {
 } from '../assets/js/cursor.js';
 
 describe('cursor catalog', () => {
-  it('includes neon SVG shapes for basic, pets, and twelve zodiac animals', () => {
-    const groups = Object.fromEntries(['basic', 'pet', 'zodiac'].map((g) => [g, CURSOR_STYLES.filter((s) => s.group === g)]));
-    assert.ok(groups.basic.length >= 4);
-    assert.ok(groups.pet.some((s) => s.id === 'cat'));
-    assert.equal(groups.zodiac.length, 12);
+  it('keeps only ring, comet, and cone shapes', () => {
+    assert.deepEqual(CURSOR_STYLES.map((s) => s.id), ['ring', 'comet', 'cone']);
     for (const style of CURSOR_STYLES) {
       assert.ok(CURSOR_SVG_PATHS[style.id], `missing svg for ${style.id}`);
-      assert.equal(Object.prototype.hasOwnProperty.call(style, 'glyph'), false);
     }
   });
 });
 
 describe('normalizeCursorId / svg markup', () => {
-  it('normalizes unknown ids to cat and renders line-art svg', () => {
-    assert.equal(normalizeCursorId('cat'), 'cat');
-    assert.equal(normalizeCursorId('nope'), 'cat');
-    const svg = cursorSvgMarkup('tiger');
+  it('falls back to ring and renders stroked svg', () => {
+    assert.equal(normalizeCursorId('cone'), 'cone');
+    assert.equal(normalizeCursorId('cat'), 'ring');
+    assert.equal(normalizeCursorId('nope'), 'ring');
+    const svg = cursorSvgMarkup('comet');
     assert.match(svg, /<svg/);
     assert.match(svg, /stroke="currentColor"/);
-    assert.doesNotMatch(svg, /🐱|🐯|emoji/i);
-    assert.ok(getCursorStyle('tiger').trail === 'outline');
+    assert.equal(getCursorStyle('cone').rotate, true);
   });
 });
 
@@ -45,12 +41,12 @@ describe('storage + apply', () => {
       setItem: (k, v) => { values[k] = String(v); },
     };
     const root = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } };
-    assert.equal(readStoredCursor(storage), 'cat');
-    const style = applyCursorStyle('dragon', { documentElement: root, storage });
-    assert.equal(style.id, 'dragon');
-    assert.equal(values[CURSOR_STORAGE_KEY], 'dragon');
-    assert.equal(root.attrs['data-cursor'], 'dragon');
-    assert.equal(cursorLabel(style, 'zh'), '龙');
-    assert.equal(cursorLabel(style, 'en'), 'Dragon');
+    assert.equal(readStoredCursor(storage), 'ring');
+    const style = applyCursorStyle('cone', { documentElement: root, storage });
+    assert.equal(style.id, 'cone');
+    assert.equal(values[CURSOR_STORAGE_KEY], 'cone');
+    assert.equal(root.attrs['data-cursor'], 'cone');
+    assert.equal(cursorLabel(style, 'zh'), '锥形');
+    assert.equal(cursorLabel(style, 'en'), 'Cone');
   });
 });

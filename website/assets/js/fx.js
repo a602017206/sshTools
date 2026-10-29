@@ -93,8 +93,6 @@ function renderCursorMarkup(style) {
 
 function trailCountFor(style) {
   if (style.trail === 'comet') return 12;
-  if (style.trail === 'spark') return 9;
-  if (style.trail === 'outline') return 5;
   return 7;
 }
 
@@ -104,14 +102,8 @@ function rebuildTrail(trailLayer, style, doc) {
   const count = trailCountFor(style);
   return Array.from({ length: count }, (_, i) => {
     const node = doc.createElement('span');
-    if (style.trail === 'outline') {
-      node.className = 'cursor-trail__outline';
-      node.innerHTML = cursorSvgMarkup(style.id, { className: 'cursor-trail__svg' });
-    } else if (style.trail === 'comet') {
+    if (style.trail === 'comet') {
       node.className = 'cursor-trail__comet';
-    } else if (style.trail === 'spark') {
-      node.className = 'cursor-trail__spark';
-      node.innerHTML = cursorSvgMarkup('spark', { className: 'cursor-trail__svg' });
     } else {
       node.className = 'cursor-trail__dot';
     }
@@ -151,8 +143,6 @@ function initThemedCursor(root, cleanups) {
   let angle = 0;
   let raf = 0;
   let visible = false;
-  let lastSparkAt = 0;
-
   const interactiveSelector = 'a, button, [role="button"], input, textarea, select, summary, label, .theme-swatch, .theme-mode, .cursor-pick';
 
   const applyStyle = (nextId) => {
@@ -179,8 +169,8 @@ function initThemedCursor(root, cleanups) {
     prevX = curX;
     prevY = curY;
 
-    const rotate = (style.trail === 'comet' || style.group === 'zodiac' || style.group === 'pet' || style.id === 'rocket')
-      ? ` rotate(${angle + (style.id === 'rocket' ? 45 : 0)}deg)`
+    const rotate = style.rotate
+      ? ` rotate(${angle + (style.id === 'cone' ? 90 : 0)}deg)`
       : '';
     cursor.style.transform = `translate3d(${curX}px, ${curY}px, 0)${rotate}`;
     cursor.style.setProperty('--cursor-speed', speed.toFixed(2));
@@ -197,23 +187,6 @@ function initThemedCursor(root, cleanups) {
       point.node.style.opacity = String(Math.max(0.12, 0.9 - i * 0.08 - Math.min(speed, 20) * 0.01));
       px = point.x;
       py = point.y;
-    }
-
-    // Motion glitter for spark / heart styles
-    if (visible && (style.trail === 'spark' || style.id === 'heart') && speed > 4) {
-      const now = performance.now?.() || Date.now();
-      if (now - lastSparkAt > 48) {
-        lastSparkAt = now;
-        const flake = doc.createElement('span');
-        flake.className = 'cursor-flake';
-        flake.innerHTML = cursorSvgMarkup(style.id === 'heart' ? 'heart' : 'spark', {
-          className: 'cursor-flake__svg',
-        });
-        flake.style.left = `${curX + (Math.random() * 18 - 9)}px`;
-        flake.style.top = `${curY + (Math.random() * 18 - 9)}px`;
-        (root.body || root).appendChild(flake);
-        globalThis.setTimeout?.(() => flake.remove(), 480);
-      }
     }
 
     raf = globalThis.requestAnimationFrame(tick);
@@ -238,16 +211,10 @@ function initThemedCursor(root, cleanups) {
 
   const onDown = (event) => {
     cursor.classList.add('is-press');
-    const useOutline = style.burst === 'outline' || style.burst === 'heart';
-    const burstClass = useOutline ? 'cursor-spark cursor-spark--outline' : 'cursor-spark';
-    const html = useOutline
-      ? cursorSvgMarkup(style.burst === 'heart' ? 'heart' : style.id, { className: 'cursor-spark__svg' })
-      : '';
     spawnBurst(root.body || root, event.clientX, event.clientY, {
-      count: useOutline ? 7 : 12,
-      className: burstClass,
+      count: 12,
+      className: 'cursor-spark',
       ttlMs: 680,
-      html,
     });
     const ripple = doc.createElement('span');
     ripple.className = 'cursor-ripple';

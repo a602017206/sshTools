@@ -68,9 +68,6 @@ describe('initChrome', () => {
         '[data-i18n="theme.fg"]': [],
         '[data-i18n="theme.accent"]': [],
         '[data-i18n="theme.cursor"]': [],
-        '[data-i18n="theme.cursor.basic"]': [],
-        '[data-i18n="theme.cursor.pet"]': [],
-        '[data-i18n="theme.cursor.zodiac"]': [],
       }[selector] || []),
     };
     const palettes = [];
